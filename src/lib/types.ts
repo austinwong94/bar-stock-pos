@@ -44,6 +44,20 @@ export type ProductWithStock = Product & {
   inventory_balances: Pick<InventoryBalance, 'quantity_on_hand'> | null;
 };
 
+export type ProductPriceHistory = {
+  id: string;
+  product_id: string;
+  product_name: string;
+  old_price_per_unit: number | null;
+  new_price_per_unit: number | null;
+  old_cost_per_unit: number | null;
+  new_cost_per_unit: number | null;
+  changed_by: string | null;
+  changed_at: string;
+  products?: Pick<Product, 'name'> | null;
+  profiles?: Pick<Profile, 'full_name'> | null;
+};
+
 export type Sale = {
   id: string;
   sale_number: string;

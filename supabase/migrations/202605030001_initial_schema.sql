@@ -29,6 +29,18 @@ create table public.products (
   updated_at timestamptz not null default now()
 );
 
+create table public.product_price_history (
+  id uuid primary key default gen_random_uuid(),
+  product_id uuid not null references public.products(id),
+  product_name text not null,
+  old_price_per_unit numeric(12,2),
+  new_price_per_unit numeric(12,2),
+  old_cost_per_unit numeric(12,2),
+  new_cost_per_unit numeric(12,2),
+  changed_by uuid references public.profiles(id),
+  changed_at timestamptz not null default now()
+);
+
 create table public.inventory_balances (
   product_id uuid primary key references public.products(id),
   quantity_on_hand int not null default 0,
@@ -147,6 +159,7 @@ on conflict (id) do nothing;
 create index sales_business_date_idx on public.sales(business_date, created_at);
 create index sale_items_sale_id_idx on public.sale_items(sale_id);
 create index stock_movements_product_id_idx on public.stock_movements(product_id, created_at);
+create index product_price_history_product_changed_idx on public.product_price_history(product_id, changed_at desc);
 
 create or replace function public.touch_updated_at()
 returns trigger
@@ -163,6 +176,42 @@ for each row execute function public.touch_updated_at();
 
 create trigger products_touch_updated_at before update on public.products
 for each row execute function public.touch_updated_at();
+
+create or replace function public.record_product_price_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if old.price_per_unit is distinct from new.price_per_unit
+     or old.cost_per_unit is distinct from new.cost_per_unit then
+    insert into public.product_price_history(
+      product_id,
+      product_name,
+      old_price_per_unit,
+      new_price_per_unit,
+      old_cost_per_unit,
+      new_cost_per_unit,
+      changed_by
+    )
+    values (
+      new.id,
+      new.name,
+      old.price_per_unit,
+      new.price_per_unit,
+      old.cost_per_unit,
+      new.cost_per_unit,
+      auth.uid()
+    );
+  end if;
+  return new;
+end;
+$$;
+
+create trigger products_record_price_change
+after update of price_per_unit, cost_per_unit on public.products
+for each row execute function public.record_product_price_change();
 
 create or replace function public.handle_new_user()
 returns trigger
@@ -809,6 +858,7 @@ $$;
 alter table public.profiles enable row level security;
 alter table public.categories enable row level security;
 alter table public.products enable row level security;
+alter table public.product_price_history enable row level security;
 alter table public.inventory_balances enable row level security;
 alter table public.stock_movements enable row level security;
 alter table public.sales enable row level security;
@@ -824,6 +874,7 @@ create policy "categories read authenticated" on public.categories for select to
 create policy "categories admin write" on public.categories for all to authenticated using (public.current_user_role() = 'admin') with check (public.current_user_role() = 'admin');
 create policy "products read authenticated" on public.products for select to authenticated using (active or public.current_user_role() in ('manager','admin'));
 create policy "products admin write" on public.products for all to authenticated using (public.current_user_role() = 'admin') with check (public.current_user_role() = 'admin');
+create policy "product price history admin read" on public.product_price_history for select to authenticated using (public.current_user_role() = 'admin');
 create policy "inventory read authenticated" on public.inventory_balances for select to authenticated using (true);
 create policy "stock movements manager read" on public.stock_movements for select to authenticated using (public.current_user_role() in ('manager','admin'));
 create policy "sales manager read" on public.sales for select to authenticated using (public.current_user_role() in ('manager','admin') or cashier_id = auth.uid());
@@ -838,7 +889,7 @@ create policy "payment receipt read manager" on storage.objects for select to au
 
 grant usage on schema public to authenticated;
 grant select on public.categories, public.products, public.inventory_balances, public.app_settings to authenticated;
-grant select on public.profiles, public.sales, public.sale_items, public.stock_movements, public.daily_reports, public.cash_sessions to authenticated;
+grant select on public.profiles, public.sales, public.sale_items, public.stock_movements, public.daily_reports, public.cash_sessions, public.product_price_history to authenticated;
 grant insert, update on public.categories, public.products, public.app_settings to authenticated;
 grant update on public.profiles to authenticated;
 revoke execute on function public.stock_in_product(uuid, int, text, numeric, text, text, text, text) from public, anon;

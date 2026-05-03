@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { format } from 'date-fns';
 import { Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Field, buttonClass, inputClass, secondaryButtonClass } from '../components/Form';
@@ -9,7 +10,8 @@ import { categoryRank, groupByCategory, normalizeCategoryName } from '../lib/dat
 import { supabase } from '../lib/supabase';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { loadLocalCategories, loadLocalProducts, saveLocalProduct } from '../lib/localStore';
-import type { Category, ProductWithStock, SettingsMap } from '../lib/types';
+import { money } from '../lib/format';
+import type { Category, ProductPriceHistory, ProductWithStock, SettingsMap } from '../lib/types';
 import { assetPath } from '../lib/assets';
 import { useLanguage } from '../lib/language';
 
@@ -49,22 +51,28 @@ export default function Products({ settings }: { settings: SettingsMap }) {
   const { text } = useLanguage();
   const [products, setProducts] = useState<ProductWithStock[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [priceHistory, setPriceHistory] = useState<ProductPriceHistory[]>([]);
   const [form, setForm] = useState<ProductForm | null>(null);
   const [adminPin, setAdminPin] = useState('');
-  const [demoAdminUnlocked, setDemoAdminUnlocked] = useState(isSupabaseConfigured);
+  const [demoAdminUnlocked, setDemoAdminUnlocked] = useState(() => sessionStorage.getItem('lovely_paradise_admin_access') === 'ok');
+  const [adminSection, setAdminSection] = useState<'products' | 'priceHistory'>('products');
   const defaultCartonSize = Number(settings.default_carton_size || 24);
 
   async function refresh() {
     if (!isSupabaseConfigured) {
       setProducts(loadLocalProducts(true));
       setCategories(loadLocalCategories());
+      setPriceHistory([]);
       return;
     }
-    const [{ data: productData }, { data: categoryData }] = await Promise.all([
+    const [{ data: productData }, { data: categoryData }, { data: priceHistoryData, error: priceHistoryError }] = await Promise.all([
       supabase.from('products').select('*, categories(id,name,sort_order), inventory_balances(quantity_on_hand)').order('name'),
       supabase.from('categories').select('*').order('sort_order'),
+      supabase.from('product_price_history').select('*, products(name), profiles(full_name)').order('changed_at', { ascending: false }).limit(200),
     ]);
     setProducts((productData ?? []) as ProductWithStock[]);
+    if (!priceHistoryError) setPriceHistory((priceHistoryData ?? []) as ProductPriceHistory[]);
+    else setPriceHistory([]);
     const currentCategories = (categoryData ?? []) as Category[];
     const missingCategories = defaultCategories.filter(
       (category) => !currentCategories.some((item) => normalizeCategoryName(item.name) === category.name),
@@ -81,6 +89,16 @@ export default function Products({ settings }: { settings: SettingsMap }) {
       return;
     }
     setCategories(currentCategories);
+  }
+
+  function unlockAdmin() {
+    if (adminPin !== '200000') {
+      toast.error('Wrong admin password.');
+      return;
+    }
+    sessionStorage.setItem('lovely_paradise_admin_access', 'ok');
+    setDemoAdminUnlocked(true);
+    setAdminPin('');
   }
 
   useEffect(() => {
@@ -177,11 +195,31 @@ export default function Products({ settings }: { settings: SettingsMap }) {
           <h2 className="text-xl font-black sm:text-2xl">{text('Admin Access', 'Akses Pentadbir')}</h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
             <input className={inputClass} type="password" value={adminPin} onChange={(e) => setAdminPin(e.target.value)} placeholder="Admin password" />
-            <button className={buttonClass} onClick={() => setDemoAdminUnlocked(adminPin === '200000')}>Unlock</button>
+            <button className={buttonClass} onClick={unlockAdmin}>Unlock</button>
           </div>
         </div>
       ) : null}
       {!demoAdminUnlocked ? null : (
+      <>
+      <section className="island-panel mb-4 rounded-2xl p-1.5 sm:mb-5 sm:rounded-[2rem] sm:p-2">
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            className={`min-h-10 rounded-xl px-3 py-2 text-sm font-black sm:min-h-12 sm:rounded-2xl ${adminSection === 'products' ? 'bg-accent text-white shadow-glow' : 'bg-white/80 text-ink'}`}
+            onClick={() => setAdminSection('products')}
+          >
+            Products
+          </button>
+          <button
+            type="button"
+            className={`min-h-10 rounded-xl px-3 py-2 text-sm font-black sm:min-h-12 sm:rounded-2xl ${adminSection === 'priceHistory' ? 'bg-accent text-white shadow-glow' : 'bg-white/80 text-ink'}`}
+            onClick={() => setAdminSection('priceHistory')}
+          >
+            Price History
+          </button>
+        </div>
+      </section>
+      {adminSection === 'products' ? (
       <>
       <section className="island-panel mb-4 rounded-2xl p-3 sm:mb-5 sm:rounded-[2rem] sm:p-5">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -309,6 +347,43 @@ export default function Products({ settings }: { settings: SettingsMap }) {
           </tbody>
         </table>
       </div>
+      </>
+      ) : (
+        <section className="island-panel rounded-2xl p-3 sm:rounded-[2rem] sm:p-5">
+          <h2 className="text-lg font-black sm:text-xl">Price History</h2>
+          <div className="mt-3 overflow-x-auto rounded-2xl border border-line bg-white/75">
+            <table className="w-full min-w-[980px] text-left text-sm">
+              <thead className="bg-paper">
+                <tr>
+                  <th className="p-3">Time</th>
+                  <th className="p-3">Product</th>
+                  <th className="p-3">Old price</th>
+                  <th className="p-3">New price</th>
+                  <th className="p-3">Old cost</th>
+                  <th className="p-3">New cost</th>
+                  <th className="p-3">Changed by</th>
+                </tr>
+              </thead>
+              <tbody>
+                {priceHistory.map((item) => (
+                  <tr key={item.id} className="border-t border-line">
+                    <td className="p-3 whitespace-nowrap">{format(new Date(item.changed_at), 'dd MMM yyyy, h:mm a')}</td>
+                    <td className="p-3 font-black">{item.products?.name ?? item.product_name}</td>
+                    <td className="p-3 whitespace-nowrap">{item.old_price_per_unit == null ? '-' : money(item.old_price_per_unit, String(settings.currency_symbol))}</td>
+                    <td className="p-3 whitespace-nowrap font-black">{item.new_price_per_unit == null ? '-' : money(item.new_price_per_unit, String(settings.currency_symbol))}</td>
+                    <td className="p-3 whitespace-nowrap">{item.old_cost_per_unit == null ? '-' : money(item.old_cost_per_unit, String(settings.currency_symbol))}</td>
+                    <td className="p-3 whitespace-nowrap">{item.new_cost_per_unit == null ? '-' : money(item.new_cost_per_unit, String(settings.currency_symbol))}</td>
+                    <td className="p-3 whitespace-nowrap">{item.profiles?.full_name ?? 'Admin'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {priceHistory.length === 0 ? (
+              <div className="p-5 text-center text-sm font-bold text-neutral-600">No price changes recorded yet.</div>
+            ) : null}
+          </div>
+        </section>
+      )}
       </>
       )}
       {effectiveForm ? (
