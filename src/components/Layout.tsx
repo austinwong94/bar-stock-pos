@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   BarChart3,
   CalendarCheck2,
@@ -33,7 +33,11 @@ export function Layout({
   publicPreview?: boolean;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { language, setLanguage, text } = useLanguage();
+  const visibleLinks = links.filter((link) => roleAtLeast(profile.role, link.min));
+  const activePath =
+    visibleLinks.find((link) => (link.to === '/' ? location.pathname === '/' : location.pathname.startsWith(link.to)))?.to ?? '/';
 
   async function exitApp() {
     if (publicPreview) {
@@ -68,8 +72,7 @@ export function Layout({
           </div>
         </div>
         <nav className="island-panel grid gap-2 rounded-[2rem] p-3">
-          {links
-            .filter((link) => roleAtLeast(profile.role, link.min))
+          {visibleLinks
             .map((link) => (
               <NavLink
                 key={link.to}
@@ -101,21 +104,36 @@ export function Layout({
         <header className="no-print sticky top-0 z-20 border-b border-line bg-white/85 px-3 py-3 backdrop-blur sm:px-4 xl:hidden">
           <div className="mx-auto max-w-[1500px]">
             <div className="flex items-center justify-between gap-3">
-              <strong className="min-w-0 truncate text-base font-black sm:text-lg">{String(settings.business_name)}</strong>
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-coral text-white shadow-soft">
+                  <Waves className="h-5 w-5" />
+                </span>
+                <strong className="min-w-0 truncate text-base font-black sm:text-lg">{String(settings.business_name)}</strong>
+              </div>
               <div className="flex shrink-0 items-center gap-2">
                 <div className="grid grid-cols-2 rounded-2xl bg-white/80 p-1 text-xs font-black">
-                  <button onClick={() => setLanguage('en')} className={`rounded-xl px-3 py-2 ${language === 'en' ? 'bg-accent text-white' : ''}`}>EN</button>
-                  <button onClick={() => setLanguage('ms')} className={`rounded-xl px-3 py-2 ${language === 'ms' ? 'bg-accent text-white' : ''}`}>BM</button>
+                  <button onClick={() => setLanguage('en')} className={`rounded-xl px-2 py-2 ${language === 'en' ? 'bg-accent text-white' : ''}`}>EN</button>
+                  <button onClick={() => setLanguage('ms')} className={`rounded-xl px-2 py-2 ${language === 'ms' ? 'bg-accent text-white' : ''}`}>BM</button>
                 </div>
-                <button type="button" onClick={exitApp} className="rounded-2xl border border-line px-3 py-2 text-sm font-bold">
+                <button type="button" onClick={exitApp} className="rounded-2xl border border-line px-2 py-2 text-xs font-black sm:px-3 sm:text-sm">
                   {publicPreview ? 'Lock app' : 'Sign out'}
                 </button>
               </div>
             </div>
-            <nav className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
-              {links
-                .filter((link) => roleAtLeast(profile.role, link.min))
-                .map((link) => (
+            <select
+              className="mt-2 h-11 w-full rounded-2xl border border-line bg-white px-3 text-sm font-black text-ink outline-none focus:border-accent focus:ring-4 focus:ring-teal-100 sm:hidden"
+              value={activePath}
+              onChange={(event) => navigate(event.target.value)}
+              aria-label="Current page"
+            >
+              {visibleLinks.map((link) => (
+                <option key={link.to} value={link.to}>
+                  {link.label}
+                </option>
+              ))}
+            </select>
+            <nav className="mt-3 hidden grid-cols-6 gap-2 sm:grid">
+              {visibleLinks.map((link) => (
                   <NavLink
                     key={link.to}
                     to={link.to}
