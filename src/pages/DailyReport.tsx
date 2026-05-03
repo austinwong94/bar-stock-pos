@@ -387,29 +387,36 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
       </section>
       <section className="island-panel rounded-[2rem] p-5">
         <h2 className="text-xl font-black">{text('All reports table', 'Jadual semua laporan')}</h2>
-        <div className="mt-3 grid gap-3 lg:grid-cols-[auto_1fr] lg:items-center">
-          <div className="grid grid-cols-4 gap-2 rounded-2xl bg-white/80 p-1 text-sm font-black">
+        <div className="mt-3 grid gap-3 md:grid-cols-[minmax(360px,1fr)_minmax(220px,260px)] md:items-center lg:grid-cols-[minmax(430px,560px)_minmax(220px,1fr)]">
+          <div className="grid w-full grid-cols-4 gap-1 rounded-2xl bg-white/80 p-1 text-sm font-black">
             {(['daily', 'weekly', 'monthly', 'custom'] as const).map((item) => (
               <button
                 key={item}
-                className={`rounded-xl px-3 py-2 ${reportPeriod === item ? 'bg-accent text-white' : ''}`}
+                className={`min-h-12 rounded-xl px-3 py-2 text-center ${reportPeriod === item ? 'bg-accent text-white' : ''}`}
                 onClick={() => setReportPeriod(item)}
               >
                 {item === 'daily' ? 'Daily' : item === 'weekly' ? 'Weekly' : item === 'monthly' ? 'Monthly' : 'Selected'}
               </button>
             ))}
           </div>
-          <div className="grid gap-2 md:grid-cols-3">
-            {reportPeriod === 'daily' ? <input className={inputClass} type="month" value={reportMonth} onChange={(event) => setReportMonth(event.target.value)} /> : null}
+          <div className="grid w-full min-w-0 gap-2 lg:justify-end">
+            {reportPeriod === 'daily' ? (
+              <input
+                className={inputClass}
+                type="month"
+                value={reportMonth}
+                onChange={(event) => setReportMonth(event.target.value)}
+              />
+            ) : null}
             {reportPeriod === 'custom' ? (
-              <>
+              <div className="grid w-full min-w-0 gap-2 lg:grid-cols-[minmax(0,180px)_minmax(0,180px)_auto]">
                 <input className={inputClass} type="date" value={customStart} onChange={(event) => setCustomStart(event.target.value)} />
                 <input className={inputClass} type="date" value={customEnd} onChange={(event) => setCustomEnd(event.target.value)} />
                 <button className={`${secondaryButtonClass} justify-center`} onClick={() => downloadPdfReport(selectedPeriodRow)}>
                   <Download className="h-4 w-4" />
                   Download selected period PDF
                 </button>
-              </>
+              </div>
             ) : null}
           </div>
         </div>
