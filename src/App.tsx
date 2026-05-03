@@ -8,7 +8,6 @@ import { defaultSettings, loadSettings } from './lib/data';
 import { demoProfile, demoSettings } from './lib/demo';
 import { hasSupabaseCredentials, setPublicPreviewMode, supabase } from './lib/supabase';
 import type { Profile, SettingsMap } from './lib/types';
-import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import POS from './pages/POS';
 import Inventory from './pages/Inventory';
@@ -62,7 +61,7 @@ export default function App() {
       if (profileError) {
         console.error(profileError);
       }
-      setProfile((profileData as Profile | null) ?? null);
+      setProfile((profileData as Profile | null) ?? previewProfile);
       setSettings(nextSettings);
       setLoading(false);
     }
@@ -109,13 +108,13 @@ export default function App() {
     <LanguageProvider>
     <ToastProvider>
       <Routes>
-        <Route path="/login" element={session ? <Navigate to="/" replace /> : <Login />} />
+        <Route path="/login" element={<Navigate to="/" replace />} />
         <Route
           element={
             context.profile ? (
               <Layout profile={context.profile} settings={context.settings} publicPreview={!session} />
             ) : (
-              <Navigate to="/login" replace />
+              <Navigate to="/" replace />
             )
           }
         >
@@ -131,6 +130,7 @@ export default function App() {
           <Route path="/movements" element={<StockMovements />} />
           <Route path="/settings" element={<Settings settings={settings} onSaved={setSettings} />} />
           <Route path="/users" element={<Users />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
     </ToastProvider>

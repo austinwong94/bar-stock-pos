@@ -42,7 +42,9 @@ export function Layout({
       return;
     }
     await supabase.auth.signOut();
-    navigate('/login');
+    sessionStorage.removeItem('lovely_paradise_access');
+    navigate('/');
+    window.location.reload();
   }
 
   return (
