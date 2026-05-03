@@ -39,7 +39,7 @@ values
   ('currency_symbol', '"MYR"'::jsonb),
   ('secondary_currency_symbol', '"RMB"'::jsonb),
   ('rmb_exchange_rate', '1.52'::jsonb),
-  ('business_day_close_time', '"05:00"'::jsonb),
+  ('business_day_close_time', '"00:00"'::jsonb),
   ('default_carton_size', '24'::jsonb),
   ('allow_negative_stock', 'false'::jsonb),
   ('require_qr_reference', 'false'::jsonb),

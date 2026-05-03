@@ -6,7 +6,7 @@ import { buttonClass, inputClass, secondaryButtonClass } from '../components/For
 import { Modal } from '../components/Modal';
 import { PageHeader } from '../components/Page';
 import { useToast } from '../components/Toast';
-import { money } from '../lib/format';
+import { malaysiaDateInputValue, money } from '../lib/format';
 import { demoReports } from '../lib/demo';
 import { loadLocalSaleItems, loadLocalSales } from '../lib/localStore';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
@@ -78,9 +78,13 @@ function compactStatusLabel(status: ClosingStatus) {
   return statusLabel(status);
 }
 
+function saleCalendarDate(sale: Sale) {
+  return sale.created_at ? malaysiaDateInputValue(sale.created_at) : sale.business_date;
+}
+
 function buildReportDays(reports: DailyReport[], sales: Sale[]): ReportDay[] {
   const reportsByDate = new Map(reports.map((report) => [report.business_date, report]));
-  const salesDates = Array.from(new Set(sales.map((sale) => sale.business_date)));
+  const salesDates = Array.from(new Set(sales.map((sale) => saleCalendarDate(sale))));
   const allDates = Array.from(new Set([...reports.map((report) => report.business_date), ...salesDates]));
 
   return allDates.map((date) => {
@@ -98,7 +102,7 @@ function buildReportDays(reports: DailyReport[], sales: Sale[]): ReportDay[] {
       };
     }
 
-    const completedSales = sales.filter((sale) => sale.business_date === date && sale.status === 'completed');
+    const completedSales = sales.filter((sale) => saleCalendarDate(sale) === date && sale.status === 'completed');
     const cash = completedSales.reduce((sum, sale) => sum + (sale.payment_method === 'cash' ? Number(sale.paid_amount) : 0), 0);
     const qr = completedSales.reduce((sum, sale) => sum + (sale.payment_method === 'qr' ? Number(sale.paid_amount) : 0), 0);
     const focCost = completedSales.reduce((sum, sale) => sum + (sale.payment_method === 'complimentary' ? Number(sale.total_amount) : 0), 0);
@@ -175,6 +179,7 @@ function summarizeReports(days: ReportDay[], period: ReportPeriod): ReportRow[] 
 export default function DailyReportPage({ settings }: { settings: SettingsMap }) {
   const toast = useToast();
   const { text } = useLanguage();
+  const today = malaysiaDateInputValue(new Date());
   const [reports, setReports] = useState<DailyReport[]>(demoReports);
   const [sales, setSales] = useState<SaleWithItems[]>(() => {
     const localSaleItems = loadLocalSaleItems();
@@ -184,11 +189,11 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
     }));
   });
   const [reportPeriod, setReportPeriod] = useState<ReportPeriod>('daily');
-  const [, setBusinessDate] = useState('2026-05-03');
-  const [reportMonth, setReportMonth] = useState('2026-05');
-  const [customStart, setCustomStart] = useState('2026-04-30');
-  const [customEnd, setCustomEnd] = useState('2026-05-03');
-  const [selectedReportDate, setSelectedReportDate] = useState('2026-05-03');
+  const [, setBusinessDate] = useState(today);
+  const [reportMonth, setReportMonth] = useState(today.slice(0, 7));
+  const [customStart, setCustomStart] = useState(today);
+  const [customEnd, setCustomEnd] = useState(today);
+  const [selectedReportDate, setSelectedReportDate] = useState(today);
   const [selectedReportId, setSelectedReportId] = useState('');
   const [reportSection, setReportSection] = useState<'reports' | 'sales'>('reports');
   const [showAllRows, setShowAllRows] = useState(false);

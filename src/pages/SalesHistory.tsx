@@ -5,7 +5,7 @@ import { Field, buttonClass, dangerButtonClass, inputClass, secondaryButtonClass
 import { Modal } from '../components/Modal';
 import { PageHeader } from '../components/Page';
 import { useToast } from '../components/Toast';
-import { money, todayInputValue } from '../lib/format';
+import { malaysiaDateBounds, malaysiaDateInputValue, money, todayInputValue } from '../lib/format';
 import { supabase } from '../lib/supabase';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { loadLocalSaleItems, loadLocalSales } from '../lib/localStore';
@@ -41,6 +41,10 @@ function saleDateLabel(date: string) {
   return format(parseISO(date), 'EEE, d MMM yyyy');
 }
 
+function saleCalendarDate(sale: Sale) {
+  return sale.created_at ? malaysiaDateInputValue(sale.created_at) : sale.business_date;
+}
+
 function itemName(item: SaleItem) {
   return item.products?.name ?? item.custom_item_name ?? item.product_id ?? 'Custom Order';
 }
@@ -60,21 +64,35 @@ export default function SalesHistory({ settings, embedded = false }: { settings:
       const localSaleItems = loadLocalSaleItems();
       setSales(
         localSales
-          .filter((sale) => sale.business_date === date)
+          .filter((sale) => sale.business_date === date || saleCalendarDate(sale) === date)
           .filter((sale) => method === 'all' || sale.payment_method === method)
           .map((sale) => ({ ...sale, sale_items: localSaleItems.filter((item) => item.sale_id === sale.id) })),
       );
       return;
     }
-    let query = supabase
+    const { startIso, endIso } = malaysiaDateBounds(date);
+    let businessDateQuery = supabase
       .from('sales')
       .select('*, sale_items(*, products(name))')
       .eq('business_date', date)
       .order('created_at', { ascending: false });
-    if (method !== 'all') query = query.eq('payment_method', method);
-    const { data, error } = await query;
-    if (error) toast.error(error.message);
-    setSales((data ?? []) as SaleWithItems[]);
+    let createdAtQuery = supabase
+      .from('sales')
+      .select('*, sale_items(*, products(name))')
+      .gte('created_at', startIso)
+      .lt('created_at', endIso)
+      .order('created_at', { ascending: false });
+    if (method !== 'all') {
+      businessDateQuery = businessDateQuery.eq('payment_method', method);
+      createdAtQuery = createdAtQuery.eq('payment_method', method);
+    }
+    const [{ data: businessDateData, error: businessDateError }, { data: createdAtData, error: createdAtError }] = await Promise.all([businessDateQuery, createdAtQuery]);
+    if (businessDateError || createdAtError) toast.error(businessDateError?.message ?? createdAtError?.message ?? 'Could not load sales.');
+    const mergedSales = new Map<string, SaleWithItems>();
+    ([...(businessDateData ?? []), ...(createdAtData ?? [])] as SaleWithItems[]).forEach((sale) => {
+      mergedSales.set(sale.id, sale);
+    });
+    setSales(Array.from(mergedSales.values()).sort((a, b) => b.created_at.localeCompare(a.created_at)));
   }
 
   useEffect(() => {
@@ -218,7 +236,7 @@ export default function SalesHistory({ settings, embedded = false }: { settings:
                     <tr key={sale.id} className="border-t border-line align-top">
                       <td className="p-3 font-black whitespace-nowrap">{sale.sale_number}</td>
                       <td className="p-3 whitespace-nowrap">
-                        <span className="block font-bold">{saleDateLabel(sale.business_date)}</span>
+                        <span className="block font-bold">{saleDateLabel(saleCalendarDate(sale))}</span>
                         <span className="block text-xs font-bold text-neutral-600">{sale.order_taken_by ?? '-'}</span>
                       </td>
                       <td className="p-3 whitespace-nowrap">

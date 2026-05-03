@@ -30,6 +30,22 @@ export function dateInputValue(value: string | Date) {
   return format(new Date(value), 'yyyy-MM-dd');
 }
 
+export function malaysiaDateInputValue(value: string | Date) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kuala_Lumpur',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(value));
+}
+
+export function malaysiaDateBounds(value: string) {
+  const start = new Date(`${value}T00:00:00+08:00`);
+  const end = new Date(`${value}T00:00:00+08:00`);
+  end.setDate(end.getDate() + 1);
+  return { startIso: start.toISOString(), endIso: end.toISOString() };
+}
+
 export function csvEscape(value: unknown) {
   const text = String(value ?? '');
   return `"${text.replace(/"/g, '""')}"`;

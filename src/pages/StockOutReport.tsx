@@ -3,7 +3,7 @@ import { addDays, addMonths, addWeeks, format, parseISO, startOfWeek } from 'dat
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { inputClass } from '../components/Form';
 import { PageHeader } from '../components/Page';
-import { dateInputValue, money, todayInputValue } from '../lib/format';
+import { dateInputValue, malaysiaDateInputValue, money, todayInputValue } from '../lib/format';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { useLanguage } from '../lib/language';
 import type { Sale, SaleItem, SettingsMap, StockMovement } from '../lib/types';
@@ -92,7 +92,7 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
       setStockOutRows(
         sales.flatMap((sale) =>
           (sale.sale_items ?? []).map((item) => ({
-            date: sale.business_date,
+            date: malaysiaDateInputValue(sale.created_at),
             sale: sale.sale_number,
             item: item.products?.name ?? item.custom_item_name ?? item.product_id ?? 'Custom Order',
             qty: item.quantity,

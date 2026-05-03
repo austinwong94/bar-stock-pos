@@ -1,4 +1,5 @@
 import { demoItemSales } from './demo';
+import { malaysiaDateInputValue } from './format';
 import type { Sale, SaleItem } from './types';
 
 export type ItemSalesBreakdown = {
@@ -58,7 +59,11 @@ export function actualItemSales(sales: SaleWithItems[], dates?: string[]): ItemS
   const rows = new Map<string, ItemSalesBreakdown>();
 
   sales
-    .filter((sale) => sale.status === 'completed' && (!dateSet || dateSet.has(sale.business_date)))
+    .filter((sale) => {
+      if (sale.status !== 'completed') return false;
+      if (!dateSet) return true;
+      return dateSet.has(sale.business_date) || dateSet.has(malaysiaDateInputValue(sale.created_at));
+    })
     .forEach((sale) => {
       const items = sale.sale_items ?? [];
       const lineTotals = items.map((item) => Number(item.line_total));

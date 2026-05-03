@@ -7,6 +7,28 @@ alter table public.sales add column if not exists order_taken_by text;
 alter table public.sales add column if not exists qr_receipt_image_path text;
 alter table public.sale_items add column if not exists custom_item_name text;
 
+create or replace function public.get_business_date()
+returns date
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  close_time time := public.setting_text('business_day_close_time', '00:00')::time;
+  local_now timestamp := now() at time zone 'Asia/Kuala_Lumpur';
+begin
+  if local_now::time < close_time then
+    return (local_now::date - 1);
+  end if;
+  return local_now::date;
+end;
+$$;
+
+update public.sales
+set business_date = (created_at at time zone 'Asia/Kuala_Lumpur')::date
+where business_date is distinct from (created_at at time zone 'Asia/Kuala_Lumpur')::date;
+
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -148,7 +170,7 @@ values
   ('currency_symbol', '"MYR"'::jsonb),
   ('secondary_currency_symbol', '"RMB"'::jsonb),
   ('rmb_exchange_rate', '1.52'::jsonb),
-  ('business_day_close_time', '"05:00"'::jsonb),
+  ('business_day_close_time', '"00:00"'::jsonb),
   ('default_carton_size', '24'::jsonb),
   ('allow_negative_stock', 'false'::jsonb),
   ('require_qr_reference', 'false'::jsonb),

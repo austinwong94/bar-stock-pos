@@ -4,7 +4,7 @@ import { AlertTriangle, ChevronLeft, ChevronRight, PackageCheck, Sparkles } from
 import { PageHeader } from '../components/Page';
 import { loadProducts } from '../lib/data';
 import { loadLocalSales } from '../lib/localStore';
-import { cansAndCartons, dualMoney, money, todayInputValue } from '../lib/format';
+import { cansAndCartons, dualMoney, malaysiaDateInputValue, money } from '../lib/format';
 import { supabase } from '../lib/supabase';
 import { isSupabaseConfigured } from '../lib/supabase';
 import type { ProductWithStock, SettingsMap } from '../lib/types';
@@ -12,7 +12,6 @@ import { useLanguage } from '../lib/language';
 
 export default function Dashboard({ settings }: { settings: SettingsMap }) {
   const [products, setProducts] = useState<ProductWithStock[]>([]);
-  const [businessDate, setBusinessDate] = useState('');
   const [period, setPeriod] = useState<'day' | 'week' | 'month'>('day');
   const [selectedDate, setSelectedDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [selectedWeek, setSelectedWeek] = useState(() => format(new Date(), "RRRR-'W'II"));
@@ -22,24 +21,20 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
 
   useEffect(() => {
     async function load() {
-      const [loadedProducts, dateResult] = await Promise.all([
-        loadProducts(true),
-        isSupabaseConfigured ? supabase.rpc('get_business_date') : Promise.resolve({ data: todayInputValue() }),
-      ]);
-      const currentDate = dateResult.data ?? todayInputValue();
+      const loadedProducts = await loadProducts(true);
       const sales = isSupabaseConfigured
         ? (await supabase
             .from('sales')
-            .select('payment_method,total_amount,paid_amount,business_date')
+            .select('payment_method,total_amount,paid_amount,business_date,created_at')
             .eq('status', 'completed')).data
         : loadLocalSales();
-      const filteredSales = ((sales ?? []) as Array<{ payment_method: string; total_amount: number; paid_amount: number; business_date?: string }>).filter((sale) => {
-        if (period === 'day') return sale.business_date === selectedDate;
-        if (period === 'month') return sale.business_date?.startsWith(selectedMonth);
-        return sale.business_date ? format(new Date(`${sale.business_date}T00:00:00`), "RRRR-'W'II") === selectedWeek : false;
+      const filteredSales = ((sales ?? []) as Array<{ payment_method: string; total_amount: number; paid_amount: number; business_date?: string; created_at?: string }>).filter((sale) => {
+        const saleDate = sale.created_at ? malaysiaDateInputValue(sale.created_at) : sale.business_date;
+        if (period === 'day') return saleDate === selectedDate;
+        if (period === 'month') return saleDate?.startsWith(selectedMonth);
+        return saleDate ? format(new Date(`${saleDate}T00:00:00`), "RRRR-'W'II") === selectedWeek : false;
       });
       setProducts(loadedProducts);
-      setBusinessDate(currentDate);
       setTotals(
         filteredSales.reduce(
           (sum: { cash: number; qr: number; focCost: number; tx: number; paidRevenue: number }, sale) => ({

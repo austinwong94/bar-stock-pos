@@ -13,7 +13,7 @@ export const demoSettings: SettingsMap = {
   currency_symbol: 'MYR',
   secondary_currency_symbol: 'RMB',
   rmb_exchange_rate: 1.52,
-  business_day_close_time: '05:00',
+  business_day_close_time: '00:00',
   default_carton_size: 24,
   allow_negative_stock: false,
   require_qr_reference: false,

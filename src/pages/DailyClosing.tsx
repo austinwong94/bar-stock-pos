@@ -5,7 +5,7 @@ import { Field, buttonClass, inputClass, secondaryButtonClass } from '../compone
 import { Modal } from '../components/Modal';
 import { PageHeader, Stat } from '../components/Page';
 import { useToast } from '../components/Toast';
-import { money, todayInputValue } from '../lib/format';
+import { malaysiaDateBounds, malaysiaDateInputValue, money, todayInputValue } from '../lib/format';
 import { supabase } from '../lib/supabase';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { demoReports } from '../lib/demo';
@@ -39,7 +39,7 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
       const localSaleItems = loadLocalSaleItems();
       setSales(
         loadLocalSales()
-          .filter((sale) => sale.business_date === date)
+          .filter((sale) => sale.business_date === date || malaysiaDateInputValue(sale.created_at) === date)
           .map((sale) => ({ ...sale, sale_items: localSaleItems.filter((item) => item.sale_id === sale.id) })),
       );
       const demoReport = demoReports.find((item) => item.business_date === date) ?? null;
@@ -47,11 +47,17 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
       setCorrectionMode(false);
       return demoReport;
     }
-    const [{ data: currentSales }, { data: existingReport }] = await Promise.all([
+    const { startIso, endIso } = malaysiaDateBounds(date);
+    const [{ data: businessDateSales }, { data: createdAtSales }, { data: existingReport }] = await Promise.all([
       supabase.from('sales').select('*, sale_items(*, products(name))').eq('business_date', date).order('created_at'),
+      supabase.from('sales').select('*, sale_items(*, products(name))').gte('created_at', startIso).lt('created_at', endIso).order('created_at'),
       supabase.from('daily_reports').select('*').eq('business_date', date).maybeSingle(),
     ]);
-    setSales((currentSales ?? []) as SaleWithItems[]);
+    const mergedSales = new Map<string, SaleWithItems>();
+    ([...(businessDateSales ?? []), ...(createdAtSales ?? [])] as SaleWithItems[]).forEach((sale) => {
+      mergedSales.set(sale.id, sale);
+    });
+    setSales(Array.from(mergedSales.values()).sort((a, b) => a.created_at.localeCompare(b.created_at)));
     setReport((existingReport as DailyReport | null) ?? null);
     setCorrectionMode(false);
     return (existingReport as DailyReport | null) ?? null;
@@ -116,14 +122,9 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
       });
       return;
     }
-    supabase.rpc('get_business_date').then(({ data }: { data: string | null }) => {
-      if (data) {
-        setBusinessDate(data);
-        void refresh(data);
-      } else {
-        void refresh();
-      }
-    });
+    const today = todayInputValue();
+    setBusinessDate(today);
+    void refresh(today);
   }, [searchParams]);
 
   useEffect(() => {

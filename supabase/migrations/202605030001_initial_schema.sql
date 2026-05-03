@@ -241,7 +241,7 @@ security definer
 set search_path = public
 as $$
 declare
-  close_time time := public.setting_text('business_day_close_time', '05:00')::time;
+  close_time time := public.setting_text('business_day_close_time', '00:00')::time;
   local_now timestamp := now() at time zone 'Asia/Kuala_Lumpur';
 begin
   if local_now::time < close_time then
@@ -694,15 +694,15 @@ begin
       from (
         select p.name, sum(sm.quantity_change) quantity
         from public.stock_movements sm join public.products p on p.id = sm.product_id
-        where sm.movement_type = 'stock_in' and sm.created_at::date = p_business_date
+        where sm.movement_type = 'stock_in' and (sm.created_at at time zone 'Asia/Kuala_Lumpur')::date = p_business_date
         group by p.name order by p.name
       ) x
     ),
-    'stock_movements', (select coalesce(jsonb_agg(to_jsonb(sm)), '[]'::jsonb) from public.stock_movements sm where sm.created_at::date = p_business_date),
+    'stock_movements', (select coalesce(jsonb_agg(to_jsonb(sm)), '[]'::jsonb) from public.stock_movements sm where (sm.created_at at time zone 'Asia/Kuala_Lumpur')::date = p_business_date),
     'opening_stock', (
       select coalesce(jsonb_agg(row_to_json(x)), '[]'::jsonb)
       from (
-        select p.name, ib.quantity_on_hand - coalesce(sum(sm.quantity_change) filter (where sm.created_at::date = p_business_date), 0) as quantity
+        select p.name, ib.quantity_on_hand - coalesce(sum(sm.quantity_change) filter (where (sm.created_at at time zone 'Asia/Kuala_Lumpur')::date = p_business_date), 0) as quantity
         from public.products p
         left join public.inventory_balances ib on ib.product_id = p.id
         left join public.stock_movements sm on sm.product_id = p.id
