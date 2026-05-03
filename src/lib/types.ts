@@ -124,6 +124,10 @@ export type AppSettingKey =
   | 'require_qr_reference'
   | 'require_manager_approval_for_complimentary'
   | 'staff_names'
+  | 'beer_bundle_enabled'
+  | 'beer_bundle_name'
+  | 'beer_bundle_units_per_set'
+  | 'beer_bundle_price'
   | 'receipt_footer_text';
 
 export type SettingsMap = Record<AppSettingKey, string | number | boolean>;
@@ -234,7 +238,14 @@ export type Database = {
       };
       complete_sale: {
         Args: {
-          p_items: Array<{ product_id: string | null; name?: string; quantity: number; custom_price?: number | null }>;
+          p_items: Array<{
+            product_id: string | null;
+            name?: string;
+            quantity: number;
+            custom_price?: number | null;
+            bundle?: boolean;
+            components?: Array<{ product_id: string; quantity: number }>;
+          }>;
           p_payment_method: PaymentMethod;
           p_qr_reference?: string | null;
           p_qr_receipt_image_path?: string | null;
@@ -247,7 +258,14 @@ export type Database = {
       };
       complete_sale_with_qr_type: {
         Args: {
-          p_items: Array<{ product_id: string | null; name?: string; quantity: number; custom_price?: number | null }>;
+          p_items: Array<{
+            product_id: string | null;
+            name?: string;
+            quantity: number;
+            custom_price?: number | null;
+            bundle?: boolean;
+            components?: Array<{ product_id: string; quantity: number }>;
+          }>;
           p_payment_method: PaymentMethod;
           p_qr_reference?: string | null;
           p_qr_receipt_image_path?: string | null;

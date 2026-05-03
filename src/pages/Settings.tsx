@@ -21,8 +21,14 @@ const fields: Array<{ key: AppSettingKey; label: string; type: 'text' | 'number'
   { key: 'require_qr_reference', label: 'Require QR Payment reference', type: 'boolean' },
   { key: 'require_manager_approval_for_complimentary', label: 'Require manager approval for complimentary', type: 'boolean' },
   { key: 'staff_names', label: 'Staff names', type: 'text' },
+  { key: 'beer_bundle_enabled', label: 'Enable beer bundle', type: 'boolean' },
+  { key: 'beer_bundle_name', label: 'Bundle name', type: 'text' },
+  { key: 'beer_bundle_units_per_set', label: 'Units per set', type: 'number' },
+  { key: 'beer_bundle_price', label: 'Price per set', type: 'number' },
   { key: 'receipt_footer_text', label: 'Receipt/report footer text', type: 'text' },
 ];
+
+const bundleKeys: AppSettingKey[] = ['beer_bundle_enabled', 'beer_bundle_name', 'beer_bundle_units_per_set', 'beer_bundle_price'];
 
 export default function Settings({ settings, onSaved }: { settings: SettingsMap; onSaved: (settings: SettingsMap) => void }) {
   const toast = useToast();
@@ -99,7 +105,40 @@ export default function Settings({ settings, onSaved }: { settings: SettingsMap;
             </button>
           </div>
         </section>
-        {fields.filter((field) => field.key !== 'staff_names').map((field) => (
+        <section className="rounded-2xl border border-line bg-white/80 p-3 sm:rounded-[1.5rem] sm:p-4">
+          <h2 className="text-lg font-black sm:text-xl">{text('Beer bundle', 'Set bir')}</h2>
+          <div className="mt-3 grid gap-3 sm:mt-4 sm:grid-cols-2">
+            {fields.filter((field) => bundleKeys.includes(field.key)).map((field) => (
+              <Field key={field.key} label={field.label}>
+                {field.type === 'boolean' ? (
+                  <label className="flex min-h-10 items-center gap-3 rounded-xl border border-line bg-paper px-3 text-sm font-bold sm:min-h-12 sm:rounded-2xl sm:text-base">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(form[field.key])}
+                      onChange={(e) => setForm({ ...form, [field.key]: e.target.checked })}
+                    />
+                    {Boolean(form[field.key]) ? 'Enabled' : 'Disabled'}
+                  </label>
+                ) : (
+                  <input
+                    className={inputClass}
+                    type={field.type}
+                    min={field.key === 'beer_bundle_units_per_set' ? 1 : 0}
+                    step={field.key === 'beer_bundle_price' ? '0.01' : undefined}
+                    value={String(form[field.key] ?? '')}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        [field.key]: field.type === 'number' ? Number(e.target.value) : e.target.value,
+                      })
+                    }
+                  />
+                )}
+              </Field>
+            ))}
+          </div>
+        </section>
+        {fields.filter((field) => field.key !== 'staff_names' && !bundleKeys.includes(field.key)).map((field) => (
           <Field key={field.key} label={field.label}>
             {field.type === 'boolean' ? (
               <label className="flex min-h-10 items-center gap-3 rounded-xl border border-line bg-paper px-3 text-sm font-bold sm:min-h-12 sm:rounded-2xl sm:text-base">

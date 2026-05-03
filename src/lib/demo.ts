@@ -19,6 +19,10 @@ export const demoSettings: SettingsMap = {
   require_qr_reference: false,
   require_manager_approval_for_complimentary: false,
   staff_names: 'Chloe, Happy, Elle, NekoMiao',
+  beer_bundle_enabled: true,
+  beer_bundle_name: 'Beer Bundle',
+  beer_bundle_units_per_set: 4,
+  beer_bundle_price: 40,
   receipt_footer_text: 'Thank you.',
 };
 

@@ -45,5 +45,9 @@ values
   ('require_qr_reference', 'false'::jsonb),
   ('require_manager_approval_for_complimentary', 'false'::jsonb),
   ('staff_names', '"Chloe, Happy, Elle, NekoMiao"'::jsonb),
+  ('beer_bundle_enabled', 'true'::jsonb),
+  ('beer_bundle_name', '"Beer Bundle"'::jsonb),
+  ('beer_bundle_units_per_set', '4'::jsonb),
+  ('beer_bundle_price', '40'::jsonb),
   ('receipt_footer_text', '""'::jsonb)
 on conflict (key) do update set value = excluded.value;

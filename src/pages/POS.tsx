@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import { Camera, Minus, Percent, Plus, ShoppingCart, Trash2 } from 'lucide-react';
+import { Camera, Minus, PackagePlus, Percent, Plus, ShoppingCart, Trash2 } from 'lucide-react';
 import { z } from 'zod';
 import { Field, buttonClass, dangerButtonClass, inputClass, secondaryButtonClass } from '../components/Form';
 import { Modal } from '../components/Modal';
@@ -15,7 +15,15 @@ import type { PaymentMethod, ProductWithStock, SettingsMap } from '../lib/types'
 import { useLanguage } from '../lib/language';
 import { assetPath } from '../lib/assets';
 
-type CartItem = { product: ProductWithStock; quantity: number; customPrice?: number };
+type BundleComponent = { product: ProductWithStock; quantity: number };
+type CartItem = {
+  product: ProductWithStock;
+  quantity: number;
+  customPrice?: number;
+  kind: 'product' | 'custom' | 'bundle';
+  components?: BundleComponent[];
+  bundleUnits?: number;
+};
 const qrPaymentTypes = ['WeChat Pay', 'AliPay', 'TnGo', 'Grab', 'Others'] as const;
 type QrPaymentType = (typeof qrPaymentTypes)[number];
 
@@ -24,6 +32,15 @@ function parseStaffNames(settings: SettingsMap) {
     .split(',')
     .map((name) => name.trim())
     .filter(Boolean);
+}
+
+function settingEnabled(value: SettingsMap[keyof SettingsMap]) {
+  return value === true || value === 'true';
+}
+
+function settingNumber(value: SettingsMap[keyof SettingsMap], fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 function localDrinkFallback(product: ProductWithStock) {
@@ -59,11 +76,19 @@ export default function POS({ settings }: { settings: SettingsMap }) {
   const [customName, setCustomName] = useState('Custom Order');
   const [customPrice, setCustomPrice] = useState('');
   const [customDiscount, setCustomDiscount] = useState('');
+  const [bundleModalOpen, setBundleModalOpen] = useState(false);
+  const [bundleSets, setBundleSets] = useState(1);
+  const [bundleSelections, setBundleSelections] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
   const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
   const cameraInputId = 'qr-receipt-camera';
   const staffUsers = useMemo(() => parseStaffNames(settings), [settings]);
   const todayLabel = format(new Date(), 'EEE, d MMM yyyy');
+  const bundleEnabled = settingEnabled(settings.beer_bundle_enabled);
+  const allowNegativeStock = settingEnabled(settings.allow_negative_stock);
+  const bundleName = String(settings.beer_bundle_name || 'Beer Bundle');
+  const bundleUnits = Math.max(1, Math.floor(settingNumber(settings.beer_bundle_units_per_set, 4)));
+  const bundlePrice = Math.max(0, settingNumber(settings.beer_bundle_price, 40));
 
   async function refreshProducts() {
     setProducts(await loadProducts(false));
@@ -80,26 +105,42 @@ export default function POS({ settings }: { settings: SettingsMap }) {
   }, [orderTakenBy, staffUsers]);
 
   const groups = useMemo(() => groupByCategory(products), [products]);
+  const beerProducts = groups.Beer ?? [];
   const subtotal = cart.reduce((sum, item) => sum + item.quantity * Number(item.customPrice ?? item.product.price_per_unit), 0);
   const total = Math.max(0, subtotal - discount);
-  const cartQuantity = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const cartQuantity = cart.reduce((sum, item) => sum + (item.kind === 'bundle' ? (item.components ?? []).reduce((unitSum, component) => unitSum + component.quantity, 0) : item.quantity), 0);
   const regularGroups = Object.entries(groups).filter(([category]) => category !== 'Others');
+  const bundleRequiredUnits = bundleUnits * bundleSets;
+  const bundleSelectedUnits = Object.values(bundleSelections).reduce((sum, quantity) => sum + quantity, 0);
+
+  function cartProductQuantity(productId: string) {
+    return cart.reduce((sum, item) => {
+      if (item.kind === 'bundle') {
+        return sum + (item.components ?? []).reduce((unitSum, component) => unitSum + (component.product.id === productId ? component.quantity : 0), 0);
+      }
+      return sum + (item.product.id === productId ? item.quantity : 0);
+    }, 0);
+  }
+
+  function linePrice(item: CartItem) {
+    return item.quantity * Number(item.customPrice ?? item.product.price_per_unit);
+  }
 
   function add(product: ProductWithStock) {
     const stock = product.inventory_balances?.quantity_on_hand ?? 0;
-    const existing = cart.find((item) => item.product.id === product.id)?.quantity ?? 0;
-    if (!settings.allow_negative_stock && existing + 1 > stock) {
+    const existing = cartProductQuantity(product.id);
+    if (!allowNegativeStock && existing + 1 > stock) {
       toast.error(`${product.name} does not have enough stock.`);
       return;
     }
     setCart((items) => {
-      const found = items.find((item) => item.product.id === product.id);
+      const found = items.find((item) => item.kind === 'product' && item.product.id === product.id);
       if (found) {
         return items.map((item) =>
-          item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item,
+          item.kind === 'product' && item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item,
         );
       }
-      return [...items, { product, quantity: 1 }];
+      return [...items, { product, quantity: 1, kind: 'product' }];
     });
   }
 
@@ -123,8 +164,78 @@ export default function POS({ settings }: { settings: SettingsMap }) {
       categories: { id: 'custom', name: 'Others', sort_order: 99 },
       inventory_balances: { quantity_on_hand: 9999 },
     };
-    setCart((items) => [...items, { product: customProduct, quantity: 1, customPrice: price }]);
+    setCart((items) => [...items, { product: customProduct, quantity: 1, customPrice: price, kind: 'custom' }]);
     setCustomPrice('');
+  }
+
+  function openBundleModal() {
+    if (!bundleEnabled) {
+      toast.error('Beer bundle is disabled in Settings.');
+      return;
+    }
+    if (bundlePrice <= 0) {
+      toast.error('Set the beer bundle price in Settings first.');
+      return;
+    }
+    if (beerProducts.length === 0) {
+      toast.error('No active beer products found.');
+      return;
+    }
+    setBundleSets(1);
+    setBundleSelections({});
+    setBundleModalOpen(true);
+  }
+
+  function changeBundleSelection(product: ProductWithStock, delta: number) {
+    setBundleSelections((current) => {
+      const currentQuantity = current[product.id] ?? 0;
+      const nextQuantity = Math.max(0, currentQuantity + delta);
+      const nextTotal = Object.entries(current).reduce((sum, [productId, quantity]) => sum + (productId === product.id ? nextQuantity : quantity), 0);
+      if (delta > 0 && nextTotal > bundleRequiredUnits) {
+        toast.error(`Select exactly ${bundleRequiredUnits} beer unit(s) for this bundle.`);
+        return current;
+      }
+      const stock = product.inventory_balances?.quantity_on_hand ?? 0;
+      const alreadyInCart = cartProductQuantity(product.id);
+      if (!allowNegativeStock && alreadyInCart + nextQuantity > stock) {
+        toast.error(`${product.name} does not have enough stock.`);
+        return current;
+      }
+      const next = { ...current, [product.id]: nextQuantity };
+      if (nextQuantity === 0) delete next[product.id];
+      return next;
+    });
+  }
+
+  function addBundleToCart() {
+    if (bundleSelectedUnits !== bundleRequiredUnits) {
+      toast.error(`Select exactly ${bundleRequiredUnits} beer unit(s).`);
+      return;
+    }
+    const components = beerProducts
+      .map((product) => ({ product, quantity: bundleSelections[product.id] ?? 0 }))
+      .filter((component) => component.quantity > 0);
+    if (components.length === 0) {
+      toast.error('Choose the beer types for this bundle.');
+      return;
+    }
+    const bundleProduct: ProductWithStock = {
+      id: `bundle-${crypto.randomUUID()}`,
+      name: bundleName,
+      category_id: null,
+      price_per_unit: bundlePrice,
+      cost_per_unit: null,
+      carton_size: bundleUnits,
+      low_stock_threshold: 0,
+      active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      categories: { id: 'bundle', name: 'Beer', sort_order: 0 },
+      inventory_balances: { quantity_on_hand: 9999 },
+    };
+    setCart((items) => [...items, { product: bundleProduct, quantity: bundleSets, customPrice: bundlePrice, kind: 'bundle', components, bundleUnits }]);
+    setBundleModalOpen(false);
+    toast.success(`${bundleName} added: ${components.map((component) => `${component.product.name} x ${component.quantity}`).join(', ')}.`);
   }
 
   function choosePayment(nextMethod: PaymentMethod) {
@@ -148,10 +259,63 @@ export default function POS({ settings }: { settings: SettingsMap }) {
     setCart((items) =>
       items
         .map((item) =>
-          item.product.id === productId ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item,
+          item.kind !== 'bundle' && item.product.id === productId ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item,
         )
         .filter((item) => item.quantity > 0),
     );
+  }
+
+  function removeCartItem(productId: string) {
+    setCart((items) => items.filter((item) => item.product.id !== productId));
+  }
+
+  function bundleComponentLineItems(item: CartItem) {
+    const components = item.components ?? [];
+    const unitValue = components.length > 0 ? linePrice(item) / components.reduce((sum, component) => sum + component.quantity, 0) : 0;
+    return components.map((component) => ({
+      product_id: component.product.id,
+      name: component.product.name,
+      quantity: component.quantity,
+      unit_price: Number(unitValue.toFixed(2)),
+      line_total: Number((unitValue * component.quantity).toFixed(2)),
+    }));
+  }
+
+  function localSaleItems() {
+    return cart.flatMap((item) => {
+      if (item.kind === 'bundle') return bundleComponentLineItems(item);
+      return [{
+        product_id: item.product.id.startsWith('custom-') ? null : item.product.id,
+        name: item.product.name,
+        quantity: item.quantity,
+        unit_price: Number(item.customPrice ?? item.product.price_per_unit),
+        line_total: linePrice(item),
+      }];
+    });
+  }
+
+  function rpcSaleItems() {
+    return cart.map((item) => {
+      if (item.kind === 'bundle') {
+        return {
+          product_id: null,
+          bundle: true,
+          name: item.product.name,
+          quantity: item.quantity,
+          custom_price: null,
+          components: (item.components ?? []).map((component) => ({
+            product_id: component.product.id,
+            quantity: component.quantity,
+          })),
+        };
+      }
+      return {
+        product_id: item.product.id.startsWith('custom-') ? null : item.product.id,
+        name: item.product.name,
+        quantity: item.quantity,
+        custom_price: item.kind === 'custom' ? item.customPrice ?? null : null,
+      };
+    });
   }
 
   async function confirmSale() {
@@ -164,13 +328,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
     setSaving(true);
     if (!isSupabaseConfigured) {
       const savedSale = saveLocalSale({
-        items: cart.map((item) => ({
-          product_id: item.product.id.startsWith('custom-') ? null : item.product.id,
-          name: item.product.name,
-          quantity: item.quantity,
-          unit_price: Number(item.customPrice ?? item.product.price_per_unit),
-          line_total: item.quantity * Number(item.customPrice ?? item.product.price_per_unit),
-        })),
+        items: localSaleItems(),
         paymentMethod: method,
         totalAmount: total,
         paidAmount: method === 'complimentary' ? 0 : total,
@@ -204,12 +362,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
       qrReceiptPath = upload.data.path;
     }
     const { data, error } = await supabase.rpc('complete_sale_with_qr_type', {
-      p_items: cart.map((item) => ({
-        product_id: item.product.id.startsWith('custom-') ? null : item.product.id,
-        name: item.product.name,
-        quantity: item.quantity,
-        custom_price: item.customPrice ?? null,
-      })),
+      p_items: rpcSaleItems(),
       p_payment_method: method,
       p_qr_reference: qrReference || null,
       p_qr_receipt_image_path: qrReceiptPath,
@@ -259,19 +412,30 @@ export default function POS({ settings }: { settings: SettingsMap }) {
             <div key={item.product.id} className="rounded-xl border border-line bg-white/85 p-2.5 sm:rounded-2xl sm:p-3">
               <div className="flex justify-between gap-3">
                 <strong>{item.product.name}</strong>
-                <span>{money(item.quantity * Number(item.customPrice ?? item.product.price_per_unit), String(settings.currency_symbol))}</span>
+                <span>{money(linePrice(item), String(settings.currency_symbol))}</span>
               </div>
               <p className="mt-1 text-sm text-neutral-600">
-                {item.quantity} x {money(item.customPrice ?? item.product.price_per_unit, String(settings.currency_symbol))}
+                {item.kind === 'bundle'
+                  ? `${item.quantity} set(s) x ${money(item.customPrice ?? item.product.price_per_unit, String(settings.currency_symbol))}`
+                  : `${item.quantity} x ${money(item.customPrice ?? item.product.price_per_unit, String(settings.currency_symbol))}`}
               </p>
+              {item.kind === 'bundle' ? (
+                <p className="mt-1 text-xs font-bold text-neutral-600">
+                  {(item.components ?? []).map((component) => `${component.product.name} x ${component.quantity}`).join(', ')}
+                </p>
+              ) : null}
               <div className="mt-2 flex gap-2 sm:mt-3">
-                <button className={`${secondaryButtonClass} w-10 px-0 sm:w-12`} onClick={() => change(item.product.id, -1)} aria-label="Decrease">
-                  <Minus className="h-4 w-4" />
-                </button>
-                <button className={`${secondaryButtonClass} w-10 px-0 sm:w-12`} onClick={() => change(item.product.id, 1)} aria-label="Increase">
-                  <Plus className="h-4 w-4" />
-                </button>
-                <button className={`${dangerButtonClass} w-10 px-0 sm:w-12`} onClick={() => change(item.product.id, -9999)} aria-label="Remove">
+                {item.kind !== 'bundle' ? (
+                  <>
+                    <button className={`${secondaryButtonClass} w-10 px-0 sm:w-12`} onClick={() => change(item.product.id, -1)} aria-label="Decrease">
+                      <Minus className="h-4 w-4" />
+                    </button>
+                    <button className={`${secondaryButtonClass} w-10 px-0 sm:w-12`} onClick={() => change(item.product.id, 1)} aria-label="Increase">
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </>
+                ) : null}
+                <button className={`${dangerButtonClass} w-10 px-0 sm:w-12`} onClick={() => removeCartItem(item.product.id)} aria-label="Remove">
                   <Trash2 className="h-4 w-4" />
                 </button>
               </div>
@@ -356,17 +520,27 @@ export default function POS({ settings }: { settings: SettingsMap }) {
               <div className="min-w-0">
                 <p className="truncate text-sm font-black">{item.product.name}</p>
                 <p className="text-xs font-bold text-neutral-600">
-                  {item.quantity} x {money(item.customPrice ?? item.product.price_per_unit, String(settings.currency_symbol))}
+                  {item.kind === 'bundle'
+                    ? `${item.quantity} set(s) · ${(item.components ?? []).map((component) => `${component.product.name} x ${component.quantity}`).join(', ')}`
+                    : `${item.quantity} x ${money(item.customPrice ?? item.product.price_per_unit, String(settings.currency_symbol))}`}
                 </p>
               </div>
               <div className="flex items-center gap-1">
-                <button className={`${secondaryButtonClass} h-9 min-h-9 w-9 px-0`} onClick={() => change(item.product.id, -1)} aria-label="Decrease">
-                  <Minus className="h-4 w-4" />
-                </button>
-                <span className="grid h-9 min-w-9 place-items-center rounded-xl bg-teal-50 px-2 text-sm font-black text-accent">{item.quantity}</span>
-                <button className={`${secondaryButtonClass} h-9 min-h-9 w-9 px-0`} onClick={() => change(item.product.id, 1)} aria-label="Increase">
-                  <Plus className="h-4 w-4" />
-                </button>
+                {item.kind !== 'bundle' ? (
+                  <>
+                    <button className={`${secondaryButtonClass} h-9 min-h-9 w-9 px-0`} onClick={() => change(item.product.id, -1)} aria-label="Decrease">
+                      <Minus className="h-4 w-4" />
+                    </button>
+                    <span className="grid h-9 min-w-9 place-items-center rounded-xl bg-teal-50 px-2 text-sm font-black text-accent">{item.quantity}</span>
+                    <button className={`${secondaryButtonClass} h-9 min-h-9 w-9 px-0`} onClick={() => change(item.product.id, 1)} aria-label="Increase">
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </>
+                ) : (
+                  <button className={`${dangerButtonClass} h-9 min-h-9 w-9 px-0`} onClick={() => removeCartItem(item.product.id)} aria-label="Remove">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             </div>
           ))}
@@ -417,12 +591,30 @@ export default function POS({ settings }: { settings: SettingsMap }) {
           {regularGroups.map(([category, items]) => (
             <div key={category}>
               <h2 className="mb-2 text-lg font-black sm:mb-3 sm:text-xl">{text(category, category === 'Soft Drink' ? 'Minuman Ringan' : category === 'Beer' ? 'Bir' : 'Lain-lain')}</h2>
+              {category === 'Beer' && bundleEnabled ? (
+                <button
+                  type="button"
+                  className="mb-3 grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border border-accent bg-gradient-to-r from-teal-50 via-white to-pink-50 p-3 text-left shadow-soft transition hover:-translate-y-0.5"
+                  onClick={openBundleModal}
+                >
+                  <span className="grid h-11 w-11 place-items-center rounded-2xl bg-accent text-white">
+                    <PackagePlus className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-base font-black text-ink">{bundleName}</span>
+                    <span className="block text-sm font-bold text-neutral-600">
+                      1 set = {bundleUnits} beer unit(s)
+                    </span>
+                  </span>
+                  <span className="text-right text-base font-black text-accent">{money(bundlePrice, String(settings.currency_symbol))}</span>
+                </button>
+              ) : null}
               <div className="grid min-w-0 grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3">
                 {items.map((product) => {
                   const stock = product.inventory_balances?.quantity_on_hand ?? 0;
                   const low = stock <= product.low_stock_threshold;
-                  const disabled = stock <= 0 && !settings.allow_negative_stock;
-                  const selectedQuantity = cart.find((item) => item.product.id === product.id)?.quantity ?? 0;
+                  const disabled = stock <= 0 && !allowNegativeStock;
+                  const selectedQuantity = cartProductQuantity(product.id);
                   return (
                     <button
                       key={product.id}
@@ -509,6 +701,81 @@ export default function POS({ settings }: { settings: SettingsMap }) {
           {renderCartPanel(true)}
         </Modal>
       ) : null}
+      {bundleModalOpen ? (
+        <Modal
+          title={bundleName}
+          onClose={() => setBundleModalOpen(false)}
+          footer={
+            <div className="grid w-full gap-2 sm:flex sm:justify-end">
+              <button className={secondaryButtonClass} onClick={() => setBundleModalOpen(false)}>Cancel</button>
+              <button className={buttonClass} disabled={bundleSelectedUnits !== bundleRequiredUnits} onClick={addBundleToCart}>
+                Add bundle
+              </button>
+            </div>
+          }
+        >
+          <div className="grid gap-4">
+            <div className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-2xl border border-line bg-shell p-3">
+              <div>
+                <p className="text-sm font-black">Number of sets</p>
+                <p className="text-xs font-bold text-neutral-600">
+                  {bundleUnits} beer unit(s) per set · {money(bundlePrice, String(settings.currency_symbol))} per set
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button className={`${secondaryButtonClass} h-10 min-h-10 w-10 px-0`} onClick={() => { setBundleSets((value) => Math.max(1, value - 1)); setBundleSelections({}); }}>
+                  <Minus className="h-4 w-4" />
+                </button>
+                <input
+                  className={`${inputClass} h-10 min-h-10 w-20 text-center`}
+                  type="number"
+                  min={1}
+                  value={bundleSets}
+                  onChange={(event) => {
+                    setBundleSets(Math.max(1, Number(event.target.value || 1)));
+                    setBundleSelections({});
+                  }}
+                />
+                <button className={`${secondaryButtonClass} h-10 min-h-10 w-10 px-0`} onClick={() => { setBundleSets((value) => value + 1); setBundleSelections({}); }}>
+                  <Plus className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-pink-200 bg-pink-50 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-black">Choose beer types</p>
+                <p className={`font-black ${bundleSelectedUnits === bundleRequiredUnits ? 'text-accent' : 'text-coral'}`}>
+                  {bundleSelectedUnits} / {bundleRequiredUnits}
+                </p>
+              </div>
+            </div>
+            <div className="grid gap-2">
+              {beerProducts.map((product) => {
+                const selected = bundleSelections[product.id] ?? 0;
+                const stock = product.inventory_balances?.quantity_on_hand ?? 0;
+                const availableAfterCart = stock - cartProductQuantity(product.id);
+                return (
+                  <div key={product.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border border-line bg-white/90 p-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-black">{product.name}</p>
+                      <p className="text-xs font-bold text-neutral-600">{Math.max(0, availableAfterCart)} available after current cart</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button className={`${secondaryButtonClass} h-10 min-h-10 w-10 px-0`} onClick={() => changeBundleSelection(product, -1)}>
+                        <Minus className="h-4 w-4" />
+                      </button>
+                      <span className="grid h-10 min-w-10 place-items-center rounded-xl bg-teal-50 px-3 font-black text-accent">{selected}</span>
+                      <button className={`${secondaryButtonClass} h-10 min-h-10 w-10 px-0`} onClick={() => changeBundleSelection(product, 1)}>
+                        <Plus className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </Modal>
+      ) : null}
       <div className="h-20 sm:h-28 2xl:hidden" />
       {method ? (
         <Modal
@@ -525,9 +792,16 @@ export default function POS({ settings }: { settings: SettingsMap }) {
         >
           <div className="grid gap-3">
             {cart.map((item) => (
-              <div key={item.product.id} className="flex justify-between border-b border-line py-2">
-                <span>{item.product.name} x {item.quantity}</span>
-                <strong>{money(Number(item.customPrice ?? item.product.price_per_unit) * item.quantity, String(settings.currency_symbol))}</strong>
+              <div key={item.product.id} className="border-b border-line py-2">
+                <div className="flex justify-between gap-3">
+                  <span>{item.product.name} x {item.quantity}</span>
+                  <strong>{money(linePrice(item), String(settings.currency_symbol))}</strong>
+                </div>
+                {item.kind === 'bundle' ? (
+                  <p className="mt-1 text-xs font-bold text-neutral-600">
+                    {(item.components ?? []).map((component) => `${component.product.name} x ${component.quantity}`).join(', ')}
+                  </p>
+                ) : null}
               </div>
             ))}
             <div className="rounded-2xl bg-shell p-3">
