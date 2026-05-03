@@ -128,8 +128,8 @@ export default function Products({ settings }: { settings: SettingsMap }) {
         }
       />
       {!demoAdminUnlocked ? (
-        <div className="island-panel mb-5 max-w-xl rounded-[2rem] p-5">
-          <h2 className="text-2xl font-black">Admin Access / Akses Pentadbir</h2>
+        <div className="island-panel mb-4 max-w-xl rounded-2xl p-3 sm:mb-5 sm:rounded-[2rem] sm:p-5">
+          <h2 className="text-xl font-black sm:text-2xl">Admin Access / Akses Pentadbir</h2>
           <p className="mt-2 text-sm font-bold text-neutral-600">Enter admin password to manage products and records.</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
             <input className={inputClass} type="password" value={adminPin} onChange={(e) => setAdminPin(e.target.value)} placeholder="Admin password" />
@@ -139,10 +139,10 @@ export default function Products({ settings }: { settings: SettingsMap }) {
       ) : null}
       {!demoAdminUnlocked ? null : (
       <>
-      <section className="island-panel mb-5 rounded-[2rem] p-5">
+      <section className="island-panel mb-4 rounded-2xl p-3 sm:mb-5 sm:rounded-[2rem] sm:p-5">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-xl font-black">Product Categories</h2>
+            <h2 className="text-lg font-black sm:text-xl">Product Categories</h2>
             <p className="mt-1 text-sm font-bold text-neutral-600">Choose one of these categories when adding or editing products.</p>
           </div>
           <button className={secondaryButtonClass} onClick={() => setForm(blank(defaultCartonSize))}>
@@ -150,9 +150,9 @@ export default function Products({ settings }: { settings: SettingsMap }) {
             Add product
           </button>
         </div>
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-3 flex flex-wrap gap-2 sm:mt-4">
           {sortedCategories.map((category) => (
-            <span key={category.id} className="rounded-2xl border border-line bg-white px-4 py-2 text-sm font-black shadow-soft">
+            <span key={category.id} className="rounded-xl border border-line bg-white px-3 py-1.5 text-sm font-black shadow-soft sm:rounded-2xl sm:px-4 sm:py-2">
               {normalizeCategoryName(category.name)}
             </span>
           ))}
@@ -160,28 +160,28 @@ export default function Products({ settings }: { settings: SettingsMap }) {
       </section>
       <div className="grid gap-3 lg:hidden">
         {sortedProducts.map((product) => (
-          <article key={product.id} className="rounded-[1.5rem] border border-line bg-white/85 p-4 shadow-soft">
-            <div className="grid grid-cols-[88px_1fr] gap-3">
+          <article key={product.id} className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4">
+            <div className="grid grid-cols-[72px_1fr] gap-3 sm:grid-cols-[88px_1fr]">
               <img
                 src={product.image_url ?? assetPath('assets/custom-order.svg')}
                 data-fallback={assetPath('assets/custom-order.svg')}
                 alt=""
-                className="h-20 w-20 rounded-xl object-cover"
+                className="h-16 w-16 rounded-xl object-cover sm:h-20 sm:w-20"
                 onError={(event) => {
                   const fallback = event.currentTarget.dataset.fallback;
                   if (fallback && !event.currentTarget.src.endsWith(fallback)) event.currentTarget.src = fallback;
                 }}
               />
               <div className="min-w-0">
-                <p className="truncate text-lg font-black">{product.name}</p>
+                <p className="truncate text-base font-black sm:text-lg">{product.name}</p>
                 <p className="text-sm font-bold text-neutral-600">{normalizeCategoryName(product.categories?.name)} · {product.active ? 'Active' : 'Inactive'}</p>
                 <p className="mt-1 text-sm font-black">{String(settings.currency_symbol)} {Number(product.price_per_unit).toFixed(2)}</p>
               </div>
             </div>
-            <div className="mt-3 grid grid-cols-3 gap-2 text-center text-sm font-bold">
-              <div className="rounded-2xl bg-shell p-2"><p className="text-neutral-500">Cost</p><p>{product.cost_per_unit ?? '-'}</p></div>
-              <div className="rounded-2xl bg-shell p-2"><p className="text-neutral-500">Carton</p><p>{product.carton_size}</p></div>
-              <div className="rounded-2xl bg-shell p-2"><p className="text-neutral-500">Low</p><p>{product.low_stock_threshold}</p></div>
+            <div className="mt-2 grid grid-cols-3 gap-1.5 text-center text-xs font-bold sm:mt-3 sm:gap-2 sm:text-sm">
+              <div className="rounded-xl bg-shell p-2 sm:rounded-2xl"><p className="text-neutral-500">Cost</p><p>{product.cost_per_unit ?? '-'}</p></div>
+              <div className="rounded-xl bg-shell p-2 sm:rounded-2xl"><p className="text-neutral-500">Carton</p><p>{product.carton_size}</p></div>
+              <div className="rounded-xl bg-shell p-2 sm:rounded-2xl"><p className="text-neutral-500">Low</p><p>{product.low_stock_threshold}</p></div>
             </div>
             <button
               className={`${secondaryButtonClass} mt-3 w-full`}
@@ -278,8 +278,8 @@ export default function Products({ settings }: { settings: SettingsMap }) {
               <input className={inputClass} value={effectiveForm.image_url} onChange={(e) => setForm({ ...effectiveForm, image_url: e.target.value })} placeholder="https://..." />
             </Field>
             <Field label="Attach product image">
-              <div className="grid gap-3 rounded-2xl border border-line bg-shell p-3 sm:grid-cols-[140px_1fr] sm:items-center">
-                <img src={effectiveForm.image_url || assetPath('assets/custom-order.svg')} alt="" className="h-24 w-full rounded-xl object-cover" />
+              <div className="grid gap-3 rounded-xl border border-line bg-shell p-3 sm:grid-cols-[140px_1fr] sm:items-center sm:rounded-2xl">
+                <img src={effectiveForm.image_url || assetPath('assets/custom-order.svg')} alt="" className="h-20 w-full rounded-xl object-cover sm:h-24" />
                 <input className={inputClass} type="file" accept="image/*" onChange={(event) => attachImage(event.target.files?.[0])} />
               </div>
             </Field>

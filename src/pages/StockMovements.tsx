@@ -25,9 +25,9 @@ export default function StockMovements() {
   return (
     <>
       <PageHeader title="Stock Movement History" subtitle="Ledger of stock-ins, sales, complimentary stock-outs, void reversals, and adjustments." />
-      <div className="grid gap-3 md:hidden">
+      <div className="grid gap-2 md:hidden">
         {movements.map((movement) => (
-          <article key={movement.id} className="rounded-[1.5rem] border border-line bg-white/85 p-4 shadow-soft">
+          <article key={movement.id} className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
                 <p className="font-black">{movement.products?.name ?? '-'}</p>
@@ -37,10 +37,10 @@ export default function StockMovements() {
                 {movement.quantity_change}
               </span>
             </div>
-            <div className="mt-3 grid grid-cols-3 gap-2 text-center text-sm font-bold">
-              <div className="rounded-2xl bg-shell p-2"><p className="text-neutral-500">Before</p><p>{movement.quantity_before}</p></div>
-              <div className="rounded-2xl bg-shell p-2"><p className="text-neutral-500">After</p><p>{movement.quantity_after}</p></div>
-              <div className="rounded-2xl bg-shell p-2"><p className="text-neutral-500">Input</p><p>{movement.input_quantity ?? '-'} {movement.unit_input ?? ''}</p></div>
+            <div className="mt-2 grid grid-cols-3 gap-1.5 text-center text-xs font-bold sm:mt-3 sm:gap-2 sm:text-sm">
+              <div className="rounded-xl bg-shell p-2 sm:rounded-2xl"><p className="text-neutral-500">Before</p><p>{movement.quantity_before}</p></div>
+              <div className="rounded-xl bg-shell p-2 sm:rounded-2xl"><p className="text-neutral-500">After</p><p>{movement.quantity_after}</p></div>
+              <div className="rounded-xl bg-shell p-2 sm:rounded-2xl"><p className="text-neutral-500">Input</p><p>{movement.input_quantity ?? '-'} {movement.unit_input ?? ''}</p></div>
             </div>
             <p className="mt-3 text-sm font-bold text-neutral-600">{movement.reason ?? movement.notes ?? '-'}</p>
           </article>

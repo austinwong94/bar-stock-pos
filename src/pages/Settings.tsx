@@ -65,13 +65,13 @@ export default function Settings({ settings, onSaved }: { settings: SettingsMap;
   return (
     <>
       <PageHeader title="Settings" subtitle="Admin-only controls for business rules and receipt/report defaults." />
-      <form onSubmit={save} className="island-panel grid max-w-4xl gap-5 rounded-[2rem] p-5">
-        <section className="rounded-[1.5rem] border border-line bg-white/80 p-4">
-          <h2 className="text-xl font-black">Staff names / Nama staf</h2>
+      <form onSubmit={save} className="island-panel grid max-w-4xl gap-4 rounded-2xl p-3 sm:rounded-[2rem] sm:p-5">
+        <section className="rounded-2xl border border-line bg-white/80 p-3 sm:rounded-[1.5rem] sm:p-4">
+          <h2 className="text-lg font-black sm:text-xl">Staff names / Nama staf</h2>
           <p className="mt-1 text-sm font-bold text-neutral-600">These become the order-taker buttons in POS.</p>
-          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <div className="mt-3 grid gap-2 sm:mt-4 sm:grid-cols-2">
             {staffNames.map((name, index) => (
-              <div key={`${name}-${index}`} className="flex items-center gap-2 rounded-2xl border border-line bg-shell p-2">
+              <div key={`${name}-${index}`} className="flex items-center gap-2 rounded-xl border border-line bg-shell p-2 sm:rounded-2xl">
                 <input
                   className={`${inputClass} min-w-0 flex-1`}
                   value={name}
@@ -98,7 +98,7 @@ export default function Settings({ settings, onSaved }: { settings: SettingsMap;
         {fields.filter((field) => field.key !== 'staff_names').map((field) => (
           <Field key={field.key} label={field.label}>
             {field.type === 'boolean' ? (
-              <label className="flex min-h-12 items-center gap-3 rounded-2xl border border-line bg-paper px-3 font-bold">
+              <label className="flex min-h-10 items-center gap-3 rounded-xl border border-line bg-paper px-3 text-sm font-bold sm:min-h-12 sm:rounded-2xl sm:text-base">
                 <input
                   type="checkbox"
                   checked={Boolean(form[field.key])}

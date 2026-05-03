@@ -61,6 +61,24 @@ textarea {
   box-shadow: 0 14px 36px rgba(196, 70, 115, 0.12);
 }
 
+@media (max-width: 640px) {
+  body {
+    background:
+      radial-gradient(circle at 6% 10%, rgba(255, 111, 145, 0.13), transparent 18rem),
+      radial-gradient(circle at 100% 4%, rgba(0, 166, 163, 0.13), transparent 18rem),
+      linear-gradient(180deg, #fff7fa 0%, #fff0f5 58%, #f4fffb 100%);
+  }
+
+  .island-panel {
+    box-shadow: 0 10px 26px rgba(196, 70, 115, 0.1);
+    backdrop-filter: blur(10px);
+  }
+
+  .island-card {
+    box-shadow: 0 10px 24px rgba(196, 70, 115, 0.1);
+  }
+}
+
 @media print {
   .no-print {
     display: none !important;

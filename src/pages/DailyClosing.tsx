@@ -232,15 +232,15 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
         title={text('Daily Closing', 'Tutup Harian')}
         subtitle={text(`Choose the business date, verify QR Payment, count cash, and save the closing snapshot. Business day closes at ${String(settings.business_day_close_time)}.`, `Pilih tarikh bisnes, sahkan QR Payment, kira tunai, dan simpan snapshot penutupan. Hari bisnes tutup pada ${String(settings.business_day_close_time)}.`)}
       />
-      <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="mb-4 grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-5">
         <Stat label={`${text('Cash Payment', 'Bayaran tunai')} 💵`} value={money(report?.total_cash ?? totals.cash, String(settings.currency_symbol))} />
         <Stat label={`${text('QR Payment', 'Bayaran QR')} 📱`} value={money(report?.total_qr ?? totals.qr, String(settings.currency_symbol))} />
         <Stat label="FOC Cost 🎁" value={<span className="text-coral">- {money(report?.total_complimentary_value ?? totals.focCost, String(settings.currency_symbol))}</span>} tone="bad" />
         <Stat label={text('Total Revenue', 'Jumlah hasil')} value={money(report?.total_sales ?? totals.paidRevenue, String(settings.currency_symbol))} />
         <Stat label={text('Transactions', 'Transaksi')} value={totals.tx} />
       </div>
-      <section className="island-panel grid gap-5 rounded-[2rem] p-4 sm:p-5">
-        <div className="grid gap-4 lg:grid-cols-[1fr_1fr_1.4fr]">
+      <section className="island-panel grid gap-4 rounded-2xl p-3 sm:rounded-[2rem] sm:p-5">
+        <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1.4fr]">
           <Field label={text('Business date', 'Tarikh bisnes')}>
             <input className={inputClass} type="date" value={businessDate} onChange={(event) => setBusinessDate(event.target.value)} />
           </Field>
@@ -251,7 +251,7 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
             <input className={inputClass} value={notes} onChange={(event) => setNotes(event.target.value)} disabled={isLocked} />
           </Field>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
           <Stat label={text('Expected Cash Payment', 'Bayaran tunai dijangka')} value={money(report?.expected_cash ?? totals.cash, String(settings.currency_symbol))} />
           <Stat label={text('Cash variance', 'Beza tunai')} value={money(report?.cash_variance ?? Number(actualCash || 0) - totals.cash, String(settings.currency_symbol))} />
           <Stat label={text('QR Payment pending', 'Bayaran QR belum sah')} value={money(totals.qrPending, String(settings.currency_symbol))} tone={totals.qrPending > 0 ? 'warn' : 'default'} />
@@ -270,11 +270,11 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
           </div>
         ) : null}
       </section>
-      <section className="island-panel mt-5 rounded-[2rem] p-5">
-        <h2 className="text-xl font-black">Sales of all items · {businessDate}</h2>
+      <section className="island-panel mt-4 rounded-2xl p-3 sm:mt-5 sm:rounded-[2rem] sm:p-5">
+        <h2 className="text-lg font-black sm:text-xl">Sales of all items · {businessDate}</h2>
         <div className="mt-3 grid gap-3 md:hidden">
           {itemSales.map((item) => (
-            <article key={item.product} className="rounded-[1.5rem] border border-line bg-white/85 p-4 shadow-soft">
+            <article key={item.product} className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="font-black">{item.product}</p>
@@ -282,7 +282,7 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
                 </div>
                 <p className="font-black">{money(item.cash + item.qr, String(settings.currency_symbol))}</p>
               </div>
-              <div className="mt-3 grid grid-cols-3 gap-2 text-sm font-bold">
+              <div className="mt-2 grid grid-cols-3 gap-1.5 text-xs font-bold sm:mt-3 sm:gap-2 sm:text-sm">
                 <div className="rounded-2xl bg-emerald-50 p-2"><p className="text-emerald-700">Cash Payment</p><p>{money(item.cash, String(settings.currency_symbol))}</p></div>
                 <div className="rounded-2xl bg-sky-50 p-2"><p className="text-sky-700">QR Payment</p><p>{money(item.qr, String(settings.currency_symbol))}</p></div>
                 <div className="rounded-2xl bg-pink-50 p-2"><p className="text-pink-700">FOC</p><p className="text-coral">- {money(item.focCost, String(settings.currency_symbol))}</p></div>
@@ -325,15 +325,15 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
           </table>
         </div>
       </section>
-      <section className="island-panel mt-5 rounded-[2rem] p-5">
-        <h2 className="flex items-center gap-2 text-xl font-black"><Smartphone className="h-5 w-5 text-accent" /> {text('QR Payment verification', 'Pengesahan Bayaran QR')}</h2>
-        <p className="mt-2 rounded-2xl bg-sky-50 p-3 text-sm font-bold text-sky-900">
+      <section className="island-panel mt-4 rounded-2xl p-3 sm:mt-5 sm:rounded-[2rem] sm:p-5">
+        <h2 className="flex items-center gap-2 text-lg font-black sm:text-xl"><Smartphone className="h-5 w-5 text-accent" /> {text('QR Payment verification', 'Pengesahan Bayaran QR')}</h2>
+        <p className="mt-2 rounded-xl bg-sky-50 p-2.5 text-sm font-bold text-sky-900 sm:rounded-2xl sm:p-3">
           {text('Mismatch means the QR Payment amount is recorded separately and is not counted as verified QR Payment until a manager follows up.', 'Tidak padan bermaksud amaun Bayaran QR direkod berasingan dan tidak dikira sebagai Bayaran QR disahkan sehingga pengurus semak.')}
         </p>
         <div className="mt-3 grid gap-3">
           {sales.filter((sale) => sale.payment_method === 'qr').length === 0 ? <p className="text-neutral-600">{text('No QR Payment for this date.', 'Tiada Bayaran QR untuk tarikh ini.')}</p> : null}
           {sales.filter((sale) => sale.payment_method === 'qr').map((sale) => (
-            <div key={sale.id} className="flex flex-col gap-3 rounded-2xl border border-line bg-white/80 p-4 md:flex-row md:items-center md:justify-between">
+            <div key={sale.id} className="flex flex-col gap-2 rounded-xl border border-line bg-white/80 p-3 md:flex-row md:items-center md:justify-between sm:rounded-2xl sm:p-4">
               <div>
                 <p className="font-black">{sale.sale_number} · {money(sale.paid_amount, String(settings.currency_symbol))}</p>
                 <p className="text-sm text-neutral-600">Staff: {sale.order_taken_by ?? '-'} · Ref: {sale.qr_reference ?? '-'} · Status: {sale.qr_status}</p>
@@ -361,8 +361,8 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
           }
         >
           <div className="grid gap-3">
-            <p className="text-base font-bold">Please double-check all details before submitting. After closing, the snapshot should only be changed by admin correction.</p>
-            <div className="grid gap-2 rounded-2xl border border-line bg-shell p-4 text-sm font-bold sm:grid-cols-2">
+            <p className="text-sm font-bold sm:text-base">Please double-check all details before submitting. After closing, the snapshot should only be changed by admin correction.</p>
+            <div className="grid gap-2 rounded-xl border border-line bg-shell p-3 text-sm font-bold sm:grid-cols-2 sm:rounded-2xl sm:p-4">
               <div><span className="text-neutral-500">Business date</span><p className="text-ink">{businessDate}</p></div>
               <div><span className="text-neutral-500">Transactions</span><p className="text-ink">{totals.tx}</p></div>
               <div><span className="text-neutral-500">Cash Payment sales</span><p className="text-ink">{money(totals.cash, String(settings.currency_symbol))}</p></div>
@@ -374,7 +374,7 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
               <div><span className="text-neutral-500">QR Payment pending</span><p className="text-ink">{money(totals.qrPending, String(settings.currency_symbol))}</p></div>
               <div><span className="text-neutral-500">QR Payment mismatch</span><p className="text-ink">{money(totals.qrMismatch, String(settings.currency_symbol))}</p></div>
             </div>
-            <label className="flex items-start gap-3 rounded-2xl border border-line bg-white/90 p-4 text-sm font-black">
+            <label className="flex items-start gap-3 rounded-xl border border-line bg-white/90 p-3 text-sm font-black sm:rounded-2xl sm:p-4">
               <input className="mt-1" type="checkbox" checked={detailsConfirmed} onChange={(event) => setDetailsConfirmed(event.target.checked)} />
               <span>I confirm the cash count, QR Payment status, FOC Cost, and closing details are accurate.</span>
             </label>

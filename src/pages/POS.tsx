@@ -219,12 +219,12 @@ export default function POS({ settings }: { settings: SettingsMap }) {
   function renderCartPanel(inDrawer = false) {
     return (
       <>
-        {!inDrawer ? <h2 className="text-2xl font-black">{text('Order Cart', 'Bakul')}</h2> : null}
+        {!inDrawer ? <h2 className="text-xl font-black sm:text-2xl">{text('Order Cart', 'Bakul')}</h2> : null}
         <p className="mt-1 text-sm font-bold text-accent">{text('Accepted by', 'Diterima oleh')} {orderTakenBy}</p>
-        <div className="mt-4 grid gap-3">
+        <div className="mt-3 grid gap-2 sm:mt-4 sm:gap-3">
           {cart.length === 0 ? <p className="text-neutral-600">{text('No items selected.', 'Tiada item dipilih.')}</p> : null}
           {cart.map((item) => (
-            <div key={item.product.id} className="rounded-2xl border border-line bg-white/85 p-3">
+            <div key={item.product.id} className="rounded-xl border border-line bg-white/85 p-2.5 sm:rounded-2xl sm:p-3">
               <div className="flex justify-between gap-3">
                 <strong>{item.product.name}</strong>
                 <span>{money(item.quantity * Number(item.customPrice ?? item.product.price_per_unit), String(settings.currency_symbol))}</span>
@@ -232,21 +232,21 @@ export default function POS({ settings }: { settings: SettingsMap }) {
               <p className="mt-1 text-sm text-neutral-600">
                 {item.quantity} x {money(item.customPrice ?? item.product.price_per_unit, String(settings.currency_symbol))}
               </p>
-              <div className="mt-3 flex gap-2">
-                <button className={`${secondaryButtonClass} w-12 px-0`} onClick={() => change(item.product.id, -1)} aria-label="Decrease">
+              <div className="mt-2 flex gap-2 sm:mt-3">
+                <button className={`${secondaryButtonClass} w-10 px-0 sm:w-12`} onClick={() => change(item.product.id, -1)} aria-label="Decrease">
                   <Minus className="h-4 w-4" />
                 </button>
-                <button className={`${secondaryButtonClass} w-12 px-0`} onClick={() => change(item.product.id, 1)} aria-label="Increase">
+                <button className={`${secondaryButtonClass} w-10 px-0 sm:w-12`} onClick={() => change(item.product.id, 1)} aria-label="Increase">
                   <Plus className="h-4 w-4" />
                 </button>
-                <button className={`${dangerButtonClass} w-12 px-0`} onClick={() => change(item.product.id, -9999)} aria-label="Remove">
+                <button className={`${dangerButtonClass} w-10 px-0 sm:w-12`} onClick={() => change(item.product.id, -9999)} aria-label="Remove">
                   <Trash2 className="h-4 w-4" />
                 </button>
               </div>
             </div>
           ))}
         </div>
-        <div className="mt-5 rounded-[1.5rem] bg-shell p-4">
+        <div className="mt-4 rounded-2xl bg-shell p-3 sm:mt-5 sm:rounded-[1.5rem] sm:p-4">
           <Field label={text('Discount', 'Diskaun')}>
             <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
               <button type="button" className={`${secondaryButtonClass} px-2`} onClick={() => { setCustomDiscount(''); setDiscount(0); }}>
@@ -274,7 +274,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
               />
             </div>
           </Field>
-          <div className="mt-4 flex justify-between gap-3 font-bold">
+          <div className="mt-3 flex justify-between gap-3 font-bold sm:mt-4">
             <span>Subtotal</span>
             <span>{money(subtotal, String(settings.currency_symbol))}</span>
           </div>
@@ -282,7 +282,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
             <span>{text('Discount amount', 'Jumlah diskaun')}</span>
             <span>- {money(discount, String(settings.currency_symbol))}</span>
           </div>
-          <div className="mt-2 flex justify-between gap-3 text-2xl font-black">
+          <div className="mt-2 flex justify-between gap-3 text-xl font-black sm:text-2xl">
             <span>Total</span>
             <span>{money(total, String(settings.currency_symbol))}</span>
           </div>
@@ -309,9 +309,9 @@ export default function POS({ settings }: { settings: SettingsMap }) {
       <PageHeader
         title={text('POS', 'Jualan')}
       />
-      <section className="mb-5 rounded-[1.75rem] border border-pink-200 bg-gradient-to-r from-pink-50 via-white to-teal-50 p-4 shadow-soft">
+      <section className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-pink-200 bg-gradient-to-r from-pink-50 via-white to-teal-50 p-2.5 shadow-soft sm:mb-5 sm:rounded-[1.75rem] sm:p-4">
         <p className="text-xs font-black uppercase tracking-widest text-accent">{text('Today', 'Hari ini')}</p>
-        <p className="mt-1 text-xl font-black text-ink sm:text-2xl">{todayLabel}</p>
+        <p className="text-base font-black text-ink sm:text-xl lg:text-2xl">{todayLabel}</p>
       </section>
       <input
         id={cameraInputId}
@@ -321,9 +321,9 @@ export default function POS({ settings }: { settings: SettingsMap }) {
         capture="environment"
         onChange={(event) => setQrReceipt(event.target.files?.[0] ?? null)}
       />
-      <div className="grid min-w-0 gap-5 2xl:grid-cols-[minmax(0,1fr)_400px]">
-        <section className="grid min-w-0 gap-5">
-          <section className="rounded-[1.5rem] border border-line bg-white/90 p-3 shadow-soft backdrop-blur lg:sticky lg:top-4 lg:z-10 2xl:static">
+      <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1fr)_400px]">
+        <section className="grid min-w-0 gap-4">
+          <section className="rounded-2xl border border-line bg-white/90 p-3 shadow-soft backdrop-blur lg:sticky lg:top-4 lg:z-10 2xl:static">
             <p className="mb-2 text-sm font-black">{text('Order taken by', 'Diterima oleh')}</p>
             <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
               {staffUsers.map((user) => (
@@ -331,7 +331,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
                   key={user}
                   type="button"
                   onClick={() => setOrderTakenBy(user)}
-                  className={`rounded-xl border px-3 py-2.5 text-center text-sm font-black shadow-soft transition sm:text-base ${
+                  className={`rounded-xl border px-2 py-2 text-center text-sm font-black shadow-soft transition sm:px-3 sm:py-2.5 ${
                     orderTakenBy === user
                       ? 'border-accent bg-accent text-white'
                       : 'border-line bg-white text-ink hover:border-accent'
@@ -344,8 +344,8 @@ export default function POS({ settings }: { settings: SettingsMap }) {
           </section>
           {regularGroups.map(([category, items]) => (
             <div key={category}>
-              <h2 className="mb-3 text-xl font-black">{text(category, category === 'Soft Drink' ? 'Minuman Ringan' : category === 'Beer' ? 'Bir' : 'Lain-lain')}</h2>
-              <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-2 min-[1700px]:grid-cols-3">
+              <h2 className="mb-2 text-lg font-black sm:mb-3 sm:text-xl">{text(category, category === 'Soft Drink' ? 'Minuman Ringan' : category === 'Beer' ? 'Bir' : 'Lain-lain')}</h2>
+              <div className="grid min-w-0 grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 2xl:grid-cols-2 min-[1700px]:grid-cols-3">
                 {items.map((product) => {
                   const stock = product.inventory_balances?.quantity_on_hand ?? 0;
                   const low = stock <= product.low_stock_threshold;
@@ -357,7 +357,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
                       type="button"
                       disabled={disabled}
                       onClick={() => add(product)}
-                      className={`relative min-h-48 overflow-hidden rounded-[1.5rem] border p-0 text-left shadow-soft transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 ${
+                      className={`relative min-h-32 overflow-hidden rounded-2xl border p-0 text-left shadow-soft transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-36 sm:rounded-[1.5rem] lg:min-h-44 ${
                         selectedQuantity > 0
                           ? 'border-accent bg-teal-50 ring-4 ring-teal-100'
                           : low
@@ -366,7 +366,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
                       }`}
                     >
                       {selectedQuantity > 0 ? (
-                        <span className="absolute right-3 top-3 z-10 grid h-11 min-w-11 place-items-center rounded-full bg-accent px-3 text-base font-black text-white shadow-glow">
+                        <span className="absolute right-2 top-2 z-10 grid h-8 min-w-8 place-items-center rounded-full bg-accent px-2 text-sm font-black text-white shadow-glow sm:right-3 sm:top-3 sm:h-10 sm:min-w-10">
                           {selectedQuantity}
                         </span>
                       ) : null}
@@ -374,7 +374,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
                         src={product.image_url ?? localDrinkFallback(product)}
                         data-fallback={localDrinkFallback(product)}
                         alt=""
-                        className="h-28 w-full object-cover"
+                        className="h-16 w-full object-cover sm:h-20 lg:h-28"
                         onError={(event) => {
                           const fallback = event.currentTarget.dataset.fallback;
                           if (fallback && !event.currentTarget.src.endsWith(fallback)) {
@@ -382,9 +382,9 @@ export default function POS({ settings }: { settings: SettingsMap }) {
                           }
                         }}
                       />
-                      <span className="block px-4 pt-3 text-lg font-black">{product.name}</span>
-                      <span className="mt-1 block px-4 font-bold">{money(product.price_per_unit, String(settings.currency_symbol))}</span>
-                      <span className="block px-4 pb-4 pt-1 text-sm text-neutral-600">{stock} {text('cans available', 'tin tersedia')}</span>
+                      <span className="block px-2.5 pt-2 text-sm font-black leading-tight sm:px-3 sm:text-base lg:px-4 lg:pt-3 lg:text-lg">{product.name}</span>
+                      <span className="mt-0.5 block px-2.5 text-sm font-bold sm:px-3 sm:text-sm lg:px-4 lg:text-base">{money(product.price_per_unit, String(settings.currency_symbol))}</span>
+                      <span className="block px-2.5 pb-2.5 pt-0.5 text-xs text-neutral-600 sm:px-3 lg:px-4 lg:pb-4 lg:pt-1 lg:text-sm">{stock} {text('cans available', 'tin tersedia')}</span>
                     </button>
                   );
                 })}
@@ -392,9 +392,9 @@ export default function POS({ settings }: { settings: SettingsMap }) {
             </div>
           ))}
           <div>
-            <h2 className="mb-3 text-xl font-black">{text('Custom Order', 'Pesanan Khas')}</h2>
-            <div className="island-card grid min-w-0 gap-4 rounded-[1.75rem] p-4 sm:grid-cols-[140px_1fr] sm:items-end lg:grid-cols-[150px_minmax(0,1fr)_minmax(0,1fr)_auto]">
-              <img src={assetPath('assets/custom-order.svg')} alt="" className="h-32 w-full rounded-3xl object-cover sm:h-full" />
+            <h2 className="mb-2 text-lg font-black sm:mb-3 sm:text-xl">{text('Custom Order', 'Pesanan Khas')}</h2>
+            <div className="island-card grid min-w-0 gap-3 rounded-2xl p-3 sm:grid-cols-[120px_1fr] sm:items-end sm:rounded-[1.75rem] sm:p-4 lg:grid-cols-[130px_minmax(0,1fr)_minmax(0,1fr)_auto]">
+              <img src={assetPath('assets/custom-order.svg')} alt="" className="h-20 w-full rounded-2xl object-cover sm:h-full sm:rounded-3xl" />
               <Field label={text('Product name', 'Nama produk')}>
                 <input className={inputClass} value={customName} onChange={(e) => setCustomName(e.target.value)} />
               </Field>
@@ -412,22 +412,22 @@ export default function POS({ settings }: { settings: SettingsMap }) {
           {renderCartPanel()}
         </aside>
       </div>
-      <div className="no-print fixed inset-x-0 bottom-0 z-30 border-t border-line bg-white/95 p-3 shadow-[0_-18px_45px_rgba(196,70,115,0.18)] backdrop-blur 2xl:hidden">
-        <div className="mx-auto grid max-w-[760px] grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+      <div className="no-print fixed inset-x-0 bottom-0 z-30 border-t border-line bg-white/95 p-2 shadow-[0_-18px_45px_rgba(196,70,115,0.18)] backdrop-blur sm:p-3 2xl:hidden">
+        <div className="mx-auto grid max-w-[760px] grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:gap-3">
           <button
             type="button"
             onClick={() => setCartDrawerOpen(true)}
-            className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-2xl border border-accent bg-teal-50 px-4 py-3 text-left shadow-soft"
+            className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-xl border border-accent bg-teal-50 px-3 py-2 text-left shadow-soft sm:gap-3 sm:rounded-2xl sm:px-4 sm:py-3"
           >
-            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-accent text-white">
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-accent text-white sm:h-11 sm:w-11 sm:rounded-2xl">
               <ShoppingCart className="h-5 w-5" />
             </span>
             <span className="min-w-0">
               <span className="block text-sm font-black text-accent">{cartQuantity} item(s) selected</span>
-              <span className="block truncate text-xl font-black">{money(total, String(settings.currency_symbol))}</span>
+              <span className="block truncate text-lg font-black sm:text-xl">{money(total, String(settings.currency_symbol))}</span>
             </span>
           </button>
-          <button className={`${buttonClass} min-h-[68px] px-4`} disabled={cart.length === 0} onClick={() => setCartDrawerOpen(true)}>
+          <button className={`${buttonClass} min-h-[54px] px-3 sm:min-h-[68px] sm:px-4`} disabled={cart.length === 0} onClick={() => setCartDrawerOpen(true)}>
             View cart
           </button>
         </div>
@@ -437,7 +437,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
           {renderCartPanel(true)}
         </Modal>
       ) : null}
-      <div className="h-28 2xl:hidden" />
+      <div className="h-20 sm:h-28 2xl:hidden" />
       {method ? (
         <Modal
           title={`Confirm ${method === 'qr' ? 'QR Payment' : method === 'cash' ? 'Cash Payment' : 'Complimentary (FOC)'}`}
@@ -468,7 +468,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
                 <span>- {money(discount, String(settings.currency_symbol))}</span>
               </div>
             </div>
-            <div className="flex justify-between text-xl font-black">
+            <div className="flex justify-between text-lg font-black sm:text-xl">
               <span>Total</span>
               <span>{money(total, String(settings.currency_symbol))}</span>
             </div>

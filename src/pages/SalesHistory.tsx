@@ -128,37 +128,37 @@ export default function SalesHistory({ settings, embedded = false }: { settings:
     <>
       {embedded ? null : <PageHeader title="Sales History / Sejarah Jualan" subtitle="Review completed sales, QR Payment status, staff, item details, and voids." />}
 
-      <section className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <div className="rounded-[1.5rem] border border-violet-200 bg-violet-50 p-4 shadow-soft sm:p-5">
-          <p className="text-sm font-black text-violet-700">Total Revenue</p>
-          <p className="mt-2 text-xl font-black sm:text-2xl">{money(totals.revenue, String(settings.currency_symbol))}</p>
+      <section className="mb-4 grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-5">
+        <div className="rounded-2xl border border-violet-200 bg-violet-50 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4 lg:p-5">
+          <p className="text-xs font-black text-violet-700 sm:text-sm">Total Revenue</p>
+          <p className="mt-1.5 text-lg font-black sm:text-xl lg:text-2xl">{money(totals.revenue, String(settings.currency_symbol))}</p>
         </div>
-        <div className="rounded-[1.5rem] border border-emerald-200 bg-emerald-50 p-4 shadow-soft sm:p-5">
-          <p className="text-sm font-black text-emerald-700">Cash Payment 💵</p>
-          <p className="mt-2 text-xl font-black sm:text-2xl">{money(totals.cash, String(settings.currency_symbol))}</p>
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4 lg:p-5">
+          <p className="text-xs font-black text-emerald-700 sm:text-sm">Cash Payment 💵</p>
+          <p className="mt-1.5 text-lg font-black sm:text-xl lg:text-2xl">{money(totals.cash, String(settings.currency_symbol))}</p>
         </div>
-        <div className="rounded-[1.5rem] border border-sky-200 bg-sky-50 p-4 shadow-soft sm:p-5">
-          <p className="text-sm font-black text-sky-700">QR Payment 📱</p>
-          <p className="mt-2 text-xl font-black sm:text-2xl">{money(totals.qr, String(settings.currency_symbol))}</p>
+        <div className="rounded-2xl border border-sky-200 bg-sky-50 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4 lg:p-5">
+          <p className="text-xs font-black text-sky-700 sm:text-sm">QR Payment 📱</p>
+          <p className="mt-1.5 text-lg font-black sm:text-xl lg:text-2xl">{money(totals.qr, String(settings.currency_symbol))}</p>
         </div>
-        <div className="rounded-[1.5rem] border border-pink-200 bg-pink-50 p-4 shadow-soft sm:p-5">
-          <p className="text-sm font-black text-pink-700">FOC Cost 🎁</p>
-          <p className="mt-2 text-xl font-black text-coral sm:text-2xl">- {money(totals.focCost, String(settings.currency_symbol))}</p>
+        <div className="rounded-2xl border border-pink-200 bg-pink-50 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4 lg:p-5">
+          <p className="text-xs font-black text-pink-700 sm:text-sm">FOC Cost 🎁</p>
+          <p className="mt-1.5 text-lg font-black text-coral sm:text-xl lg:text-2xl">- {money(totals.focCost, String(settings.currency_symbol))}</p>
         </div>
-        <div className="rounded-[1.5rem] border border-line bg-white/85 p-4 shadow-soft sm:p-5">
-          <p className="text-sm font-black text-neutral-600">Transactions</p>
-          <p className="mt-2 text-xl font-black sm:text-2xl">{totals.transactions}</p>
+        <div className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4 lg:p-5">
+          <p className="text-xs font-black text-neutral-600 sm:text-sm">Transactions</p>
+          <p className="mt-1.5 text-lg font-black sm:text-xl lg:text-2xl">{totals.transactions}</p>
         </div>
       </section>
 
-      <section className="island-panel mb-5 rounded-[2rem] p-5">
-        <div className="grid gap-4 lg:grid-cols-[280px_1fr] lg:items-end">
+      <section className="island-panel mb-4 rounded-2xl p-3 sm:mb-5 sm:rounded-[2rem] sm:p-5">
+        <div className="grid gap-3 lg:grid-cols-[280px_1fr] lg:items-end">
           <Field label="Business date">
             <input className={inputClass} type="date" value={date} onChange={(event) => setDate(event.target.value)} />
           </Field>
           <div>
             <p className="mb-2 text-sm font-semibold">Payment method</p>
-            <div className="grid grid-cols-2 gap-2 rounded-2xl bg-white/80 p-1 text-sm font-black sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-1 rounded-2xl bg-white/80 p-1 text-xs font-black sm:grid-cols-4 sm:text-sm">
               {([
                 ['all', 'All'],
                 ['cash', 'Cash Payment'],
@@ -168,7 +168,7 @@ export default function SalesHistory({ settings, embedded = false }: { settings:
                 <button
                   key={value}
                   type="button"
-                  className={`min-h-11 rounded-xl px-3 py-2 text-center ${method === value ? 'bg-accent text-white' : 'text-ink'}`}
+                  className={`min-h-9 rounded-xl px-2 py-1.5 text-center sm:min-h-11 sm:px-3 sm:py-2 ${method === value ? 'bg-accent text-white' : 'text-ink'}`}
                   onClick={() => setMethod(value)}
                 >
                   {label}
@@ -181,9 +181,9 @@ export default function SalesHistory({ settings, embedded = false }: { settings:
 
       <section className="grid gap-3">
         {sales.length === 0 ? (
-          <div className="island-panel rounded-[2rem] p-6 text-center">
+          <div className="island-panel rounded-2xl p-4 text-center sm:rounded-[2rem] sm:p-6">
             <ReceiptText className="mx-auto h-10 w-10 text-accent" />
-            <p className="mt-3 text-lg font-black">No sales found for {saleDateLabel(date)}.</p>
+            <p className="mt-3 text-base font-black sm:text-lg">No sales found for {saleDateLabel(date)}.</p>
             <p className="mt-1 text-sm font-bold text-neutral-600">Try another date or payment method.</p>
           </div>
         ) : null}
@@ -191,11 +191,11 @@ export default function SalesHistory({ settings, embedded = false }: { settings:
         {sales.map((sale) => {
           const isFoc = sale.payment_method === 'complimentary';
           return (
-            <article key={sale.id} className="rounded-[1.75rem] border border-line bg-white/85 p-4 shadow-soft sm:p-5">
+            <article key={sale.id} className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.75rem] sm:p-5">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-xl font-black leading-tight">{sale.sale_number}</h2>
+                    <h2 className="text-lg font-black leading-tight sm:text-xl">{sale.sale_number}</h2>
                     <span className={`rounded-full border px-3 py-1 text-xs font-black ${paymentTone(sale.payment_method)}`}>
                       {paymentMethodLabel(sale.payment_method)}
                     </span>
@@ -217,9 +217,9 @@ export default function SalesHistory({ settings, embedded = false }: { settings:
                 </div>
 
                 <div className="grid gap-2 sm:grid-cols-[1fr_auto] lg:min-w-[360px] lg:grid-cols-1 lg:text-right">
-                  <div className="rounded-2xl bg-shell p-3">
+                  <div className="rounded-xl bg-shell p-3 sm:rounded-2xl">
                     <p className="text-xs font-black uppercase tracking-widest text-neutral-500">{isFoc ? 'FOC Cost' : 'Total Revenue'}</p>
-                    <p className={`text-2xl font-black ${isFoc ? 'text-coral' : 'text-ink'}`}>
+                    <p className={`text-xl font-black sm:text-2xl ${isFoc ? 'text-coral' : 'text-ink'}`}>
                       {isFoc ? '- ' : ''}{money(isFoc ? sale.total_amount : sale.paid_amount, String(settings.currency_symbol))}
                     </p>
                     {Number(sale.discount_amount ?? 0) > 0 ? (
@@ -249,7 +249,7 @@ export default function SalesHistory({ settings, embedded = false }: { settings:
                 </div>
               </div>
 
-              <div className="mt-4 overflow-hidden rounded-2xl border border-line bg-white/80">
+              <div className="mt-3 overflow-hidden rounded-xl border border-line bg-white/80 sm:mt-4 sm:rounded-2xl">
                 <div className="hidden grid-cols-[1fr_90px_130px_130px] bg-shell px-3 py-2 text-sm font-black md:grid">
                   <span>Item</span>
                   <span>Quantity</span>

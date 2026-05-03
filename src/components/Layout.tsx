@@ -101,14 +101,14 @@ export function Layout({
         </button>
       </aside>
       <div className="xl:pl-72">
-        <header className="no-print sticky top-0 z-20 border-b border-line bg-white/90 px-3 py-2 backdrop-blur sm:px-4 xl:hidden">
+        <header className="no-print sticky top-0 z-20 border-b border-line bg-white/90 px-2.5 py-2 backdrop-blur sm:px-4 xl:hidden">
           <div className="mx-auto max-w-[1500px]">
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2">
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-accent bg-accent text-white shadow-soft">
                   <Waves className="h-5 w-5" />
                 </span>
-                <strong className="min-w-0 truncate text-base font-black sm:text-lg">{String(settings.business_name)}</strong>
+                <strong className="min-w-0 truncate text-sm font-black sm:text-lg">{String(settings.business_name)}</strong>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <div className="grid grid-cols-2 rounded-2xl bg-white/80 p-1 text-xs font-black">
@@ -121,7 +121,7 @@ export function Layout({
               </div>
             </div>
             <select
-              className="mt-2 h-10 w-full rounded-2xl border border-line bg-white px-3 text-sm font-black text-ink outline-none focus:border-accent focus:ring-4 focus:ring-teal-100"
+              className="mt-2 h-9 w-full rounded-xl border border-line bg-white px-3 text-sm font-black text-ink outline-none focus:border-accent focus:ring-4 focus:ring-teal-100 sm:h-10 sm:rounded-2xl"
               value={activePath}
               onChange={(event) => navigate(event.target.value)}
               aria-label="Current page"
@@ -134,7 +134,7 @@ export function Layout({
             </select>
           </div>
         </header>
-        <main className="mx-auto w-full max-w-[1500px] min-w-0 px-3 py-5 sm:px-4 lg:px-6 xl:px-8">
+        <main className="mx-auto w-full max-w-[1500px] min-w-0 px-2.5 py-3 sm:px-4 sm:py-4 lg:px-6 xl:px-8">
           <Outlet />
         </main>
       </div>

@@ -33,25 +33,25 @@ export function AccessGate({ onUnlock }: { onUnlock: () => void }) {
   }
 
   return (
-    <main className="grid min-h-screen place-items-center bg-paper px-4 py-8">
+    <main className="grid min-h-screen place-items-center bg-paper px-3 py-6">
       <form
         onSubmit={submit}
-        className="w-full max-w-md rounded-[2rem] border border-pink-200 bg-white/95 p-6 shadow-soft backdrop-blur"
+        className="w-full max-w-md rounded-2xl border border-pink-200 bg-white/95 p-4 shadow-soft backdrop-blur sm:rounded-[2rem] sm:p-6"
       >
-        <div className="mb-6 flex items-center gap-4">
-          <div className="grid h-14 w-14 place-items-center rounded-3xl bg-coral text-white shadow-soft">
-            <Waves className="h-7 w-7" />
+        <div className="mb-4 flex items-center gap-3 sm:mb-6 sm:gap-4">
+          <div className="grid h-11 w-11 place-items-center rounded-2xl bg-accent text-white shadow-soft sm:h-14 sm:w-14 sm:rounded-3xl">
+            <Waves className="h-6 w-6 sm:h-7 sm:w-7" />
           </div>
           <div>
             <p className="text-xs font-black uppercase tracking-widest text-accent">Private & Confidential</p>
-            <h1 className="text-2xl font-black">Lovely Paradise Bar</h1>
+            <h1 className="text-xl font-black sm:text-2xl">Lovely Paradise Bar</h1>
           </div>
         </div>
 
         <label className="grid gap-2 text-sm font-black">
           Access code
           <input
-            className="h-14 rounded-2xl border border-line bg-white px-4 text-lg font-black outline-none transition focus:border-accent focus:ring-4 focus:ring-teal-100"
+            className="h-11 rounded-xl border border-line bg-white px-3 text-base font-black outline-none transition focus:border-accent focus:ring-4 focus:ring-teal-100 sm:h-14 sm:rounded-2xl sm:px-4 sm:text-lg"
             inputMode="numeric"
             type="password"
             value={code}
@@ -66,7 +66,7 @@ export function AccessGate({ onUnlock }: { onUnlock: () => void }) {
         <button
           type="submit"
           disabled={checking || code.trim().length === 0}
-          className="mt-5 flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-accent px-4 text-base font-black text-white shadow-glow transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+          className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 text-sm font-black text-white shadow-glow transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60 sm:mt-5 sm:h-14 sm:rounded-2xl sm:text-base"
         >
           <LockKeyhole className="h-5 w-5" />
           {checking ? 'Checking...' : 'Enter website'}

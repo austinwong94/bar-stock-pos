@@ -25,12 +25,12 @@ export default function Inventory({ settings }: { settings: SettingsMap }) {
           </>
         }
       />
-      <div className="grid gap-3 md:hidden">
+      <div className="grid gap-2 md:hidden">
         {products.map((product) => {
           const stock = product.inventory_balances?.quantity_on_hand ?? 0;
           const low = stock <= product.low_stock_threshold;
           return (
-            <article key={product.id} className="rounded-[1.5rem] border border-line bg-white/85 p-4 shadow-soft">
+            <article key={product.id} className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h2 className="font-black">{product.name}</h2>
@@ -40,9 +40,9 @@ export default function Inventory({ settings }: { settings: SettingsMap }) {
                   {low ? 'Low' : product.active ? 'Active' : 'Inactive'}
                 </span>
               </div>
-              <div className="mt-3 grid grid-cols-2 gap-2 text-sm font-bold">
-                <div className="rounded-2xl bg-shell p-3"><p className="text-neutral-500">On hand</p><p className={low ? 'text-warning' : ''}>{cansAndCartons(stock, product.carton_size)}</p></div>
-                <div className="rounded-2xl bg-shell p-3"><p className="text-neutral-500">Threshold</p><p>{product.low_stock_threshold} cans</p></div>
+              <div className="mt-2 grid grid-cols-2 gap-1.5 text-xs font-bold sm:mt-3 sm:gap-2 sm:text-sm">
+                <div className="rounded-xl bg-shell p-2 sm:rounded-2xl sm:p-3"><p className="text-neutral-500">On hand</p><p className={low ? 'text-warning' : ''}>{cansAndCartons(stock, product.carton_size)}</p></div>
+                <div className="rounded-xl bg-shell p-2 sm:rounded-2xl sm:p-3"><p className="text-neutral-500">Threshold</p><p>{product.low_stock_threshold} cans</p></div>
               </div>
             </article>
           );

@@ -104,7 +104,7 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
   return (
     <>
       {embedded ? null : <PageHeader title="Stock In" subtitle="Cartons are converted by each product carton size." />}
-      <form onSubmit={submit} className="island-panel grid gap-6 rounded-[2rem] p-5 shadow-soft">
+      <form onSubmit={submit} className="island-panel grid gap-4 rounded-2xl p-3 shadow-soft sm:rounded-[2rem] sm:p-5">
         <div>
           <p className="mb-2 text-sm font-black">Entered by / Diisi oleh</p>
           <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
@@ -113,7 +113,7 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
                 key={worker}
                 type="button"
                 onClick={() => setEnteredBy(worker)}
-                className={`rounded-xl border px-3 py-2.5 text-sm font-black shadow-soft sm:text-base ${
+                className={`rounded-xl border px-2 py-2 text-sm font-black shadow-soft sm:px-3 sm:py-2.5 ${
                   enteredBy === worker ? 'border-accent bg-accent text-white' : 'border-line bg-white text-ink'
                 }`}
               >
@@ -131,25 +131,25 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
             ))}
           </select>
         </Field>
-        <div className="grid gap-4 md:grid-cols-[minmax(150px,0.72fr)_1.8fr] md:items-end">
+        <div className="grid gap-3 md:grid-cols-[minmax(150px,0.72fr)_1.8fr] md:items-end">
           <Field label="Quantity">
             <input className={inputClass} type="number" min={1} value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} />
           </Field>
           <div>
             <p className="mb-2 text-sm font-semibold">Unit type</p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2 sm:gap-3">
               {(['can', 'carton'] as const).map((nextUnit) => (
                 <button
                   key={nextUnit}
                   type="button"
                   onClick={() => setUnit(nextUnit)}
-                  className={`flex h-[52px] flex-col items-center justify-center rounded-2xl border px-4 py-0 text-base font-black leading-tight shadow-soft transition ${
+                  className={`flex h-11 flex-col items-center justify-center rounded-xl border px-3 py-0 text-sm font-black leading-tight shadow-soft transition sm:h-[52px] sm:rounded-2xl sm:px-4 sm:text-base ${
                     unit === nextUnit ? 'border-accent bg-teal-50 text-accent ring-2 ring-teal-100' : 'border-line bg-white text-ink'
                   }`}
                 >
                   <span className="block">{nextUnit === 'can' ? 'UNIT(S)' : 'CARTON(S)'}</span>
                   {nextUnit === 'carton' ? (
-                    <span className="block text-[11px] font-black leading-tight text-neutral-600">
+                    <span className="block text-[10px] font-black leading-tight text-neutral-600 sm:text-[11px]">
                       1 carton = {defaultCartonUnits} units
                     </span>
                   ) : null}
@@ -158,7 +158,7 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
             </div>
           </div>
         </div>
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-2">
           <Field label="Supplier">
             <input className={inputClass} value={supplier} onChange={(e) => setSupplier(e.target.value)} />
           </Field>
@@ -187,7 +187,7 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
             </div>
           }
         >
-          <p className="text-2xl font-black leading-tight sm:text-3xl">
+          <p className="text-xl font-black leading-tight sm:text-2xl">
             {unit === 'can'
               ? `Confirm Stock-In: ${quantity} UNIT(S)?`
               : `Confirm Stock-In: ${quantity} CARTON(S) x ${product.carton_size} unit(s) = ${cans} unit(s)?`}

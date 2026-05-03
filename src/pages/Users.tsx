@@ -43,23 +43,23 @@ export default function Users() {
   return (
     <>
       <PageHeader title="Staff Access" subtitle="Choose what each staff member is allowed to do in the app." />
-      <div className="mb-5 grid gap-3 md:grid-cols-3">
-        <div className="rounded-2xl border border-line bg-white/85 p-4 shadow-soft">
+      <div className="mb-4 grid gap-2 md:grid-cols-3">
+        <div className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:p-4">
           <p className="font-black">Cashier</p>
           <p className="mt-1 text-sm font-bold text-neutral-600">POS and stock view only.</p>
         </div>
-        <div className="rounded-2xl border border-line bg-white/85 p-4 shadow-soft">
+        <div className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:p-4">
           <p className="font-black">Manager</p>
           <p className="mt-1 text-sm font-bold text-neutral-600">Stock in, closing, QR Payment verification, and reports.</p>
         </div>
-        <div className="rounded-2xl border border-line bg-white/85 p-4 shadow-soft">
+        <div className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:p-4">
           <p className="font-black">Admin</p>
           <p className="mt-1 text-sm font-bold text-neutral-600">Products, settings, and staff access.</p>
         </div>
       </div>
       <div className="grid gap-3">
         {profiles.map((profile) => (
-          <div key={profile.id} className="grid gap-3 rounded-2xl border border-line bg-white/85 p-4 shadow-soft md:grid-cols-[1fr_220px] md:items-center">
+          <div key={profile.id} className="grid gap-3 rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:p-4 md:grid-cols-[1fr_220px] md:items-center">
             <div>
               <h2 className="font-black">{profile.full_name ?? 'Unnamed staff'}</h2>
               <p className="text-sm font-bold text-neutral-600">Staff account</p>
