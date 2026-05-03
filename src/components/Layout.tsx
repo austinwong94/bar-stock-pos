@@ -1,0 +1,127 @@
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import {
+  BarChart3,
+  CalendarCheck2,
+  LayoutDashboard,
+  LogOut,
+  PackageMinus,
+  Settings,
+  ShoppingCart,
+  Waves,
+} from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import type { Profile, SettingsMap } from '../lib/types';
+import { roleAtLeast } from '../lib/data';
+import { useLanguage } from '../lib/language';
+
+const links = [
+  { to: '/', label: 'Dashboard', ms: 'Jualan', icon: LayoutDashboard, min: 'cashier' },
+  { to: '/pos', label: 'POS', icon: ShoppingCart, min: 'cashier' },
+  { to: '/stock-out-report', label: 'Stock Activity', ms: 'Aktiviti Stok', icon: PackageMinus, min: 'manager' },
+  { to: '/daily-closing', label: 'Closing', ms: 'Tutup Harian', icon: CalendarCheck2, min: 'manager' },
+  { to: '/daily-report', label: 'Reports', ms: 'Laporan', icon: BarChart3, min: 'manager' },
+  { to: '/products', label: 'Admin', ms: 'Pentadbir', icon: Settings, min: 'admin' },
+] as const;
+
+export function Layout({
+  profile,
+  settings,
+}: {
+  profile: Profile;
+  settings: SettingsMap;
+}) {
+  const navigate = useNavigate();
+  const { language, setLanguage, text } = useLanguage();
+
+  async function signOut() {
+    await supabase.auth.signOut();
+    navigate('/login');
+  }
+
+  return (
+    <div className="min-h-screen">
+      <aside className="no-print fixed inset-y-0 left-0 z-30 hidden w-72 p-5 lg:block">
+        <div className="island-panel mb-5 rounded-[2rem] p-5">
+          <div className="mb-4 grid h-14 w-14 place-items-center rounded-3xl bg-coral text-white shadow-soft">
+            <Waves className="h-7 w-7" />
+          </div>
+          <p className="text-xs font-black uppercase tracking-widest text-accent">Island Bar POS</p>
+          <h1 className="mt-1 text-3xl font-black">{String(settings.business_name)}</h1>
+          <p className="mt-2 text-sm font-bold text-neutral-600">{profile.full_name ?? profile.role} · {profile.role}</p>
+          <p className="mt-3 rounded-2xl bg-shell px-3 py-2 text-xs font-bold text-neutral-600">
+            {text('English', 'Bahasa Melayu')} · MYR / RMB
+          </p>
+          <div className="mt-3 grid grid-cols-2 rounded-2xl bg-white/80 p-1 text-xs font-black">
+            <button onClick={() => setLanguage('en')} className={`rounded-xl px-3 py-2 ${language === 'en' ? 'bg-accent text-white' : ''}`}>EN</button>
+            <button onClick={() => setLanguage('ms')} className={`rounded-xl px-3 py-2 ${language === 'ms' ? 'bg-accent text-white' : ''}`}>BM</button>
+          </div>
+        </div>
+        <nav className="island-panel grid gap-2 rounded-[2rem] p-3">
+          {links
+            .filter((link) => roleAtLeast(profile.role, link.min))
+            .map((link) => (
+              <NavLink
+                key={link.to}
+                to={link.to}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 rounded-2xl px-4 py-4 text-sm font-black transition ${
+                    isActive ? 'bg-accent text-white shadow-glow' : 'text-ink hover:bg-shell'
+                  }`
+                }
+              >
+                <link.icon className="h-5 w-5" />
+                <span>
+                  <span className="block">{link.label}</span>
+                  {'ms' in link ? <span className="block text-xs opacity-75">{link.ms}</span> : null}
+                </span>
+              </NavLink>
+            ))}
+        </nav>
+        <button
+          type="button"
+          onClick={signOut}
+          className="absolute bottom-5 left-5 right-5 flex items-center justify-center gap-2 rounded-2xl border border-line bg-white/80 px-3 py-3 font-bold shadow-soft"
+        >
+          <LogOut className="h-5 w-5" />
+          Sign out
+        </button>
+      </aside>
+      <div className="lg:pl-72">
+        <header className="no-print sticky top-0 z-20 border-b border-line bg-white/85 px-4 py-3 backdrop-blur lg:hidden">
+          <div className="flex items-center justify-between gap-3">
+            <strong>{String(settings.business_name)}</strong>
+            <div className="flex items-center gap-2">
+              <div className="grid grid-cols-2 rounded-2xl bg-white/80 p-1 text-xs font-black">
+                <button onClick={() => setLanguage('en')} className={`rounded-xl px-3 py-2 ${language === 'en' ? 'bg-accent text-white' : ''}`}>EN</button>
+                <button onClick={() => setLanguage('ms')} className={`rounded-xl px-3 py-2 ${language === 'ms' ? 'bg-accent text-white' : ''}`}>BM</button>
+              </div>
+              <button type="button" onClick={signOut} className="rounded-2xl border border-line px-3 py-2 text-sm font-bold">
+                Sign out
+              </button>
+            </div>
+          </div>
+          <nav className="mt-3 flex gap-2 overflow-x-auto pb-1">
+            {links
+              .filter((link) => roleAtLeast(profile.role, link.min))
+              .map((link) => (
+                <NavLink
+                  key={link.to}
+                  to={link.to}
+                  className={({ isActive }) =>
+                    `whitespace-nowrap rounded-2xl border px-4 py-2 text-sm font-black ${
+                      isActive ? 'border-accent bg-accent text-white' : 'border-line bg-white'
+                    }`
+                  }
+                >
+                  {link.label}
+                </NavLink>
+              ))}
+          </nav>
+        </header>
+        <main className="w-full max-w-[1500px] px-4 py-6 lg:px-8">
+          <Outlet />
+        </main>
+      </div>
+    </div>
+  );
+}
