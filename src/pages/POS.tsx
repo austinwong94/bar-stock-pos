@@ -535,24 +535,24 @@ export default function POS({ settings }: { settings: SettingsMap }) {
               <p className="rounded-2xl bg-pink-50 p-3 text-sm font-black text-coral">Paid amount: {money(0, String(settings.currency_symbol))}. FOC is recorded as cost, not sales.</p>
             ) : null}
             <p className="text-sm font-bold text-accent">{dualMoney(total, String(settings.currency_symbol))}</p>
-            <p className="rounded-2xl bg-shell p-3 text-sm font-bold">Order accepted by / Diterima oleh: {orderTakenBy}</p>
+            <p className="rounded-2xl bg-shell p-3 text-sm font-bold">{text('Order accepted by', 'Diterima oleh')}: {orderTakenBy}</p>
             {method === 'qr' ? (
               <>
-                <Field label="QR Payment reference / transaction ID">
+                <Field label={text('QR Payment reference or transaction ID', 'Rujukan Bayaran QR atau ID transaksi')}>
                   <input className={inputClass} value={qrReference} onChange={(e) => setQrReference(e.target.value)} />
                 </Field>
                 <div className="rounded-2xl border border-line bg-shell p-3">
-                  <p className="font-black">QR Payment receipt photo / Gambar resit Bayaran QR</p>
-                  <p className="mt-1 text-sm text-neutral-600">{qrReceipt ? qrReceipt.name : 'Camera should open automatically. Take a receipt photo before confirming.'}</p>
+                  <p className="font-black">{text('QR Payment receipt photo', 'Gambar resit Bayaran QR')}</p>
+                  <p className="mt-1 text-sm text-neutral-600">{qrReceipt ? qrReceipt.name : text('Camera should open automatically. Take a receipt photo before confirming.', 'Kamera akan dibuka secara automatik. Ambil gambar resit sebelum sahkan.')}</p>
                   <button className={`${secondaryButtonClass} mt-3`} onClick={() => document.getElementById(cameraInputId)?.click()}>
                     <Camera className="h-4 w-4" />
-                    Snap again
+                    {text('Snap again', 'Ambil semula')}
                   </button>
                 </div>
               </>
             ) : null}
             {method === 'complimentary' ? (
-              <Field label="Complimentary (FOC) reason / Sebab FOC">
+              <Field label={text('Complimentary (FOC) reason', 'Sebab FOC')}>
                 <textarea className={inputClass} value={complimentaryReason} onChange={(e) => setComplimentaryReason(e.target.value)} />
               </Field>
             ) : null}

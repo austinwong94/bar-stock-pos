@@ -145,8 +145,8 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
       <section className="island-panel mt-4 rounded-2xl p-3 sm:mt-5 sm:rounded-[2rem] sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 className="flex items-center gap-2 text-xl font-black"><PackageCheck className="h-5 w-5 text-accent" /> Stock Hub / Stok</h2>
-            <p className="mt-1 text-sm font-bold text-neutral-600">Current inventory overview is shown here on the dashboard.</p>
+            <h2 className="flex items-center gap-2 text-xl font-black"><PackageCheck className="h-5 w-5 text-accent" /> {text('Stock Hub', 'Hab Stok')}</h2>
+            <p className="mt-1 text-sm font-bold text-neutral-600">{text('Current inventory overview is shown here on the dashboard.', 'Gambaran inventori semasa dipaparkan di papan pemuka.')}</p>
           </div>
           <div className="grid grid-cols-3 gap-2 text-center text-sm font-black">
             <div className="rounded-2xl border border-line bg-white/80 px-3 py-2">

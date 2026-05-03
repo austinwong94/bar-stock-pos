@@ -356,7 +356,6 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
     <>
       <PageHeader
         title={text('Reports', 'Laporan')}
-        subtitle={text('View summaries, saved reports, item sales, and sales records in one place.', 'Lihat ringkasan, laporan tersimpan, jualan item, dan rekod jualan di satu tempat.')}
       />
       <section className="island-panel mb-3 rounded-2xl p-1.5 sm:mb-5 sm:rounded-[2rem] sm:p-2">
         <div className="grid grid-cols-2 gap-2">

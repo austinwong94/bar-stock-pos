@@ -11,6 +11,7 @@ import { isSupabaseConfigured } from '../lib/supabase';
 import { loadLocalCategories, loadLocalProducts, saveLocalProduct } from '../lib/localStore';
 import type { Category, ProductWithStock, SettingsMap } from '../lib/types';
 import { assetPath } from '../lib/assets';
+import { useLanguage } from '../lib/language';
 
 type ProductForm = {
   id?: string;
@@ -45,6 +46,7 @@ const defaultCategories = [
 
 export default function Products({ settings }: { settings: SettingsMap }) {
   const toast = useToast();
+  const { text } = useLanguage();
   const [products, setProducts] = useState<ProductWithStock[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [form, setForm] = useState<ProductForm | null>(null);
@@ -156,25 +158,25 @@ export default function Products({ settings }: { settings: SettingsMap }) {
   return (
     <>
       <PageHeader
-        title="Admin / Pentadbir"
-        subtitle="Admin-only product management. Use inactive instead of physical delete so old records stay intact."
+        title={text('Admin', 'Pentadbir')}
+        subtitle={text('Admin-only product management. Use inactive instead of physical delete so old records stay intact.', 'Pengurusan produk untuk pentadbir sahaja. Gunakan tidak aktif supaya rekod lama kekal.')}
         actions={
           demoAdminUnlocked ? (
             <>
             <button className={buttonClass} onClick={() => setForm(blank(defaultCartonSize))}>
               <Plus className="h-4 w-4" />
-              Add product
+              {text('Add product', 'Tambah produk')}
             </button>
-            <Link className={secondaryButtonClass} to="/settings">Settings</Link>
-            <Link className={secondaryButtonClass} to="/users">Users</Link>
+            <Link className={secondaryButtonClass} to="/settings">{text('Settings', 'Tetapan')}</Link>
+            <Link className={secondaryButtonClass} to="/users">{text('Users', 'Pengguna')}</Link>
             </>
           ) : null
         }
       />
       {!demoAdminUnlocked ? (
         <div className="island-panel mb-4 max-w-xl rounded-2xl p-3 sm:mb-5 sm:rounded-[2rem] sm:p-5">
-          <h2 className="text-xl font-black sm:text-2xl">Admin Access / Akses Pentadbir</h2>
-          <p className="mt-2 text-sm font-bold text-neutral-600">Enter admin password to manage products and records.</p>
+          <h2 className="text-xl font-black sm:text-2xl">{text('Admin Access', 'Akses Pentadbir')}</h2>
+          <p className="mt-2 text-sm font-bold text-neutral-600">{text('Enter admin password to manage products and records.', 'Masukkan kata laluan pentadbir untuk mengurus produk dan rekod.')}</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
             <input className={inputClass} type="password" value={adminPin} onChange={(e) => setAdminPin(e.target.value)} placeholder="Admin password" />
             <button className={buttonClass} onClick={() => setDemoAdminUnlocked(adminPin === '200000')}>Unlock</button>
@@ -186,12 +188,12 @@ export default function Products({ settings }: { settings: SettingsMap }) {
       <section className="island-panel mb-4 rounded-2xl p-3 sm:mb-5 sm:rounded-[2rem] sm:p-5">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-lg font-black sm:text-xl">Product Categories</h2>
-            <p className="mt-1 text-sm font-bold text-neutral-600">Choose one of these categories when adding or editing products.</p>
+            <h2 className="text-lg font-black sm:text-xl">{text('Product Categories', 'Kategori Produk')}</h2>
+            <p className="mt-1 text-sm font-bold text-neutral-600">{text('Choose one of these categories when adding or editing products.', 'Pilih kategori semasa menambah atau mengedit produk.')}</p>
           </div>
           <button className={secondaryButtonClass} onClick={() => setForm(blank(defaultCartonSize))}>
             <Plus className="h-4 w-4" />
-            Add product
+            {text('Add product', 'Tambah produk')}
           </button>
         </div>
         <div className="mt-3 flex flex-wrap gap-2 sm:mt-4">
@@ -313,7 +315,7 @@ export default function Products({ settings }: { settings: SettingsMap }) {
       </>
       )}
       {effectiveForm ? (
-        <Modal title={effectiveForm.id ? 'Edit product' : 'Add product'} onClose={() => setForm(null)}>
+        <Modal title={effectiveForm.id ? text('Edit product', 'Edit produk') : text('Add product', 'Tambah produk')} onClose={() => setForm(null)}>
           <form onSubmit={save} className="grid gap-4">
             <Field label="Product name">
               <input className={inputClass} value={effectiveForm.name} onChange={(e) => setForm({ ...effectiveForm, name: e.target.value })} required />

@@ -5,8 +5,10 @@ import { secondaryButtonClass } from '../components/Form';
 import { loadProducts } from '../lib/data';
 import { cansAndCartons } from '../lib/format';
 import type { ProductWithStock, SettingsMap } from '../lib/types';
+import { useLanguage } from '../lib/language';
 
 export default function Inventory({ settings }: { settings: SettingsMap }) {
+  const { text } = useLanguage();
   const [products, setProducts] = useState<ProductWithStock[]>([]);
 
   useEffect(() => {
@@ -16,12 +18,12 @@ export default function Inventory({ settings }: { settings: SettingsMap }) {
   return (
     <>
       <PageHeader
-        title="Stock Hub / Stok"
-        subtitle="Inventory, stock-in, and movement history are combined here to reduce tabs."
+        title={text('Stock Hub', 'Hab Stok')}
+        subtitle={text('Inventory, stock-in, and movement history are combined here to reduce tabs.', 'Inventori, stok masuk, dan sejarah pergerakan digabungkan di sini.')}
         actions={
           <>
-            <Link className={secondaryButtonClass} to="/stock-out-report">Stock Activity / Aktiviti Stok</Link>
-            <Link className={secondaryButtonClass} to="/movements">Movement History / Sejarah</Link>
+            <Link className={secondaryButtonClass} to="/stock-out-report">{text('Stock Activity', 'Aktiviti Stok')}</Link>
+            <Link className={secondaryButtonClass} to="/movements">{text('Movement History', 'Sejarah Pergerakan')}</Link>
           </>
         }
       />

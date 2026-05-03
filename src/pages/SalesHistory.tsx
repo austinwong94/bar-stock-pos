@@ -10,6 +10,7 @@ import { supabase } from '../lib/supabase';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { loadLocalSaleItems, loadLocalSales } from '../lib/localStore';
 import type { PaymentMethod, Sale, SaleItem, SettingsMap } from '../lib/types';
+import { useLanguage } from '../lib/language';
 
 type SaleWithItems = Sale & { sale_items?: SaleItem[] };
 type MethodFilter = PaymentMethod | 'all';
@@ -46,6 +47,7 @@ function itemName(item: SaleItem) {
 
 export default function SalesHistory({ settings, embedded = false }: { settings: SettingsMap; embedded?: boolean }) {
   const toast = useToast();
+  const { text } = useLanguage();
   const [date, setDate] = useState(isSupabaseConfigured ? todayInputValue() : '2026-05-03');
   const [method, setMethod] = useState<MethodFilter>('all');
   const [sales, setSales] = useState<SaleWithItems[]>([]);
@@ -128,7 +130,7 @@ export default function SalesHistory({ settings, embedded = false }: { settings:
 
   return (
     <>
-      {embedded ? null : <PageHeader title="Sales History / Sejarah Jualan" subtitle="Review completed sales, QR Payment status, staff, item details, and voids." />}
+      {embedded ? null : <PageHeader title={text('Sales History', 'Sejarah Jualan')} subtitle={text('Review completed sales, QR Payment status, staff, item details, and voids.', 'Semak jualan siap, status Bayaran QR, staf, butiran item, dan batal jualan.')} />}
 
       <section className="mb-4 grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-5">
         <div className="rounded-2xl border border-violet-200 bg-violet-50 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4 lg:p-5">

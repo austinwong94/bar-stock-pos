@@ -59,7 +59,7 @@ export function Layout({
             {publicPreview ? text('Access verified', 'Akses disahkan') : `${profile.full_name ?? profile.role} · ${profile.role}`}
           </p>
           <p className="mt-3 rounded-2xl bg-shell px-3 py-2 text-xs font-bold text-neutral-600">
-            {text('English', 'Bahasa Melayu')} · MYR / RMB
+            {language === 'en' ? 'English' : 'Bahasa Melayu'} · MYR / RMB
           </p>
           <div className="mt-3 grid grid-cols-2 rounded-2xl bg-white/80 p-1 text-xs font-black">
             <button onClick={() => setLanguage('en')} className={`rounded-xl px-3 py-2 ${language === 'en' ? 'bg-accent text-white' : ''}`}>EN</button>
@@ -79,10 +79,7 @@ export function Layout({
                 }
               >
                 <link.icon className="h-5 w-5" />
-                <span>
-                  <span className="block">{link.label}</span>
-                  {'ms' in link ? <span className="block text-xs opacity-75">{link.ms}</span> : null}
-                </span>
+                <span>{text(link.label, 'ms' in link ? link.ms : link.label)}</span>
               </NavLink>
             ))}
         </nav>

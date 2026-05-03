@@ -1,15 +1,33 @@
-import { useMemo, useState } from 'react';
-import { addDays, addWeeks, parseISO, startOfWeek } from 'date-fns';
+import { useEffect, useMemo, useState } from 'react';
+import { addDays, addWeeks, format, parseISO, startOfWeek } from 'date-fns';
 import { inputClass } from '../components/Form';
 import { PageHeader } from '../components/Page';
-import { demoMovements } from '../lib/demo';
-import { loadLocalSaleItems, loadLocalSales } from '../lib/localStore';
-import { money } from '../lib/format';
-import type { SettingsMap } from '../lib/types';
+import { money, todayInputValue } from '../lib/format';
+import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import { useLanguage } from '../lib/language';
+import type { Sale, SaleItem, SettingsMap, StockMovement } from '../lib/types';
 import StockIn from './StockIn';
 
 type Period = 'day' | 'week' | 'month' | 'custom';
 type Mode = 'in' | 'out';
+type StockOutRow = {
+  date: string;
+  sale: string;
+  item: string;
+  qty: number;
+  method: string;
+  total: number;
+  worker: string;
+};
+type StockInRow = {
+  date: string;
+  reference: string;
+  item: string;
+  qty: number;
+  unit: string;
+  worker: string;
+  notes: string;
+};
 
 function methodLabel(method: string) {
   if (method === 'cash') return 'Cash Payment';
@@ -26,6 +44,10 @@ function weekStartFromInput(value: string) {
   return addWeeks(weekOne, Math.max(week - 1, 0));
 }
 
+function currentWeekInput() {
+  return format(new Date(), "RRRR-'W'II");
+}
+
 function inRange(date: string, period: Period, selectedDate: string, selectedWeek: string, selectedMonth: string, customStart: string, customEnd: string) {
   if (date === '-') return false;
   if (period === 'day') return date === selectedDate;
@@ -38,39 +60,62 @@ function inRange(date: string, period: Period, selectedDate: string, selectedWee
 }
 
 export default function StockOutReport({ settings }: { settings: SettingsMap }) {
+  const { text } = useLanguage();
   const [mode, setMode] = useState<Mode>('in');
   const [period, setPeriod] = useState<Period>('day');
-  const [selectedDate, setSelectedDate] = useState('2026-05-03');
-  const [selectedWeek, setSelectedWeek] = useState('2026-W18');
-  const [selectedMonth, setSelectedMonth] = useState('2026-05');
-  const [customStart, setCustomStart] = useState('2026-04-30');
-  const [customEnd, setCustomEnd] = useState('2026-05-03');
+  const today = todayInputValue();
+  const [selectedDate, setSelectedDate] = useState(today);
+  const [selectedWeek, setSelectedWeek] = useState(currentWeekInput());
+  const [selectedMonth, setSelectedMonth] = useState(today.slice(0, 7));
+  const [customStart, setCustomStart] = useState(today);
+  const [customEnd, setCustomEnd] = useState(today);
+  const [stockOutRows, setStockOutRows] = useState<StockOutRow[]>([]);
+  const [stockInRows, setStockInRows] = useState<StockInRow[]>([]);
 
-  const stockOutRows = useMemo(() => loadLocalSaleItems().map((item) => {
-    const sale = loadLocalSales().find((entry) => entry.id === item.sale_id);
-    return {
-      date: sale?.business_date ?? '-',
-      sale: sale?.sale_number ?? '-',
-      staff: sale?.order_taken_by ?? '-',
-      item: item.products?.name ?? item.custom_item_name ?? item.product_id ?? 'Custom Order',
-      qty: item.quantity,
-      method: sale?.payment_method ?? '-',
-      total: item.line_total,
-      worker: sale?.order_taken_by ?? '-',
-    };
-  }), []);
+  useEffect(() => {
+    async function loadRows() {
+      if (!isSupabaseConfigured) {
+        setStockOutRows([]);
+        setStockInRows([]);
+        return;
+      }
 
-  const stockInRows = demoMovements
-    .filter((movement) => movement.movement_type === 'stock_in')
-    .map((movement) => ({
-      date: movement.created_at.slice(0, 10),
-      reference: movement.reason ?? movement.reference_type ?? '-',
-      item: movement.products?.name ?? movement.product_id ?? '-',
-      qty: Math.abs(movement.quantity_change),
-      unit: movement.unit_input === 'carton' ? `${movement.input_quantity ?? '-'} carton` : `${movement.input_quantity ?? Math.abs(movement.quantity_change)} unit(s)`,
-      worker: movement.entered_by ?? '-',
-      notes: movement.notes ?? '-',
-    }));
+      const [{ data: salesData, error: salesError }, { data: movementData, error: movementError }] = await Promise.all([
+        supabase.from('sales').select('*, sale_items(*, products(name))').order('created_at', { ascending: false }),
+        supabase.from('stock_movements').select('*, products(name)').eq('movement_type', 'stock_in').order('created_at', { ascending: false }),
+      ]);
+      if (salesError) console.error(salesError);
+      if (movementError) console.error(movementError);
+
+      const sales = (salesData ?? []) as Array<Sale & { sale_items?: SaleItem[] }>;
+      setStockOutRows(
+        sales.flatMap((sale) =>
+          (sale.sale_items ?? []).map((item) => ({
+            date: sale.business_date,
+            sale: sale.sale_number,
+            item: item.products?.name ?? item.custom_item_name ?? item.product_id ?? 'Custom Order',
+            qty: item.quantity,
+            method: sale.payment_method,
+            total: Number(item.line_total),
+            worker: sale.order_taken_by ?? '-',
+          })),
+        ),
+      );
+
+      setStockInRows(
+        ((movementData ?? []) as StockMovement[]).map((movement) => ({
+          date: movement.created_at.slice(0, 10),
+          reference: movement.reason ?? movement.reference_type ?? '-',
+          item: movement.products?.name ?? movement.product_id ?? '-',
+          qty: Math.abs(movement.quantity_change),
+          unit: movement.unit_input === 'carton' ? `${movement.input_quantity ?? '-'} ${text('carton', 'karton')}` : `${movement.input_quantity ?? Math.abs(movement.quantity_change)} ${text('unit(s)', 'unit')}`,
+          worker: movement.entered_by ?? '-',
+          notes: movement.notes ?? '-',
+        })),
+      );
+    }
+    void loadRows();
+  }, [text]);
 
   const filteredOutRows = stockOutRows.filter((row) => inRange(row.date, period, selectedDate, selectedWeek, selectedMonth, customStart, customEnd));
   const filteredInRows = stockInRows.filter((row) => inRange(row.date, period, selectedDate, selectedWeek, selectedMonth, customStart, customEnd));
@@ -78,24 +123,24 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
   return (
     <>
       <PageHeader
-        title="Stock Activity / Aktiviti Stok"
+        title={text('Stock Activity', 'Aktiviti Stok')}
       />
       <section className="mb-4 grid grid-cols-2 gap-2">
         <button
           className={`rounded-2xl border p-3 text-left shadow-soft transition sm:rounded-[2rem] sm:p-5 ${mode === 'in' ? 'border-accent bg-teal-50 ring-2 ring-teal-100 sm:ring-4' : 'border-line bg-white/85 hover:border-accent'}`}
           onClick={() => setMode('in')}
         >
-          <p className="text-xs font-black uppercase tracking-widest text-accent">Record</p>
-          <h2 className="mt-1.5 text-lg font-black sm:mt-2 sm:text-2xl">Stock In</h2>
-          <p className="mt-1 text-sm font-bold text-neutral-600">Add units or cartons into inventory.</p>
+          <p className="text-xs font-black uppercase tracking-widest text-accent">{text('Record', 'Rekod')}</p>
+          <h2 className="mt-1.5 text-lg font-black sm:mt-2 sm:text-2xl">{text('Stock In', 'Stok Masuk')}</h2>
+          <p className="mt-1 text-sm font-bold text-neutral-600">{text('Add units or cartons into inventory.', 'Tambah unit atau karton ke inventori.')}</p>
         </button>
         <button
           className={`rounded-2xl border p-3 text-left shadow-soft transition sm:rounded-[2rem] sm:p-5 ${mode === 'out' ? 'border-accent bg-teal-50 ring-2 ring-teal-100 sm:ring-4' : 'border-line bg-white/85 hover:border-accent'}`}
           onClick={() => setMode('out')}
         >
-          <p className="text-xs font-black uppercase tracking-widest text-coral">Review</p>
-          <h2 className="mt-1.5 text-lg font-black sm:mt-2 sm:text-2xl">Stock Out</h2>
-          <p className="mt-1 text-sm font-bold text-neutral-600">Review sales and FOC stock deductions.</p>
+          <p className="text-xs font-black uppercase tracking-widest text-coral">{text('Review', 'Semak')}</p>
+          <h2 className="mt-1.5 text-lg font-black sm:mt-2 sm:text-2xl">{text('Stock Out', 'Stok Keluar')}</h2>
+          <p className="mt-1 text-sm font-bold text-neutral-600">{text('Review sales and FOC stock deductions.', 'Semak jualan dan penolakan stok FOC.')}</p>
         </button>
       </section>
 
@@ -127,7 +172,7 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
                 className={`min-h-9 rounded-xl px-1.5 py-1.5 ${period === item ? 'bg-accent text-white' : ''}`}
                 onClick={() => setPeriod(item)}
               >
-                {item === 'day' ? 'Daily' : item === 'week' ? 'Weekly' : item === 'month' ? 'Monthly' : 'Selected'}
+                {item === 'day' ? text('Daily', 'Harian') : item === 'week' ? text('Weekly', 'Mingguan') : item === 'month' ? text('Monthly', 'Bulanan') : text('Selected', 'Pilihan')}
               </button>
             ))}
           </div>

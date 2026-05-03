@@ -9,6 +9,7 @@ import { loadProducts } from '../lib/data';
 import { supabase } from '../lib/supabase';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { adjustLocalStock } from '../lib/localStore';
+import { useLanguage } from '../lib/language';
 import type { ProductWithStock, SettingsMap } from '../lib/types';
 
 type StockInLine = {
@@ -38,6 +39,7 @@ function staffNames(settings: SettingsMap) {
 
 export default function StockIn({ settings, embedded = false }: { settings: SettingsMap; embedded?: boolean }) {
   const toast = useToast();
+  const { text } = useLanguage();
   const workers = useMemo(() => staffNames(settings), [settings]);
   const [products, setProducts] = useState<ProductWithStock[]>([]);
   const [productId, setProductId] = useState('');
@@ -77,11 +79,11 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
     event?.preventDefault();
     const parsed = stockInSchema.safeParse({ productId, quantity, unit, cost });
     if (!parsed.success) {
-      toast.error('Choose a product and enter a positive quantity.');
+      toast.error(text('Choose a product and enter a positive quantity.', 'Pilih produk dan masukkan kuantiti yang betul.'));
       return;
     }
     if (!product) {
-      toast.error('Choose a product.');
+      toast.error(text('Choose a product.', 'Pilih produk.'));
       return;
     }
     const costPerUnit = cost === '' ? null : Number(cost);
@@ -118,12 +120,12 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
     });
     setQuantity(1);
     setCost('');
-    toast.success(`${product.name} added to stock-in list.`);
+    toast.success(`${product.name} ${text('added to stock-in list.', 'ditambah ke senarai stok masuk.')}`);
   }
 
   function reviewBatch() {
     if (lines.length === 0) {
-      toast.error('Add at least one product to the stock-in list.');
+      toast.error(text('Add at least one product to the stock-in list.', 'Tambah sekurang-kurangnya satu produk ke senarai stok masuk.'));
       return;
     }
     setConfirming(true);
@@ -138,7 +140,7 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
       setConfirming(false);
       await refresh();
       setLines([]);
-      toast.success(`Stock updated by ${enteredBy}: ${totalBatchUnits} unit(s) added.`);
+      toast.success(`${text('Stock updated by', 'Stok dikemas kini oleh')} ${enteredBy}: ${totalBatchUnits} ${text('unit(s) added.', 'unit ditambah.')}`);
       return;
     }
     const entries = lines.map((line) => ({
@@ -175,21 +177,21 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
         }
       }
     } else if (!data) {
-      toast.error('Stock-in did not return updated balances.');
+      toast.error(text('Stock-in did not return updated balances.', 'Stok masuk tidak mengembalikan baki terkini.'));
       return;
     }
     setConfirming(false);
     await refresh();
     setLines([]);
-    toast.success(`Stock updated by ${enteredBy}: ${totalBatchUnits} unit(s) added.`);
+    toast.success(`${text('Stock updated by', 'Stok dikemas kini oleh')} ${enteredBy}: ${totalBatchUnits} ${text('unit(s) added.', 'unit ditambah.')}`);
   }
 
   return (
     <>
-      {embedded ? null : <PageHeader title="Stock In" subtitle="Cartons are converted by each product carton size." />}
+      {embedded ? null : <PageHeader title={text('Stock In', 'Stok Masuk')} subtitle={text('Cartons are converted by each product carton size.', 'Karton ditukar mengikut saiz karton setiap produk.')} />}
       <form onSubmit={addLine} className="island-panel grid gap-4 rounded-2xl p-3 shadow-soft sm:rounded-[2rem] sm:p-5">
         <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-2xl border border-line bg-white/75 p-2">
-          <p className="text-xs font-black leading-tight sm:text-sm">Entered by / Diisi oleh</p>
+          <p className="text-xs font-black leading-tight sm:text-sm">{text('Entered by', 'Diisi oleh')}</p>
           <div className="grid min-w-0 grid-cols-4 gap-1.5">
             {workers.map((worker) => (
               <button
@@ -205,7 +207,7 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
             ))}
           </div>
         </div>
-        <Field label="Product">
+        <Field label={text('Product', 'Produk')}>
           <select className={inputClass} value={productId} onChange={(e) => setProductId(e.target.value)}>
             {products.map((item) => (
               <option key={item.id} value={item.id}>
@@ -215,11 +217,11 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
           </select>
         </Field>
         <div className="grid gap-3 md:grid-cols-[minmax(150px,0.72fr)_1.8fr] md:items-end">
-          <Field label="Quantity">
+          <Field label={text('Quantity', 'Kuantiti')}>
             <input className={inputClass} type="number" min={1} value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} />
           </Field>
           <div>
-            <p className="mb-2 text-sm font-semibold">Unit type</p>
+            <p className="mb-2 text-sm font-semibold">{text('Unit type', 'Jenis unit')}</p>
             <div className="grid grid-cols-2 gap-2 sm:gap-3">
               {(['can', 'carton'] as const).map((nextUnit) => (
                 <button
@@ -233,7 +235,7 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
                   <span className="block">{nextUnit === 'can' ? 'UNIT(S)' : 'CARTON(S)'}</span>
                   {nextUnit === 'carton' ? (
                     <span className="block text-[10px] font-black leading-tight text-neutral-600 sm:text-[11px]">
-                      1 carton = {defaultCartonUnits} units
+                      {text('1 carton =', '1 karton =')} {defaultCartonUnits} {text('units', 'unit')}
                     </span>
                   ) : null}
                 </button>
@@ -242,52 +244,52 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
           </div>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
-          <Field label="Supplier">
+          <Field label={text('Supplier', 'Pembekal')}>
             <input className={inputClass} value={supplier} onChange={(e) => setSupplier(e.target.value)} />
           </Field>
-          <Field label="Invoice / reference">
+          <Field label={text('Invoice or reference', 'Invois atau rujukan')}>
             <input className={inputClass} value={reference} onChange={(e) => setReference(e.target.value)} />
           </Field>
-          <Field label={`Cost per unit (${String(settings.currency_symbol)})`}>
+          <Field label={`${text('Cost per unit', 'Kos seunit')} (${String(settings.currency_symbol)})`}>
             <input className={inputClass} type="number" min={0} step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} />
           </Field>
-          <Field label="Notes">
+          <Field label={text('Notes', 'Nota')}>
             <input className={inputClass} value={notes} onChange={(e) => setNotes(e.target.value)} />
           </Field>
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
           <button type="submit" className={`${secondaryButtonClass} justify-center`}>
             <Plus className="h-4 w-4" />
-            Add to stock-in list
+            {text('Add to stock-in list', 'Tambah ke senarai stok masuk')}
           </button>
           <button type="button" className={`${buttonClass} justify-center`} disabled={lines.length === 0} onClick={reviewBatch}>
-            Review {lines.length} item{lines.length === 1 ? '' : 's'}
+            {text('Review', 'Semak')} {lines.length} {text(lines.length === 1 ? 'item' : 'items', 'item')}
           </button>
         </div>
       </form>
       <section className="island-panel mt-4 rounded-2xl p-3 shadow-soft sm:rounded-[2rem] sm:p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h2 className="text-lg font-black">Stock-in list</h2>
-            <p className="text-sm font-bold text-neutral-600">Add multiple products here before confirming.</p>
+            <h2 className="text-lg font-black">{text('Stock-in list', 'Senarai stok masuk')}</h2>
+            <p className="text-sm font-bold text-neutral-600">{text('Add multiple products here before confirming.', 'Tambah beberapa produk di sini sebelum sahkan.')}</p>
           </div>
           <p className="rounded-xl bg-teal-50 px-3 py-2 text-sm font-black text-accent">{totalBatchUnits} unit(s)</p>
         </div>
         {lines.length === 0 ? (
           <p className="mt-3 rounded-2xl border border-line bg-white/80 p-3 text-sm font-bold text-neutral-600">
-            No products added yet.
+            {text('No products added yet.', 'Belum ada produk ditambah.')}
           </p>
         ) : (
           <div className="mt-3 overflow-x-auto">
             <table className="w-full min-w-[760px] text-left">
               <thead className="text-sm">
                 <tr>
-                  <th className="p-3">Product</th>
-                  <th className="p-3">Quantity</th>
-                  <th className="p-3">Unit type</th>
-                  <th className="p-3">Units added</th>
-                  <th className="p-3">Cost</th>
-                  <th className="p-3">Action</th>
+                  <th className="p-3">{text('Product', 'Produk')}</th>
+                  <th className="p-3">{text('Quantity', 'Kuantiti')}</th>
+                  <th className="p-3">{text('Unit type', 'Jenis unit')}</th>
+                  <th className="p-3">{text('Units added', 'Unit ditambah')}</th>
+                  <th className="p-3">{text('Cost', 'Kos')}</th>
+                  <th className="p-3">{text('Action', 'Tindakan')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -295,7 +297,7 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
                   <tr key={line.id} className="border-t border-line">
                     <td className="p-3 font-black">{line.productName}</td>
                     <td className="p-3">{line.quantity}</td>
-                    <td className="p-3">{line.unit === 'can' ? 'UNIT(S)' : `CARTON(S) - 1 carton = ${line.cartonSize} units`}</td>
+                    <td className="p-3">{line.unit === 'can' ? 'UNIT(S)' : `CARTON(S) - ${text('1 carton =', '1 karton =')} ${line.cartonSize} ${text('units', 'unit')}`}</td>
                     <td className="p-3 font-black">{line.cans}</td>
                     <td className="p-3">{line.costPerUnit == null ? '-' : `${String(settings.currency_symbol)} ${line.costPerUnit.toFixed(2)}`}</td>
                     <td className="p-3">
@@ -305,7 +307,7 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
                         onClick={() => setLines((current) => current.filter((item) => item.id !== line.id))}
                       >
                         <Trash2 className="h-4 w-4" />
-                        Remove
+                        {text('Remove', 'Buang')}
                       </button>
                     </td>
                   </tr>
@@ -317,25 +319,25 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
       </section>
       {confirming ? (
         <Modal
-          title="Confirm Stock-In Batch"
+          title={text('Confirm Stock-In Batch', 'Sahkan stok masuk berkumpulan')}
           onClose={() => setConfirming(false)}
           footer={
             <div className="flex flex-wrap justify-end gap-2">
-              <button className={secondaryButtonClass} onClick={() => setConfirming(false)}>Cancel</button>
+              <button className={secondaryButtonClass} onClick={() => setConfirming(false)}>{text('Cancel', 'Batal')}</button>
               <button className={buttonClass} disabled={saving} onClick={confirm}>
-                {saving ? 'Saving...' : `Yes, confirm ${lines.length} item${lines.length === 1 ? '' : 's'}`}
+                {saving ? text('Saving...', 'Menyimpan...') : `${text('Yes, confirm', 'Ya, sahkan')} ${lines.length} ${text(lines.length === 1 ? 'item' : 'items', 'item')}`}
               </button>
             </div>
           }
         >
-          <p className="text-xl font-black leading-tight sm:text-2xl">Confirm Stock-In: {totalBatchUnits} unit(s)?</p>
+          <p className="text-xl font-black leading-tight sm:text-2xl">{text('Confirm Stock-In', 'Sahkan Stok Masuk')}: {totalBatchUnits} {text('unit(s)', 'unit')}?</p>
           <div className="mt-3 max-h-[45vh] overflow-auto rounded-2xl border border-line bg-white/80">
             <table className="w-full min-w-[560px] text-left text-sm">
               <thead className="bg-shell">
                 <tr>
-                  <th className="p-3">Product</th>
-                  <th className="p-3">Input</th>
-                  <th className="p-3">Units added</th>
+                  <th className="p-3">{text('Product', 'Produk')}</th>
+                  <th className="p-3">{text('Input', 'Input')}</th>
+                  <th className="p-3">{text('Units added', 'Unit ditambah')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -349,7 +351,7 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
               </tbody>
             </table>
           </div>
-          <p className="mt-2 rounded-2xl bg-shell p-3 text-sm font-black">Entered by / Diisi oleh: {enteredBy}</p>
+          <p className="mt-2 rounded-2xl bg-shell p-3 text-sm font-black">{text('Entered by', 'Diisi oleh')}: {enteredBy}</p>
         </Modal>
       ) : null}
     </>

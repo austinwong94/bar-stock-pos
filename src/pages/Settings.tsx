@@ -8,6 +8,7 @@ import { saveLocalSettings } from '../lib/localStore';
 import { supabase } from '../lib/supabase';
 import { isSupabaseConfigured } from '../lib/supabase';
 import type { AppSettingKey, SettingsMap } from '../lib/types';
+import { useLanguage } from '../lib/language';
 
 const fields: Array<{ key: AppSettingKey; label: string; type: 'text' | 'number' | 'time' | 'boolean' }> = [
   { key: 'business_name', label: 'Business name', type: 'text' },
@@ -25,6 +26,7 @@ const fields: Array<{ key: AppSettingKey; label: string; type: 'text' | 'number'
 
 export default function Settings({ settings, onSaved }: { settings: SettingsMap; onSaved: (settings: SettingsMap) => void }) {
   const toast = useToast();
+  const { text } = useLanguage();
   const [form, setForm] = useState<SettingsMap>({ ...defaultSettings, ...settings });
   const [saving, setSaving] = useState(false);
   const [newStaffName, setNewStaffName] = useState('');
@@ -66,11 +68,11 @@ export default function Settings({ settings, onSaved }: { settings: SettingsMap;
 
   return (
     <>
-      <PageHeader title="Settings" subtitle="Admin-only controls for business rules and receipt/report defaults." />
+      <PageHeader title={text('Settings', 'Tetapan')} subtitle={text('Admin-only controls for business rules and receipt/report defaults.', 'Tetapan pentadbir untuk peraturan bisnes dan nota resit/laporan.')} />
       <form onSubmit={save} className="island-panel grid max-w-4xl gap-4 rounded-2xl p-3 sm:rounded-[2rem] sm:p-5">
         <section className="rounded-2xl border border-line bg-white/80 p-3 sm:rounded-[1.5rem] sm:p-4">
-          <h2 className="text-lg font-black sm:text-xl">Staff names / Nama staf</h2>
-          <p className="mt-1 text-sm font-bold text-neutral-600">These become the order-taker buttons in POS.</p>
+          <h2 className="text-lg font-black sm:text-xl">{text('Staff names', 'Nama staf')}</h2>
+          <p className="mt-1 text-sm font-bold text-neutral-600">{text('These become the order-taker buttons in POS.', 'Nama ini menjadi butang penerima pesanan di POS.')}</p>
           <div className="mt-3 grid gap-2 sm:mt-4 sm:grid-cols-2">
             {staffNames.map((name, index) => (
               <div key={`${name}-${index}`} className="flex items-center gap-2 rounded-xl border border-line bg-shell p-2 sm:rounded-2xl">
