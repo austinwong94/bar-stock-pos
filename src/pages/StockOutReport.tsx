@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { addDays, addWeeks, format, parseISO, startOfWeek } from 'date-fns';
+import { addDays, addMonths, addWeeks, format, parseISO, startOfWeek } from 'date-fns';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { inputClass } from '../components/Form';
 import { PageHeader } from '../components/Page';
 import { dateInputValue, money, todayInputValue } from '../lib/format';
@@ -120,6 +121,20 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
   const filteredOutRows = stockOutRows.filter((row) => inRange(row.date, period, selectedDate, selectedWeek, selectedMonth, customStart, customEnd));
   const filteredInRows = stockInRows.filter((row) => inRange(row.date, period, selectedDate, selectedWeek, selectedMonth, customStart, customEnd));
 
+  function shiftPeriod(direction: -1 | 1) {
+    if (period === 'day') {
+      setSelectedDate(format(addDays(parseISO(selectedDate), direction), 'yyyy-MM-dd'));
+      return;
+    }
+    if (period === 'week') {
+      setSelectedWeek(format(addWeeks(weekStartFromInput(selectedWeek), direction), "RRRR-'W'II"));
+      return;
+    }
+    if (period === 'month') {
+      setSelectedMonth(format(addMonths(new Date(`${selectedMonth}-01T00:00:00`), direction), 'yyyy-MM'));
+    }
+  }
+
   return (
     <>
       <PageHeader
@@ -174,10 +189,30 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
               </button>
             ))}
           </div>
-          <div className={`grid w-full min-w-0 gap-2 ${period === 'custom' ? 'sm:grid-cols-2 xl:flex-1' : 'xl:max-w-sm'}`}>
-            {period === 'day' ? <input className={`${inputClass} w-full`} type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} /> : null}
-            {period === 'week' ? <input className={`${inputClass} w-full`} type="week" value={selectedWeek} onChange={(event) => setSelectedWeek(event.target.value)} /> : null}
-            {period === 'month' ? <input className={`${inputClass} w-full`} type="month" value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)} /> : null}
+          <div className={`grid w-full min-w-0 gap-2 ${period === 'custom' ? 'sm:grid-cols-2 xl:flex-1' : 'xl:max-w-md'}`}>
+            {period !== 'custom' ? (
+              <div className="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] gap-2">
+                <button
+                  type="button"
+                  className="grid h-10 w-10 place-items-center rounded-xl border border-line bg-white font-black shadow-soft sm:h-11 sm:w-11 sm:rounded-2xl"
+                  onClick={() => shiftPeriod(-1)}
+                  aria-label="Previous period"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                {period === 'day' ? <input className={`${inputClass} w-full`} type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} /> : null}
+                {period === 'week' ? <input className={`${inputClass} w-full`} type="week" value={selectedWeek} onChange={(event) => setSelectedWeek(event.target.value)} /> : null}
+                {period === 'month' ? <input className={`${inputClass} w-full`} type="month" value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)} /> : null}
+                <button
+                  type="button"
+                  className="grid h-10 w-10 place-items-center rounded-xl border border-line bg-white font-black shadow-soft sm:h-11 sm:w-11 sm:rounded-2xl"
+                  onClick={() => shiftPeriod(1)}
+                  aria-label="Next period"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            ) : null}
             {period === 'custom' ? (
               <>
                 <input className={`${inputClass} w-full`} type="date" value={customStart} onChange={(event) => setCustomStart(event.target.value)} />

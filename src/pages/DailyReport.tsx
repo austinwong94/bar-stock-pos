@@ -8,15 +8,16 @@ import { PageHeader } from '../components/Page';
 import { useToast } from '../components/Toast';
 import { money } from '../lib/format';
 import { demoReports } from '../lib/demo';
-import { loadLocalSales } from '../lib/localStore';
+import { loadLocalSaleItems, loadLocalSales } from '../lib/localStore';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
-import type { DailyReport, Sale, SettingsMap } from '../lib/types';
+import type { DailyReport, Sale, SaleItem, SettingsMap } from '../lib/types';
 import { useLanguage } from '../lib/language';
-import { scaledItemSales } from '../lib/reportItems';
+import { actualItemSales } from '../lib/reportItems';
 import SalesHistory from './SalesHistory';
 
 type ReportPeriod = 'daily' | 'weekly' | 'monthly' | 'custom';
 type ClosingStatus = 'closed' | 'not_closed' | 'partial';
+type SaleWithItems = Sale & { sale_items?: SaleItem[] };
 
 type ReportDay = {
   id: string;
@@ -175,7 +176,13 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
   const toast = useToast();
   const { text } = useLanguage();
   const [reports, setReports] = useState<DailyReport[]>(demoReports);
-  const [sales, setSales] = useState<Sale[]>(() => loadLocalSales());
+  const [sales, setSales] = useState<SaleWithItems[]>(() => {
+    const localSaleItems = loadLocalSaleItems();
+    return loadLocalSales().map((sale) => ({
+      ...sale,
+      sale_items: localSaleItems.filter((item) => item.sale_id === sale.id),
+    }));
+  });
   const [reportPeriod, setReportPeriod] = useState<ReportPeriod>('daily');
   const [, setBusinessDate] = useState('2026-05-03');
   const [reportMonth, setReportMonth] = useState('2026-05');
@@ -194,10 +201,10 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
       if (!isSupabaseConfigured) return;
       const [{ data: reportData }, { data: saleData }] = await Promise.all([
         supabase.from('daily_reports').select('*').order('business_date', { ascending: false }),
-        supabase.from('sales').select('*').order('business_date', { ascending: false }),
+        supabase.from('sales').select('*, sale_items(*, products(name))').order('business_date', { ascending: false }),
       ]);
       setReports((reportData ?? []) as DailyReport[]);
-      setSales((saleData ?? []) as Sale[]);
+      setSales((saleData ?? []) as SaleWithItems[]);
     }
     void loadReports();
   }, []);
@@ -219,12 +226,8 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
 
   const activeReport = reportRows.find((row) => row.id === selectedReportId) ?? reportRows.find((row) => row.businessDate === selectedReportDate) ?? reportRows[0] ?? null;
   const selectedItemSales = useMemo(
-    () => scaledItemSales({
-      cash: activeReport?.cash ?? 0,
-      qr: activeReport?.qr ?? 0,
-      focCost: activeReport?.focCost ?? 0,
-    }),
-    [activeReport],
+    () => actualItemSales(sales, activeReport?.dates ?? []),
+    [activeReport?.dates, sales],
   );
 
   const periodTotals = reportRows.reduce(
@@ -284,11 +287,7 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
       toast.error('Popup blocked. Allow popups to download/print PDF.');
       return;
     }
-    const reportItems = scaledItemSales({
-      cash: selectedReport.cash,
-      qr: selectedReport.qr,
-      focCost: selectedReport.focCost,
-    });
+    const reportItems = actualItemSales(sales, selectedReport.dates);
     const reportItemTotals = reportItems.reduce(
       (sum, item) => ({
         quantity: sum.quantity + item.quantity,

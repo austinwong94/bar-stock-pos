@@ -1,4 +1,5 @@
 import { demoItemSales } from './demo';
+import type { Sale, SaleItem } from './types';
 
 export type ItemSalesBreakdown = {
   product: string;
@@ -48,4 +49,33 @@ export function scaledItemSales(totals: ReportTotals): ItemSalesBreakdown[] {
       };
     })
     .filter((item) => item.quantity > 0 || item.cash > 0 || item.qr > 0 || item.focCost > 0);
+}
+
+export type SaleWithItems = Sale & { sale_items?: SaleItem[] };
+
+export function actualItemSales(sales: SaleWithItems[], dates?: string[]): ItemSalesBreakdown[] {
+  const dateSet = dates ? new Set(dates) : null;
+  const rows = new Map<string, ItemSalesBreakdown>();
+
+  sales
+    .filter((sale) => sale.status === 'completed' && (!dateSet || dateSet.has(sale.business_date)))
+    .forEach((sale) => {
+      const items = sale.sale_items ?? [];
+      const lineTotals = items.map((item) => Number(item.line_total));
+      const saleValue = Number(sale.total_amount);
+      const netLines = distributeAmount(saleValue, lineTotals);
+
+      items.forEach((item, index) => {
+        const product = item.products?.name ?? item.custom_item_name ?? item.product_id ?? 'Custom Order';
+        const existing = rows.get(product) ?? { product, quantity: 0, cash: 0, qr: 0, focCost: 0 };
+        const value = netLines[index] ?? 0;
+        existing.quantity += Number(item.quantity);
+        if (sale.payment_method === 'cash') existing.cash += value;
+        if (sale.payment_method === 'qr') existing.qr += value;
+        if (sale.payment_method === 'complimentary') existing.focCost += value;
+        rows.set(product, existing);
+      });
+    });
+
+  return Array.from(rows.values());
 }

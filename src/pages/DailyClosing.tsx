@@ -9,11 +9,13 @@ import { money, todayInputValue } from '../lib/format';
 import { supabase } from '../lib/supabase';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { demoReports } from '../lib/demo';
-import { loadLocalSales } from '../lib/localStore';
-import type { DailyReport, Sale, SettingsMap } from '../lib/types';
+import { loadLocalSaleItems, loadLocalSales } from '../lib/localStore';
+import type { DailyReport, Sale, SaleItem, SettingsMap } from '../lib/types';
 import { useLanguage } from '../lib/language';
 import { assetPath } from '../lib/assets';
-import { scaledItemSales } from '../lib/reportItems';
+import { actualItemSales } from '../lib/reportItems';
+
+type SaleWithItems = Sale & { sale_items?: SaleItem[] };
 
 export default function DailyClosing({ settings }: { settings: SettingsMap }) {
   const toast = useToast();
@@ -22,7 +24,7 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
   const [businessDate, setBusinessDate] = useState(todayInputValue());
   const [actualCash, setActualCash] = useState('');
   const [notes, setNotes] = useState('');
-  const [sales, setSales] = useState<Sale[]>([]);
+  const [sales, setSales] = useState<SaleWithItems[]>([]);
   const [report, setReport] = useState<DailyReport | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [detailsConfirmed, setDetailsConfirmed] = useState(false);
@@ -34,17 +36,22 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
 
   async function refresh(date = businessDate) {
     if (!isSupabaseConfigured) {
-      setSales(loadLocalSales().filter((sale) => sale.business_date === date));
+      const localSaleItems = loadLocalSaleItems();
+      setSales(
+        loadLocalSales()
+          .filter((sale) => sale.business_date === date)
+          .map((sale) => ({ ...sale, sale_items: localSaleItems.filter((item) => item.sale_id === sale.id) })),
+      );
       const demoReport = demoReports.find((item) => item.business_date === date) ?? null;
       setReport(demoReport);
       setCorrectionMode(false);
       return demoReport;
     }
     const [{ data: currentSales }, { data: existingReport }] = await Promise.all([
-      supabase.from('sales').select('*').eq('business_date', date).order('created_at'),
+      supabase.from('sales').select('*, sale_items(*, products(name))').eq('business_date', date).order('created_at'),
       supabase.from('daily_reports').select('*').eq('business_date', date).maybeSingle(),
     ]);
-    setSales((currentSales ?? []) as Sale[]);
+    setSales((currentSales ?? []) as SaleWithItems[]);
     setReport((existingReport as DailyReport | null) ?? null);
     setCorrectionMode(false);
     return (existingReport as DailyReport | null) ?? null;
@@ -137,11 +144,7 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
     };
   }, [sales]);
 
-  const itemSales = useMemo(() => scaledItemSales({
-    cash: report?.total_cash ?? totals.cash,
-    qr: report?.total_qr ?? totals.qr,
-    focCost: report?.total_complimentary_value ?? totals.focCost,
-  }), [report?.total_cash, report?.total_complimentary_value, report?.total_qr, totals.cash, totals.focCost, totals.qr]);
+  const itemSales = useMemo(() => actualItemSales(sales), [sales]);
 
   const itemTotals = itemSales.reduce(
     (sum, item) => ({
@@ -168,7 +171,7 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
       const nextReport: DailyReport = {
         id: crypto.randomUUID(),
         business_date: businessDate,
-        report_json: { demo: true, sales, focCost: totals.focCost },
+        report_json: { demo: true, sales, itemSales, focCost: totals.focCost },
         total_cash: totals.cash,
         total_qr: totals.qr,
         total_complimentary_value: totals.focCost,
