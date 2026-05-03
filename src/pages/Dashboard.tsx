@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { addDays, addMonths, addWeeks, format, startOfWeek } from 'date-fns';
 import { AlertTriangle, ChevronLeft, ChevronRight, PackageCheck, Sparkles } from 'lucide-react';
-import { PageHeader } from '../components/Page';
 import { loadProducts } from '../lib/data';
 import { demoSales } from '../lib/demo';
 import { cansAndCartons, dualMoney, money } from '../lib/format';
@@ -84,26 +83,30 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
 
   return (
     <>
-      <PageHeader title={text('Island Sales Dashboard', 'Papan Jualan Island')} />
-      <section className="island-panel mb-5 rounded-[1.75rem] p-3 sm:p-4">
-        <div className="grid min-w-0 gap-3 lg:grid-cols-[auto_1fr] lg:items-center">
-          <div className="grid grid-cols-3 gap-2 rounded-2xl bg-white/80 p-1 font-black">
-            {(['day', 'week', 'month'] as const).map((item) => (
-              <button key={item} className={`rounded-xl px-3 py-3 text-sm sm:text-base ${period === item ? 'bg-accent text-white' : ''}`} onClick={() => setPeriod(item)}>
-                {item === 'day' ? text('Day', 'Hari') : item === 'week' ? text('Week', 'Minggu') : text('Month', 'Bulan')}
+      <section className="island-panel mb-5 rounded-[1.75rem] p-4 sm:p-5">
+        <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(260px,0.85fr)_minmax(0,1.15fr)] xl:items-center">
+          <h1 className="min-w-0 text-2xl font-black leading-tight tracking-normal text-ink sm:text-3xl md:text-4xl">
+            {text('Island Sales Dashboard', 'Papan Jualan Island')}
+          </h1>
+          <div className="grid min-w-0 gap-3 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-center xl:justify-self-end">
+            <div className="grid grid-cols-3 gap-2 rounded-2xl bg-white/80 p-1 font-black">
+              {(['day', 'week', 'month'] as const).map((item) => (
+                <button key={item} className={`rounded-xl px-3 py-3 text-sm sm:text-base ${period === item ? 'bg-accent text-white' : ''}`} onClick={() => setPeriod(item)}>
+                  {item === 'day' ? text('Day', 'Hari') : item === 'week' ? text('Week', 'Minggu') : text('Month', 'Bulan')}
+                </button>
+              ))}
+            </div>
+            <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] gap-2 lg:min-w-[360px]">
+              <button type="button" className="grid h-12 w-11 place-items-center rounded-2xl border border-line bg-white font-black shadow-soft sm:w-12" onClick={() => shiftPeriod(-1)} aria-label="Previous period">
+                <ChevronLeft className="h-5 w-5" />
               </button>
-            ))}
-          </div>
-          <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] gap-2">
-            <button type="button" className="grid h-12 w-11 place-items-center rounded-2xl border border-line bg-white font-black shadow-soft sm:w-12" onClick={() => shiftPeriod(-1)} aria-label="Previous period">
-              <ChevronLeft className="h-5 w-5" />
-            </button>
-            {period === 'day' ? <input className="min-w-0 w-full rounded-2xl border border-line bg-white px-3 py-3 font-bold sm:px-4" type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} /> : null}
-            {period === 'week' ? <input className="min-w-0 w-full rounded-2xl border border-line bg-white px-3 py-3 font-bold sm:px-4" type="week" value={selectedWeek} onChange={(e) => setSelectedWeek(e.target.value)} /> : null}
-            {period === 'month' ? <input className="min-w-0 w-full rounded-2xl border border-line bg-white px-3 py-3 font-bold sm:px-4" type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} /> : null}
-            <button type="button" className="grid h-12 w-11 place-items-center rounded-2xl border border-line bg-white font-black shadow-soft sm:w-12" onClick={() => shiftPeriod(1)} aria-label="Next period">
-              <ChevronRight className="h-5 w-5" />
-            </button>
+              {period === 'day' ? <input className="min-w-0 w-full rounded-2xl border border-line bg-white px-3 py-3 font-bold sm:px-4" type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} /> : null}
+              {period === 'week' ? <input className="min-w-0 w-full rounded-2xl border border-line bg-white px-3 py-3 font-bold sm:px-4" type="week" value={selectedWeek} onChange={(e) => setSelectedWeek(e.target.value)} /> : null}
+              {period === 'month' ? <input className="min-w-0 w-full rounded-2xl border border-line bg-white px-3 py-3 font-bold sm:px-4" type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} /> : null}
+              <button type="button" className="grid h-12 w-11 place-items-center rounded-2xl border border-line bg-white font-black shadow-soft sm:w-12" onClick={() => shiftPeriod(1)} aria-label="Next period">
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            </div>
           </div>
         </div>
       </section>
