@@ -44,7 +44,7 @@ declare
   item_line_no int := 0;
   item_quantity int;
   item_product_id uuid;
-  item_name text;
+  item_label text;
   item_custom_price numeric(12,2);
   component_product_id uuid;
   component_quantity int;
@@ -100,7 +100,7 @@ begin
   for raw_item in select value from jsonb_array_elements(p_items) loop
     item_line_no := item_line_no + 1;
     item_quantity := coalesce(nullif(raw_item->>'quantity', '')::int, 0);
-    item_name := coalesce(nullif(raw_item->>'name', ''), 'Custom Order');
+    item_label := coalesce(nullif(raw_item->>'name', ''), 'Custom Order');
 
     if item_quantity <= 0 then
       raise exception 'Item quantities must be positive.';
@@ -184,7 +184,7 @@ begin
         end if;
         subtotal := subtotal + (item_custom_price * item_quantity);
         insert into tmp_custom_sale_items(item_name, quantity, unit_price, line_total)
-        values (item_name, item_quantity, item_custom_price, item_custom_price * item_quantity);
+        values (item_label, item_quantity, item_custom_price, item_custom_price * item_quantity);
       else
         select * into product_record from public.products where id = item_product_id and active = true;
         if not found then raise exception 'Product is inactive or missing.'; end if;
@@ -242,9 +242,9 @@ begin
   end loop;
 
   for item in
-    select product_id, item_name, sum(quantity)::int quantity, round(sum(line_total) / sum(quantity), 2) unit_price, sum(line_total)::numeric(12,2) line_total
-    from tmp_stock_sale_items
-    group by product_id, item_name
+    select t.product_id, t.item_name, sum(t.quantity)::int quantity, round(sum(t.line_total) / sum(t.quantity), 2) unit_price, sum(t.line_total)::numeric(12,2) line_total
+    from tmp_stock_sale_items t
+    group by t.product_id, t.item_name
   loop
     insert into public.sale_items(sale_id, product_id, custom_item_name, quantity, unit_price, line_total)
     values (sale_id, item.product_id, item.item_name, item.quantity, item.unit_price, item.line_total);
