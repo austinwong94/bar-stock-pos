@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { Plus, Trash2 } from 'lucide-react';
 import { z } from 'zod';
 import { Field, buttonClass, inputClass, secondaryButtonClass } from '../components/Form';
 import { Modal } from '../components/Modal';
@@ -9,6 +10,17 @@ import { supabase } from '../lib/supabase';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { adjustLocalStock } from '../lib/localStore';
 import type { ProductWithStock, SettingsMap } from '../lib/types';
+
+type StockInLine = {
+  id: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  unit: 'can' | 'carton';
+  cartonSize: number;
+  cans: number;
+  costPerUnit: number | null;
+};
 
 const stockInSchema = z.object({
   productId: z.string().uuid(),
@@ -36,6 +48,7 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
   const [cost, setCost] = useState('');
   const [notes, setNotes] = useState('');
   const [enteredBy, setEnteredBy] = useState(workers[0] ?? 'Chloe');
+  const [lines, setLines] = useState<StockInLine[]>([]);
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -58,56 +71,123 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
   const product = useMemo(() => products.find((item) => item.id === productId), [products, productId]);
   const defaultCartonUnits = Number(settings.default_carton_size || 24);
   const cans = product ? quantity * (unit === 'carton' ? product.carton_size : 1) : 0;
+  const totalBatchUnits = lines.reduce((sum, line) => sum + line.cans, 0);
 
-  function submit(event: FormEvent) {
-    event.preventDefault();
+  function addLine(event?: FormEvent) {
+    event?.preventDefault();
     const parsed = stockInSchema.safeParse({ productId, quantity, unit, cost });
     if (!parsed.success) {
       toast.error('Choose a product and enter a positive quantity.');
+      return;
+    }
+    if (!product) {
+      toast.error('Choose a product.');
+      return;
+    }
+    const costPerUnit = cost === '' ? null : Number(cost);
+    const nextCans = quantity * (unit === 'carton' ? product.carton_size : 1);
+    setLines((current) => {
+      const sameIndex = current.findIndex(
+        (line) => line.productId === product.id && line.unit === unit && line.costPerUnit === costPerUnit,
+      );
+      if (sameIndex === -1) {
+        return [
+          ...current,
+          {
+            id: crypto.randomUUID(),
+            productId: product.id,
+            productName: product.name,
+            quantity,
+            unit,
+            cartonSize: product.carton_size,
+            cans: nextCans,
+            costPerUnit,
+          },
+        ];
+      }
+      return current.map((line, index) =>
+        index === sameIndex
+          ? {
+              ...line,
+              quantity: line.quantity + quantity,
+              cans: line.cans + nextCans,
+              costPerUnit,
+            }
+          : line,
+      );
+    });
+    setQuantity(1);
+    setCost('');
+    toast.success(`${product.name} added to stock-in list.`);
+  }
+
+  function reviewBatch() {
+    if (lines.length === 0) {
+      toast.error('Add at least one product to the stock-in list.');
       return;
     }
     setConfirming(true);
   }
 
   async function confirm() {
-    if (!product) return;
+    if (lines.length === 0) return;
     setSaving(true);
     if (!isSupabaseConfigured) {
-      const updatedProduct = adjustLocalStock(product.id, cans);
+      lines.forEach((line) => adjustLocalStock(line.productId, line.cans));
       setSaving(false);
       setConfirming(false);
       await refresh();
-      toast.success(`Stock updated by ${enteredBy}: ${updatedProduct?.inventory_balances?.quantity_on_hand ?? cans} unit(s) now on hand.`);
+      setLines([]);
+      toast.success(`Stock updated by ${enteredBy}: ${totalBatchUnits} unit(s) added.`);
       return;
     }
-    const { data, error } = await supabase.rpc('stock_in_product', {
-      p_product_id: product.id,
-      p_quantity: quantity,
-      p_unit: unit,
-      p_cost_per_unit: cost ? Number(cost) : null,
-      p_supplier: supplier || null,
-      p_reference: reference || null,
-      p_notes: notes || null,
-      p_entered_by: enteredBy,
-    });
+    const entries = lines.map((line) => ({
+      product_id: line.productId,
+      quantity: line.quantity,
+      unit: line.unit,
+      cost_per_unit: line.costPerUnit,
+      supplier: supplier || null,
+      reference: reference || null,
+      notes: notes || null,
+      entered_by: enteredBy,
+    }));
+    const { data, error } = await supabase.rpc('stock_in_products', { p_entries: entries });
     setSaving(false);
     if (error) {
-      toast.error(error.message);
-      return;
-    }
-    if (!data) {
-      toast.error('Stock-in did not return an updated balance.');
+      if (!error.message.toLowerCase().includes('stock_in_products')) {
+        toast.error(error.message);
+        return;
+      }
+      for (const entry of entries) {
+        const fallback = await supabase.rpc('stock_in_product', {
+          p_product_id: entry.product_id,
+          p_quantity: entry.quantity,
+          p_unit: entry.unit,
+          p_cost_per_unit: entry.cost_per_unit,
+          p_supplier: entry.supplier,
+          p_reference: entry.reference,
+          p_notes: entry.notes,
+          p_entered_by: entry.entered_by,
+        });
+        if (fallback.error) {
+          toast.error(fallback.error.message);
+          return;
+        }
+      }
+    } else if (!data) {
+      toast.error('Stock-in did not return updated balances.');
       return;
     }
     setConfirming(false);
     await refresh();
-    toast.success(`Stock updated by ${enteredBy}: ${data.quantity_on_hand} unit(s) now on hand.`);
+    setLines([]);
+    toast.success(`Stock updated by ${enteredBy}: ${totalBatchUnits} unit(s) added.`);
   }
 
   return (
     <>
       {embedded ? null : <PageHeader title="Stock In" subtitle="Cartons are converted by each product carton size." />}
-      <form onSubmit={submit} className="island-panel grid gap-4 rounded-2xl p-3 shadow-soft sm:rounded-[2rem] sm:p-5">
+      <form onSubmit={addLine} className="island-panel grid gap-4 rounded-2xl p-3 shadow-soft sm:rounded-[2rem] sm:p-5">
         <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-2xl border border-line bg-white/75 p-2">
           <p className="text-xs font-black leading-tight sm:text-sm">Entered by / Diisi oleh</p>
           <div className="grid min-w-0 grid-cols-4 gap-1.5">
@@ -175,27 +255,100 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
             <input className={inputClass} value={notes} onChange={(e) => setNotes(e.target.value)} />
           </Field>
         </div>
-        <button className={`${buttonClass} justify-center`}>Review stock-in</button>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <button type="submit" className={`${secondaryButtonClass} justify-center`}>
+            <Plus className="h-4 w-4" />
+            Add to stock-in list
+          </button>
+          <button type="button" className={`${buttonClass} justify-center`} disabled={lines.length === 0} onClick={reviewBatch}>
+            Review {lines.length} item{lines.length === 1 ? '' : 's'}
+          </button>
+        </div>
       </form>
-      {confirming && product ? (
+      <section className="island-panel mt-4 rounded-2xl p-3 shadow-soft sm:rounded-[2rem] sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-lg font-black">Stock-in list</h2>
+            <p className="text-sm font-bold text-neutral-600">Add multiple products here before confirming.</p>
+          </div>
+          <p className="rounded-xl bg-teal-50 px-3 py-2 text-sm font-black text-accent">{totalBatchUnits} unit(s)</p>
+        </div>
+        {lines.length === 0 ? (
+          <p className="mt-3 rounded-2xl border border-line bg-white/80 p-3 text-sm font-bold text-neutral-600">
+            No products added yet.
+          </p>
+        ) : (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left">
+              <thead className="text-sm">
+                <tr>
+                  <th className="p-3">Product</th>
+                  <th className="p-3">Quantity</th>
+                  <th className="p-3">Unit type</th>
+                  <th className="p-3">Units added</th>
+                  <th className="p-3">Cost</th>
+                  <th className="p-3">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((line) => (
+                  <tr key={line.id} className="border-t border-line">
+                    <td className="p-3 font-black">{line.productName}</td>
+                    <td className="p-3">{line.quantity}</td>
+                    <td className="p-3">{line.unit === 'can' ? 'UNIT(S)' : `CARTON(S) - 1 carton = ${line.cartonSize} units`}</td>
+                    <td className="p-3 font-black">{line.cans}</td>
+                    <td className="p-3">{line.costPerUnit == null ? '-' : `${String(settings.currency_symbol)} ${line.costPerUnit.toFixed(2)}`}</td>
+                    <td className="p-3">
+                      <button
+                        type="button"
+                        className={`${secondaryButtonClass} min-h-9 rounded-xl px-3 py-1.5 text-xs`}
+                        onClick={() => setLines((current) => current.filter((item) => item.id !== line.id))}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+      {confirming ? (
         <Modal
-          title="Confirm Stock-In"
+          title="Confirm Stock-In Batch"
           onClose={() => setConfirming(false)}
           footer={
             <div className="flex flex-wrap justify-end gap-2">
               <button className={secondaryButtonClass} onClick={() => setConfirming(false)}>Cancel</button>
               <button className={buttonClass} disabled={saving} onClick={confirm}>
-                {saving ? 'Saving...' : `Yes, confirm ${unit === 'can' ? 'UNIT(S)' : 'CARTON(S)'}`}
+                {saving ? 'Saving...' : `Yes, confirm ${lines.length} item${lines.length === 1 ? '' : 's'}`}
               </button>
             </div>
           }
         >
-          <p className="text-xl font-black leading-tight sm:text-2xl">
-            {unit === 'can'
-              ? `Confirm Stock-In: ${quantity} UNIT(S)?`
-              : `Confirm Stock-In: ${quantity} CARTON(S) x ${product.carton_size} unit(s) = ${cans} unit(s)?`}
-          </p>
-          <p className="mt-3 text-neutral-700">{product.name} will be increased by {cans} unit(s).</p>
+          <p className="text-xl font-black leading-tight sm:text-2xl">Confirm Stock-In: {totalBatchUnits} unit(s)?</p>
+          <div className="mt-3 max-h-[45vh] overflow-auto rounded-2xl border border-line bg-white/80">
+            <table className="w-full min-w-[560px] text-left text-sm">
+              <thead className="bg-shell">
+                <tr>
+                  <th className="p-3">Product</th>
+                  <th className="p-3">Input</th>
+                  <th className="p-3">Units added</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((line) => (
+                  <tr key={line.id} className="border-t border-line">
+                    <td className="p-3 font-black">{line.productName}</td>
+                    <td className="p-3">{line.quantity} {line.unit === 'can' ? 'UNIT(S)' : `CARTON(S) x ${line.cartonSize}`}</td>
+                    <td className="p-3 font-black">{line.cans}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <p className="mt-2 rounded-2xl bg-shell p-3 text-sm font-black">Entered by / Diisi oleh: {enteredBy}</p>
         </Modal>
       ) : null}

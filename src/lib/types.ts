@@ -186,6 +186,21 @@ export type Database = {
         };
         Returns: StockInResult;
       };
+      stock_in_products: {
+        Args: {
+          p_entries: Array<{
+            product_id: string;
+            quantity: number;
+            unit: 'can' | 'carton';
+            cost_per_unit?: number | null;
+            supplier?: string | null;
+            reference?: string | null;
+            notes?: string | null;
+            entered_by?: string | null;
+          }>;
+        };
+        Returns: StockInResult[];
+      };
       complete_sale: {
         Args: {
           p_items: Array<{ product_id: string | null; name?: string; quantity: number; custom_price?: number | null }>;
