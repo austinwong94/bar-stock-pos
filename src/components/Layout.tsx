@@ -35,9 +35,10 @@ export function Layout({
   const navigate = useNavigate();
   const { language, setLanguage, text } = useLanguage();
 
-  async function signOut() {
+  async function exitApp() {
     if (publicPreview) {
-      navigate('/login');
+      sessionStorage.removeItem('lovely_paradise_access');
+      window.location.reload();
       return;
     }
     await supabase.auth.signOut();
@@ -87,11 +88,11 @@ export function Layout({
         </nav>
         <button
           type="button"
-          onClick={signOut}
+          onClick={exitApp}
           className="absolute bottom-5 left-5 right-5 flex items-center justify-center gap-2 rounded-2xl border border-line bg-white/80 px-3 py-3 font-bold shadow-soft"
         >
           <LogOut className="h-5 w-5" />
-          {publicPreview ? 'Staff login' : 'Sign out'}
+          {publicPreview ? 'Lock app' : 'Sign out'}
         </button>
       </aside>
       <div className="lg:pl-72">
@@ -103,8 +104,8 @@ export function Layout({
                 <button onClick={() => setLanguage('en')} className={`rounded-xl px-3 py-2 ${language === 'en' ? 'bg-accent text-white' : ''}`}>EN</button>
                 <button onClick={() => setLanguage('ms')} className={`rounded-xl px-3 py-2 ${language === 'ms' ? 'bg-accent text-white' : ''}`}>BM</button>
               </div>
-              <button type="button" onClick={signOut} className="rounded-2xl border border-line px-3 py-2 text-sm font-bold">
-                {publicPreview ? 'Staff login' : 'Sign out'}
+              <button type="button" onClick={exitApp} className="rounded-2xl border border-line px-3 py-2 text-sm font-bold">
+                {publicPreview ? 'Lock app' : 'Sign out'}
               </button>
             </div>
           </div>
