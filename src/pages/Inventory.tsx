@@ -43,7 +43,7 @@ export default function Inventory({ settings }: { settings: SettingsMap }) {
               </div>
               <div className="mt-2 grid grid-cols-2 gap-1.5 text-xs font-bold sm:mt-3 sm:gap-2 sm:text-sm">
                 <div className="rounded-xl bg-shell p-2 sm:rounded-2xl sm:p-3"><p className="text-neutral-500">On hand</p><p className={low ? 'text-warning' : ''}>{cansAndCartons(stock, product.carton_size)}</p></div>
-                <div className="rounded-xl bg-shell p-2 sm:rounded-2xl sm:p-3"><p className="text-neutral-500">Threshold</p><p>{product.low_stock_threshold} cans</p></div>
+                <div className="rounded-xl bg-shell p-2 sm:rounded-2xl sm:p-3"><p className="text-neutral-500">Low alert at</p><p>{product.low_stock_threshold} cans</p></div>
               </div>
             </article>
           );
@@ -56,7 +56,7 @@ export default function Inventory({ settings }: { settings: SettingsMap }) {
               <th className="p-3">Product</th>
               <th className="p-3">Category</th>
               <th className="p-3">On hand</th>
-              <th className="p-3">Threshold</th>
+              <th className="p-3">Low alert at</th>
               <th className="p-3">Status</th>
             </tr>
           </thead>

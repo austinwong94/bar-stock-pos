@@ -257,7 +257,7 @@ export default function Products({ settings }: { settings: SettingsMap }) {
               <th className="p-3">Price</th>
               <th className="p-3">Cost</th>
               <th className="p-3">Carton</th>
-              <th className="p-3">Low stock</th>
+              <th className="p-3">Low alert at</th>
               <th className="p-3">Status</th>
               <th className="p-3">Action</th>
             </tr>
@@ -353,7 +353,7 @@ export default function Products({ settings }: { settings: SettingsMap }) {
               <Field label="Price per unit"><input className={inputClass} type="number" min={0} step="0.01" value={effectiveForm.price_per_unit} onChange={(e) => setForm({ ...effectiveForm, price_per_unit: e.target.value })} /></Field>
               <Field label="Cost per unit"><input className={inputClass} type="number" min={0} step="0.01" value={effectiveForm.cost_per_unit} onChange={(e) => setForm({ ...effectiveForm, cost_per_unit: e.target.value })} /></Field>
               <Field label="Carton size"><input className={inputClass} type="number" min={1} value={effectiveForm.carton_size} onChange={(e) => setForm({ ...effectiveForm, carton_size: e.target.value })} /></Field>
-              <Field label="Low stock threshold"><input className={inputClass} type="number" min={0} value={effectiveForm.low_stock_threshold} onChange={(e) => setForm({ ...effectiveForm, low_stock_threshold: e.target.value })} /></Field>
+              <Field label="Low stock alert at"><input className={inputClass} type="number" min={0} value={effectiveForm.low_stock_threshold} onChange={(e) => setForm({ ...effectiveForm, low_stock_threshold: e.target.value })} /></Field>
             </div>
             <label className="flex items-center gap-3 font-bold">
               <input type="checkbox" checked={effectiveForm.active} onChange={(e) => setForm({ ...effectiveForm, active: e.target.checked })} />

@@ -174,7 +174,7 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2 text-sm font-bold">
                   <div className="rounded-2xl bg-shell p-3"><p className="text-neutral-500">On hand</p><p className={low ? 'text-warning' : 'text-ink'}>{cansAndCartons(stock, product.carton_size)}</p></div>
-                  <div className="rounded-2xl bg-shell p-3"><p className="text-neutral-500">Threshold</p><p>{product.low_stock_threshold} cans</p></div>
+                  <div className="rounded-2xl bg-shell p-3"><p className="text-neutral-500">Low alert at</p><p>{product.low_stock_threshold} cans</p></div>
                 </div>
               </article>
             );
@@ -187,7 +187,7 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
                 <th className="p-3">Product</th>
                 <th className="p-3">Category</th>
                 <th className="p-3">On hand</th>
-                <th className="p-3">Threshold</th>
+                <th className="p-3">Low alert at</th>
                 <th className="p-3">Status</th>
               </tr>
             </thead>
