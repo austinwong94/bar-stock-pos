@@ -3,12 +3,21 @@ import { addDays, addMonths, addWeeks, format, startOfWeek } from 'date-fns';
 import { AlertTriangle, ChevronLeft, ChevronRight, PackageCheck, Sparkles } from 'lucide-react';
 import { PageHeader } from '../components/Page';
 import { loadProducts } from '../lib/data';
-import { loadLocalSales } from '../lib/localStore';
+import { loadLocalSaleItems, loadLocalSales } from '../lib/localStore';
 import { cansAndCartons, dualMoney, malaysiaDateInputValue, money } from '../lib/format';
 import { supabase } from '../lib/supabase';
 import { isSupabaseConfigured } from '../lib/supabase';
 import type { ProductWithStock, SettingsMap } from '../lib/types';
 import { useLanguage } from '../lib/language';
+
+type DashboardSale = {
+  payment_method: string;
+  total_amount: number;
+  paid_amount: number;
+  business_date?: string;
+  created_at?: string;
+  sale_items?: Array<{ product_id: string | null; quantity: number }>;
+};
 
 export default function Dashboard({ settings }: { settings: SettingsMap }) {
   const [products, setProducts] = useState<ProductWithStock[]>([]);
@@ -17,24 +26,40 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
   const [selectedWeek, setSelectedWeek] = useState(() => format(new Date(), "RRRR-'W'II"));
   const [selectedMonth, setSelectedMonth] = useState(() => format(new Date(), 'yyyy-MM'));
   const [totals, setTotals] = useState({ cash: 0, qr: 0, focCost: 0, tx: 0, paidRevenue: 0 });
+  const [soldTodayByProduct, setSoldTodayByProduct] = useState<Record<string, number>>({});
   const { text } = useLanguage();
 
   useEffect(() => {
     async function load() {
       const loadedProducts = await loadProducts(true);
       const sales = isSupabaseConfigured
-        ? (await supabase
+        ? (((await supabase
             .from('sales')
-            .select('payment_method,total_amount,paid_amount,business_date,created_at')
-            .eq('status', 'completed')).data
-        : loadLocalSales();
-      const filteredSales = ((sales ?? []) as Array<{ payment_method: string; total_amount: number; paid_amount: number; business_date?: string; created_at?: string }>).filter((sale) => {
+            .select('payment_method,total_amount,paid_amount,business_date,created_at,sale_items(product_id,quantity)')
+            .eq('status', 'completed')).data ?? []) as DashboardSale[])
+        : loadLocalSales()
+            .filter((sale) => sale.status === 'completed')
+            .map((sale) => ({
+              ...sale,
+              sale_items: loadLocalSaleItems().filter((item) => item.sale_id === sale.id),
+            }));
+      const filteredSales = sales.filter((sale) => {
         const saleDate = sale.created_at ? malaysiaDateInputValue(sale.created_at) : sale.business_date;
         if (period === 'day') return saleDate === selectedDate;
         if (period === 'month') return saleDate?.startsWith(selectedMonth);
         return saleDate ? format(new Date(`${saleDate}T00:00:00`), "RRRR-'W'II") === selectedWeek : false;
       });
+      const today = malaysiaDateInputValue(new Date());
+      const nextSoldToday = sales
+        .filter((sale) => sale.payment_method !== 'complimentary' && (sale.created_at ? malaysiaDateInputValue(sale.created_at) : sale.business_date) === today)
+        .flatMap((sale) => sale.sale_items ?? [])
+        .reduce<Record<string, number>>((sum, item) => {
+          if (!item.product_id) return sum;
+          sum[item.product_id] = (sum[item.product_id] ?? 0) + Number(item.quantity);
+          return sum;
+        }, {});
       setProducts(loadedProducts);
+      setSoldTodayByProduct(nextSoldToday);
       setTotals(
         filteredSales.reduce(
           (sum: { cash: number; qr: number; focCost: number; tx: number; paidRevenue: number }, sale) => ({
@@ -148,7 +173,7 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
               <p className="text-xl text-ink">{activeProducts.length}</p>
             </div>
             <div className="rounded-2xl border border-line bg-white/80 px-3 py-2">
-              <p className="text-neutral-500">Cans</p>
+              <p className="text-neutral-500">Balance</p>
               <p className="text-xl text-ink">{totalCans}</p>
             </div>
             <div className="rounded-2xl border border-warning bg-amber-50 px-3 py-2">
@@ -161,6 +186,7 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
           {activeProducts.map((product) => {
             const stock = product.inventory_balances?.quantity_on_hand ?? 0;
             const low = stock <= product.low_stock_threshold;
+            const soldToday = soldTodayByProduct[product.id] ?? 0;
             return (
               <article key={product.id} className="rounded-[1.5rem] border border-line bg-white/85 p-4 shadow-soft">
                 <div className="flex items-start justify-between gap-3">
@@ -173,8 +199,8 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
                   </span>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2 text-sm font-bold">
-                  <div className="rounded-2xl bg-shell p-3"><p className="text-neutral-500">On hand</p><p className={low ? 'text-warning' : 'text-ink'}>{cansAndCartons(stock, product.carton_size)}</p></div>
-                  <div className="rounded-2xl bg-shell p-3"><p className="text-neutral-500">Low alert at</p><p>{product.low_stock_threshold} cans</p></div>
+                  <div className="rounded-2xl bg-shell p-3"><p className="text-neutral-500">Sold Today</p><p>{soldToday} units</p></div>
+                  <div className="rounded-2xl bg-shell p-3"><p className="text-neutral-500">Balance</p><p className={low ? 'text-warning' : 'text-ink'}>{cansAndCartons(stock, product.carton_size)}</p></div>
                 </div>
               </article>
             );
@@ -186,8 +212,8 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
               <tr>
                 <th className="p-3">Product</th>
                 <th className="p-3">Category</th>
-                <th className="p-3">On hand</th>
-                <th className="p-3">Low alert at</th>
+                <th className="p-3">Sold Today</th>
+                <th className="p-3">Balance</th>
                 <th className="p-3">Status</th>
               </tr>
             </thead>
@@ -195,12 +221,13 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
               {activeProducts.map((product) => {
                 const stock = product.inventory_balances?.quantity_on_hand ?? 0;
                 const low = stock <= product.low_stock_threshold;
+                const soldToday = soldTodayByProduct[product.id] ?? 0;
                 return (
                   <tr key={product.id} className="border-t border-line">
                     <td className="p-3 font-black">{product.name}</td>
                     <td className="p-3">{product.categories?.name === 'Other' ? 'Others' : product.categories?.name ?? 'Others'}</td>
+                    <td className="p-3 font-bold">{soldToday} units</td>
                     <td className={`p-3 font-bold ${low ? 'text-warning' : ''}`}>{cansAndCartons(stock, product.carton_size)}</td>
-                    <td className="p-3">{product.low_stock_threshold} cans</td>
                     <td className="p-3">
                       <span className={`rounded-full px-3 py-1 text-xs font-black ${low ? 'bg-amber-100 text-warning' : 'bg-teal-50 text-accent'}`}>
                         {low ? 'Low stock' : 'OK'}
