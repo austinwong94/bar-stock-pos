@@ -43,7 +43,7 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
   const workers = useMemo(() => staffNames(settings), [settings]);
   const [products, setProducts] = useState<ProductWithStock[]>([]);
   const [productId, setProductId] = useState('');
-  const [quantity, setQuantity] = useState(1);
+  const [quantity, setQuantity] = useState('1');
   const [unit, setUnit] = useState<'can' | 'carton'>('can');
   const [supplier, setSupplier] = useState('');
   const [reference, setReference] = useState('');
@@ -72,7 +72,6 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
 
   const product = useMemo(() => products.find((item) => item.id === productId), [products, productId]);
   const defaultCartonUnits = Number(settings.default_carton_size || 24);
-  const cans = product ? quantity * (unit === 'carton' ? product.carton_size : 1) : 0;
   const totalBatchUnits = lines.reduce((sum, line) => sum + line.cans, 0);
 
   function addLine(event?: FormEvent) {
@@ -86,8 +85,9 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
       toast.error(text('Choose a product.', 'Pilih produk.'));
       return;
     }
+    const inputQuantity = parsed.data.quantity;
     const costPerUnit = cost === '' ? null : Number(cost);
-    const nextCans = quantity * (unit === 'carton' ? product.carton_size : 1);
+    const nextCans = inputQuantity * (unit === 'carton' ? product.carton_size : 1);
     setLines((current) => {
       const sameIndex = current.findIndex(
         (line) => line.productId === product.id && line.unit === unit && line.costPerUnit === costPerUnit,
@@ -99,7 +99,7 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
             id: crypto.randomUUID(),
             productId: product.id,
             productName: product.name,
-            quantity,
+            quantity: inputQuantity,
             unit,
             cartonSize: product.carton_size,
             cans: nextCans,
@@ -111,14 +111,14 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
         index === sameIndex
           ? {
               ...line,
-              quantity: line.quantity + quantity,
+              quantity: line.quantity + inputQuantity,
               cans: line.cans + nextCans,
               costPerUnit,
             }
           : line,
       );
     });
-    setQuantity(1);
+    setQuantity('1');
     setCost('');
     toast.success(`${product.name} ${text('added to stock-in list.', 'ditambah ke senarai stok masuk.')}`);
   }
@@ -218,7 +218,7 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
         </Field>
         <div className="grid gap-3 md:grid-cols-[minmax(150px,0.72fr)_1.8fr] md:items-end">
           <Field label={text('Quantity', 'Kuantiti')}>
-            <input className={inputClass} type="number" min={1} value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} />
+            <input className={inputClass} type="number" min={1} inputMode="numeric" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
           </Field>
           <div>
             <p className="mb-2 text-sm font-semibold">{text('Unit type', 'Jenis unit')}</p>

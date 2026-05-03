@@ -231,7 +231,6 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
     <>
       <PageHeader
         title={text('Daily Closing', 'Tutup Harian')}
-        subtitle={text(`Choose the business date, verify QR Payment, count cash, and save the closing snapshot. Business day closes at ${String(settings.business_day_close_time)}.`, `Pilih tarikh bisnes, sahkan QR Payment, kira tunai, dan simpan snapshot penutupan. Hari bisnes tutup pada ${String(settings.business_day_close_time)}.`)}
       />
       <div className="mb-4 grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-5">
         <Stat label={`${text('Cash Payment', 'Bayaran tunai')} 💵`} value={money(report?.total_cash ?? totals.cash, String(settings.currency_symbol))} />
