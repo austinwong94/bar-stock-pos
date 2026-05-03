@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import { Plus } from 'lucide-react';
+import { PackagePlus, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Field, buttonClass, inputClass, secondaryButtonClass } from '../components/Form';
 import { Modal } from '../components/Modal';
@@ -9,9 +9,9 @@ import { useToast } from '../components/Toast';
 import { categoryRank, groupByCategory, normalizeCategoryName } from '../lib/data';
 import { supabase } from '../lib/supabase';
 import { isSupabaseConfigured } from '../lib/supabase';
-import { loadLocalCategories, loadLocalProducts, saveLocalProduct } from '../lib/localStore';
+import { loadLocalCategories, loadLocalProducts, saveLocalProduct, saveLocalSettings } from '../lib/localStore';
 import { money } from '../lib/format';
-import type { Category, ProductPriceHistory, ProductWithStock, SettingsMap } from '../lib/types';
+import type { AppSettingKey, Category, ProductPriceHistory, ProductWithStock, SettingsMap } from '../lib/types';
 import { assetPath } from '../lib/assets';
 import { useLanguage } from '../lib/language';
 
@@ -46,13 +46,33 @@ const defaultCategories = [
   { name: 'Others', sort_order: 50 },
 ];
 
-export default function Products({ settings }: { settings: SettingsMap }) {
+type BundleForm = {
+  beer_bundle_enabled: boolean;
+  beer_bundle_name: string;
+  beer_bundle_units_per_set: string;
+  beer_bundle_price: string;
+};
+
+const bundleKeys: AppSettingKey[] = ['beer_bundle_enabled', 'beer_bundle_name', 'beer_bundle_units_per_set', 'beer_bundle_price'];
+
+function bundleFormFromSettings(settings: SettingsMap): BundleForm {
+  return {
+    beer_bundle_enabled: settings.beer_bundle_enabled === true || settings.beer_bundle_enabled === 'true',
+    beer_bundle_name: String(settings.beer_bundle_name || 'Beer Bundle'),
+    beer_bundle_units_per_set: String(settings.beer_bundle_units_per_set || 4),
+    beer_bundle_price: String(settings.beer_bundle_price || 40),
+  };
+}
+
+export default function Products({ settings, onSettingsSaved }: { settings: SettingsMap; onSettingsSaved: (settings: SettingsMap) => void }) {
   const toast = useToast();
   const { text } = useLanguage();
   const [products, setProducts] = useState<ProductWithStock[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [priceHistory, setPriceHistory] = useState<ProductPriceHistory[]>([]);
   const [form, setForm] = useState<ProductForm | null>(null);
+  const [bundleForm, setBundleForm] = useState<BundleForm>(() => bundleFormFromSettings(settings));
+  const [bundleSaving, setBundleSaving] = useState(false);
   const [adminPin, setAdminPin] = useState('');
   const [demoAdminUnlocked, setDemoAdminUnlocked] = useState(() => sessionStorage.getItem('lovely_paradise_admin_access') === 'ok');
   const [adminSection, setAdminSection] = useState<'products' | 'priceHistory'>('products');
@@ -104,6 +124,10 @@ export default function Products({ settings }: { settings: SettingsMap }) {
   useEffect(() => {
     void refresh();
   }, []);
+
+  useEffect(() => {
+    setBundleForm(bundleFormFromSettings(settings));
+  }, [settings]);
 
   const sortedCategories = useMemo(
     () => [...categories].sort((a, b) => categoryRank(a.name) - categoryRank(b.name) || a.name.localeCompare(b.name)),
@@ -162,6 +186,40 @@ export default function Products({ settings }: { settings: SettingsMap }) {
     setForm(null);
     await refresh();
     toast.success('Product saved.');
+  }
+
+  async function saveBundle(event: FormEvent) {
+    event.preventDefault();
+    const units = Math.max(1, Math.floor(Number(bundleForm.beer_bundle_units_per_set || 4)));
+    const price = Number(bundleForm.beer_bundle_price);
+    if (!Number.isFinite(price) || price <= 0) {
+      toast.error('Enter a valid bundle price.');
+      return;
+    }
+    const nextSettings: SettingsMap = {
+      ...settings,
+      beer_bundle_enabled: bundleForm.beer_bundle_enabled,
+      beer_bundle_name: bundleForm.beer_bundle_name.trim() || 'Beer Bundle',
+      beer_bundle_units_per_set: units,
+      beer_bundle_price: Number(price.toFixed(2)),
+    };
+    setBundleSaving(true);
+    if (!isSupabaseConfigured) {
+      saveLocalSettings(nextSettings);
+      onSettingsSaved(nextSettings);
+      setBundleSaving(false);
+      toast.success('Beer bundle saved.');
+      return;
+    }
+    const rows = bundleKeys.map((key) => ({ key, value: nextSettings[key] }));
+    const { error } = await supabase.from('app_settings').upsert(rows);
+    setBundleSaving(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    onSettingsSaved(nextSettings);
+    toast.success('Beer bundle saved.');
   }
 
   function attachImage(file: File | undefined) {
@@ -239,6 +297,62 @@ export default function Products({ settings }: { settings: SettingsMap }) {
           ))}
         </div>
       </section>
+      <form onSubmit={saveBundle} className="island-panel mb-4 rounded-2xl p-3 sm:mb-5 sm:rounded-[2rem] sm:p-5">
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+          <div className="grid gap-3 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
+            <span className="grid h-12 w-12 place-items-center rounded-2xl bg-accent text-white shadow-glow">
+              <PackagePlus className="h-6 w-6" />
+            </span>
+            <div>
+              <h2 className="text-lg font-black sm:text-xl">{text('Beer Bundle', 'Set Bir')}</h2>
+              <p className="text-sm font-bold text-neutral-600">
+                {bundleForm.beer_bundle_units_per_set || 4} {text('beer unit(s)', 'unit bir')} · {money(Number(bundleForm.beer_bundle_price || 0), String(settings.currency_symbol))}
+              </p>
+            </div>
+          </div>
+          <button className={`${buttonClass} w-full lg:w-auto`} disabled={bundleSaving}>
+            {bundleSaving ? 'Saving...' : text('Save bundle', 'Simpan set')}
+          </button>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1.4fr_1fr_1fr]">
+          <Field label={text('Status', 'Status')}>
+            <label className="flex min-h-12 items-center gap-3 rounded-2xl border border-line bg-paper px-3 text-sm font-bold">
+              <input
+                type="checkbox"
+                checked={bundleForm.beer_bundle_enabled}
+                onChange={(event) => setBundleForm({ ...bundleForm, beer_bundle_enabled: event.target.checked })}
+              />
+              {bundleForm.beer_bundle_enabled ? text('Enabled', 'Aktif') : text('Disabled', 'Tidak aktif')}
+            </label>
+          </Field>
+          <Field label={text('Bundle name', 'Nama set')}>
+            <input
+              className={inputClass}
+              value={bundleForm.beer_bundle_name}
+              onChange={(event) => setBundleForm({ ...bundleForm, beer_bundle_name: event.target.value })}
+            />
+          </Field>
+          <Field label={text('Units per set', 'Unit setiap set')}>
+            <input
+              className={inputClass}
+              type="number"
+              min={1}
+              value={bundleForm.beer_bundle_units_per_set}
+              onChange={(event) => setBundleForm({ ...bundleForm, beer_bundle_units_per_set: event.target.value })}
+            />
+          </Field>
+          <Field label={text('Price per set', 'Harga setiap set')}>
+            <input
+              className={inputClass}
+              type="number"
+              min={0}
+              step="0.01"
+              value={bundleForm.beer_bundle_price}
+              onChange={(event) => setBundleForm({ ...bundleForm, beer_bundle_price: event.target.value })}
+            />
+          </Field>
+        </div>
+      </form>
       <div className="hidden">
         {sortedProducts.map((product) => (
           <article key={product.id} className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4">

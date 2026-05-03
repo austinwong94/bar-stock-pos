@@ -136,7 +136,7 @@ export default function App() {
           <Route path="/pos" element={<POS settings={settings} />} />
           <Route path="/stock-in" element={<StockOutReport settings={settings} />} />
           <Route path="/inventory" element={<Inventory settings={settings} />} />
-          <Route path="/products" element={<Products settings={settings} />} />
+          <Route path="/products" element={<Products settings={settings} onSettingsSaved={setSettings} />} />
           <Route path="/daily-closing" element={<DailyClosing settings={settings} />} />
           <Route path="/daily-report" element={<DailyReport settings={settings} />} />
           <Route path="/stock-out-report" element={<StockOutReport settings={settings} />} />
