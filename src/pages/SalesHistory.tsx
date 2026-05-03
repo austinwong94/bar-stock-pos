@@ -190,88 +190,83 @@ export default function SalesHistory({ settings, embedded = false }: { settings:
           </div>
         ) : null}
 
-        {sales.map((sale) => {
-          const isFoc = sale.payment_method === 'complimentary';
-          return (
-            <article key={sale.id} className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.75rem] sm:p-5">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-lg font-black leading-tight sm:text-xl">{sale.sale_number}</h2>
-                    <span className={`rounded-full border px-3 py-1 text-xs font-black ${paymentTone(sale.payment_method)}`}>
-                      {paymentMethodLabel(sale.payment_method)}
-                    </span>
-                    <span className={`rounded-full px-3 py-1 text-xs font-black ${statusTone(sale.status)}`}>
-                      {statusLabel(sale.status)}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-sm font-bold text-neutral-600">
-                    {saleDateLabel(sale.business_date)} · Order taken by {sale.order_taken_by ?? '-'}
-                  </p>
-                  {sale.payment_method === 'qr' ? (
-                    <p className="mt-1 text-sm font-bold text-sky-700">
-                      QR status: {sale.qr_status} · Ref: {sale.qr_reference ?? '-'}
-                    </p>
-                  ) : null}
-                  {sale.payment_method === 'complimentary' ? (
-                    <p className="mt-1 text-sm font-bold text-coral">Reason: {sale.complimentary_reason ?? '-'}</p>
-                  ) : null}
-                </div>
-
-                <div className="grid gap-2 sm:grid-cols-[1fr_auto] lg:min-w-[360px] lg:grid-cols-1 lg:text-right">
-                  <div className="rounded-xl bg-shell p-3 sm:rounded-2xl">
-                    <p className="text-xs font-black uppercase tracking-widest text-neutral-500">{isFoc ? 'FOC Cost' : 'Total Revenue'}</p>
-                    <p className={`text-xl font-black sm:text-2xl ${isFoc ? 'text-coral' : 'text-ink'}`}>
-                      {isFoc ? '- ' : ''}{money(isFoc ? sale.total_amount : sale.paid_amount, String(settings.currency_symbol))}
-                    </p>
-                    {Number(sale.discount_amount ?? 0) > 0 ? (
-                      <p className="mt-1 text-sm font-bold text-coral">Discount: - {money(sale.discount_amount, String(settings.currency_symbol))}</p>
-                    ) : null}
-                  </div>
-
-                  {sale.status === 'completed' ? (
-                    <div className="grid gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
-                      {sale.payment_method === 'qr' ? (
-                        <>
-                          <button className={`${secondaryButtonClass} justify-center`} onClick={() => verifyQr(sale, 'verified')}>
-                            <CheckCircle2 className="h-4 w-4" />
-                            Verify QR Payment
-                          </button>
-                          <button className={`${secondaryButtonClass} justify-center`} onClick={() => verifyQr(sale, 'mismatch')}>
-                            Mismatch
-                          </button>
-                        </>
-                      ) : null}
-                      <button className={`${dangerButtonClass} justify-center`} onClick={() => setVoiding(sale)}>
-                        <Ban className="h-4 w-4" />
-                        Void
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="mt-3 overflow-hidden rounded-xl border border-line bg-white/80 sm:mt-4 sm:rounded-2xl">
-                <div className="hidden grid-cols-[1fr_90px_130px_130px] bg-shell px-3 py-2 text-sm font-black md:grid">
-                  <span>Item</span>
-                  <span>Quantity</span>
-                  <span>Unit price</span>
-                  <span className="text-right">Line total</span>
-                </div>
-                <div className="divide-y divide-line">
-                  {(sale.sale_items ?? []).map((item) => (
-                    <div key={item.id} className="grid gap-2 px-3 py-3 text-sm font-bold md:grid-cols-[1fr_90px_130px_130px] md:items-center">
-                      <span className="font-black">{itemName(item)}</span>
-                      <span>Qty {item.quantity}</span>
-                      <span>{money(item.unit_price, String(settings.currency_symbol))}</span>
-                      <span className="font-black md:text-right">{money(item.line_total, String(settings.currency_symbol))}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </article>
-          );
-        })}
+        {sales.length > 0 ? (
+          <div className="overflow-x-auto rounded-2xl border border-line bg-white/85 shadow-soft sm:rounded-[2rem]">
+            <table className="w-full min-w-[1100px] text-left text-sm">
+              <thead className="bg-paper">
+                <tr>
+                  <th className="p-3 whitespace-nowrap">Sale</th>
+                  <th className="p-3 whitespace-nowrap">Date / Staff</th>
+                  <th className="p-3 whitespace-nowrap">Method</th>
+                  <th className="p-3 whitespace-nowrap">Status</th>
+                  <th className="p-3 whitespace-nowrap">Items</th>
+                  <th className="p-3 whitespace-nowrap">Discount</th>
+                  <th className="p-3 whitespace-nowrap">Total</th>
+                  <th className="p-3 whitespace-nowrap">QR</th>
+                  <th className="p-3 whitespace-nowrap">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sales.map((sale) => {
+                  const isFoc = sale.payment_method === 'complimentary';
+                  const items = (sale.sale_items ?? [])
+                    .map((item) => `${itemName(item)} x ${item.quantity}`)
+                    .join(', ');
+                  return (
+                    <tr key={sale.id} className="border-t border-line align-top">
+                      <td className="p-3 font-black whitespace-nowrap">{sale.sale_number}</td>
+                      <td className="p-3 whitespace-nowrap">
+                        <span className="block font-bold">{saleDateLabel(sale.business_date)}</span>
+                        <span className="block text-xs font-bold text-neutral-600">{sale.order_taken_by ?? '-'}</span>
+                      </td>
+                      <td className="p-3 whitespace-nowrap">
+                        <span className={`rounded-full border px-3 py-1 text-xs font-black ${paymentTone(sale.payment_method)}`}>
+                          {paymentMethodLabel(sale.payment_method)}
+                        </span>
+                      </td>
+                      <td className="p-3 whitespace-nowrap">
+                        <span className={`rounded-full px-3 py-1 text-xs font-black ${statusTone(sale.status)}`}>
+                          {statusLabel(sale.status)}
+                        </span>
+                      </td>
+                      <td className="max-w-[280px] p-3 font-bold">{items || '-'}</td>
+                      <td className="p-3 whitespace-nowrap">
+                        {Number(sale.discount_amount ?? 0) > 0 ? `- ${money(sale.discount_amount, String(settings.currency_symbol))}` : '-'}
+                      </td>
+                      <td className={`p-3 font-black whitespace-nowrap ${isFoc ? 'text-coral' : 'text-ink'}`}>
+                        {isFoc ? '- ' : ''}{money(isFoc ? sale.total_amount : sale.paid_amount, String(settings.currency_symbol))}
+                      </td>
+                      <td className="p-3 whitespace-nowrap">
+                        {sale.payment_method === 'qr' ? `${sale.qr_status} / ${sale.qr_reference ?? '-'}` : '-'}
+                      </td>
+                      <td className="p-3">
+                        {sale.status === 'completed' ? (
+                          <div className="flex flex-wrap gap-2">
+                            {sale.payment_method === 'qr' ? (
+                              <>
+                                <button className={`${secondaryButtonClass} min-h-9 rounded-xl px-3 py-1.5 text-xs`} onClick={() => verifyQr(sale, 'verified')}>
+                                  <CheckCircle2 className="h-4 w-4" />
+                                  Verify
+                                </button>
+                                <button className={`${secondaryButtonClass} min-h-9 rounded-xl px-3 py-1.5 text-xs`} onClick={() => verifyQr(sale, 'mismatch')}>
+                                  Mismatch
+                                </button>
+                              </>
+                            ) : null}
+                            <button className={`${dangerButtonClass} min-h-9 rounded-xl px-3 py-1.5 text-xs`} onClick={() => setVoiding(sale)}>
+                              <Ban className="h-4 w-4" />
+                              Void
+                            </button>
+                          </div>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
       </section>
 
       {voiding ? (

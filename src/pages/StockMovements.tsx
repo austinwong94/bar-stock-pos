@@ -25,7 +25,7 @@ export default function StockMovements() {
   return (
     <>
       <PageHeader title="Stock Movement History" subtitle="Ledger of stock-ins, sales, complimentary stock-outs, void reversals, and adjustments." />
-      <div className="grid gap-2 md:hidden">
+      <div className="hidden">
         {movements.map((movement) => (
           <article key={movement.id} className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4">
             <div className="flex flex-wrap items-start justify-between gap-2">
@@ -46,7 +46,7 @@ export default function StockMovements() {
           </article>
         ))}
       </div>
-      <div className="hidden overflow-x-auto rounded-[2rem] border border-line bg-white/80 shadow-soft md:block">
+      <div className="overflow-x-auto rounded-2xl border border-line bg-white/80 shadow-soft sm:rounded-[2rem]">
         <table className="w-full min-w-[960px] text-left">
           <thead className="bg-paper text-sm">
             <tr>

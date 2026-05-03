@@ -77,6 +77,18 @@ textarea {
   .island-card {
     box-shadow: 0 10px 24px rgba(196, 70, 115, 0.1);
   }
+
+  main table th,
+  main table td {
+    padding: 0.5rem 0.625rem !important;
+    font-size: 0.78rem;
+    line-height: 1.2rem;
+    vertical-align: middle;
+  }
+
+  main table img {
+    max-height: 2.75rem;
+  }
 }
 
 @media print {

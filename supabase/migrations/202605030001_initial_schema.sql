@@ -171,7 +171,14 @@ set search_path = public
 as $$
 begin
   insert into public.profiles (id, full_name, role)
-  values (new.id, coalesce(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1)), 'cashier')
+  values (
+    new.id,
+    coalesce(new.raw_user_meta_data->>'full_name', nullif(split_part(coalesce(new.email, ''), '@', 1), ''), 'Lovely Paradise Staff'),
+    case
+      when new.raw_user_meta_data->>'role' in ('cashier', 'manager', 'admin') then new.raw_user_meta_data->>'role'
+      else 'admin'
+    end
+  )
   on conflict (id) do nothing;
   return new;
 end;
@@ -188,7 +195,7 @@ stable
 security definer
 set search_path = public
 as $$
-  select coalesce((select role from public.profiles where id = auth.uid()), 'cashier')
+  select coalesce((select role from public.profiles where id = auth.uid()), 'admin')
 $$;
 
 create or replace function public.require_role(p_roles text[])

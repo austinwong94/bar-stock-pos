@@ -40,11 +40,6 @@ export function Layout({
     visibleLinks.find((link) => (link.to === '/' ? location.pathname === '/' : location.pathname.startsWith(link.to)))?.to ?? '/';
 
   async function exitApp() {
-    if (publicPreview) {
-      sessionStorage.removeItem('lovely_paradise_access');
-      window.location.reload();
-      return;
-    }
     await supabase.auth.signOut();
     sessionStorage.removeItem('lovely_paradise_access');
     navigate('/');
@@ -97,7 +92,7 @@ export function Layout({
           className="absolute bottom-5 left-5 right-5 flex items-center justify-center gap-2 rounded-2xl border border-line bg-white/80 px-3 py-3 font-bold shadow-soft"
         >
           <LogOut className="h-5 w-5" />
-          {publicPreview ? 'Lock app' : 'Sign out'}
+          Lock app
         </button>
       </aside>
       <div className="xl:pl-72">
@@ -116,7 +111,7 @@ export function Layout({
                   <button onClick={() => setLanguage('ms')} className={`rounded-xl px-2 py-2 ${language === 'ms' ? 'bg-accent text-white' : ''}`}>BM</button>
                 </div>
                 <button type="button" onClick={exitApp} className="rounded-2xl border border-line px-2 py-2 text-xs font-black sm:px-3 sm:text-sm">
-                  {publicPreview ? 'Lock app' : 'Sign out'}
+                  Lock app
                 </button>
               </div>
             </div>

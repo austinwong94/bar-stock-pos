@@ -4,11 +4,11 @@ A small alcohol bar inventory, POS, and daily closing app. The frontend is React
 
 ## What Is Included
 
-- Login with Supabase Auth.
+- Private access-code entry with Supabase anonymous Auth behind it, so staff do not need email/password but cloud data still uses authenticated RLS.
 - Touch-friendly POS with product grid, cart, cash, QR, and complimentary checkout.
-- Light pink island-themed demo mode with focused navigation: Dashboard, POS, Stock, Stock Out, Closing, Reports, Admin.
+- Light pink island-themed interface with focused navigation: Dashboard, POS, Stock Activity, Closing, Reports, Admin.
 - English / Malay labels, MYR / RMB display, four staff order-taker buttons, custom order price, discounts, and QR receipt photo capture.
-- Stock-in flow with large CANS / CARTON buttons and confirmation modal.
+- Stock-in flow with UNIT(S) / CARTON(S) buttons and confirmation modal.
 - Products, inventory, sales history, stock movement history, settings, users, a separate daily closing page, and a separate reports page.
 - Supabase migration with tables, RLS policies, helper functions, and transactional RPC functions.
 - Seed data for Beer, Soft Drink, Other, three beer products, Coke, 7Up, Fanta, and default settings.
@@ -39,6 +39,8 @@ supabase db execute --file supabase/seed.sql
 
 If your CLI version does not support `db execute`, open the Supabase SQL editor and run `supabase/seed.sql`.
 
+6. In Supabase, open Auth > Sign In / Providers and enable Anonymous sign-ins. This is required because the app uses a private access code instead of staff email/password.
+
 ## Environment Variables
 
 Create `.env.local`:
@@ -59,21 +61,9 @@ npm run dev
 
 Open the local URL printed by Vite.
 
-## Create The First Admin User
+## Staff Access
 
-1. In Supabase Auth, create a user with email and password.
-2. The migration creates a `profiles` row automatically with role `cashier`.
-3. In the Supabase SQL editor, promote your first admin:
-
-```sql
-update public.profiles
-set role = 'admin', full_name = 'Owner'
-where id = (
-  select id from auth.users where email = 'owner@example.com'
-);
-```
-
-After the first admin exists, use the app’s User / Role Management page to assign cashier, manager, and admin roles.
+The app uses one private entry code at the website door. After the code is accepted, Supabase creates an anonymous authenticated session, and all products, stock, sales, reports, QR receipt images, and settings save to Supabase cloud.
 
 ## Deploy To GitHub Pages
 
@@ -96,7 +86,7 @@ The Vite config uses `/bar-stock-pos/` as the base path when `GITHUB_PAGES=true`
 - Complimentary (FOC) sale deducts stock, has paid amount 0, and is recorded in daily reports.
 - Complimentary (FOC) confirmation requires a reason.
 - QR payment opens the device camera/file capture; uploaded receipts are stored in Supabase Storage bucket `payment-receipts` and the database stores the image path.
-- POS records the staff member accepting the order: User 1, User 2, User 3, or User 4.
+- POS records the staff member accepting the order: Chloe, Happy, Elle, or NekoMiao.
 - Custom orders and discounts can be entered from POS.
 - Insufficient stock blocks sale when negative stock is disabled.
 - Double-click confirm does not create duplicate sale because the RPC uses an idempotency key.

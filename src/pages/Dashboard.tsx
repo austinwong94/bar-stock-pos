@@ -163,7 +163,7 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
             </div>
           </div>
         </div>
-        <div className="mt-4 grid gap-3 md:hidden">
+        <div className="hidden">
           {activeProducts.map((product) => {
             const stock = product.inventory_balances?.quantity_on_hand ?? 0;
             const low = stock <= product.low_stock_threshold;
@@ -186,8 +186,8 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
             );
           })}
         </div>
-        <div className="mt-4 hidden overflow-x-auto md:block">
-          <table className="w-full min-w-[760px] text-left">
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[680px] text-left">
             <thead className="bg-shell text-sm">
               <tr>
                 <th className="p-3">Product</th>

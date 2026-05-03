@@ -482,7 +482,7 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
       </section>
       <section className="island-panel mt-4 rounded-2xl p-3 sm:mt-5 sm:rounded-[2rem] sm:p-5">
         <h2 className="text-lg font-black sm:text-xl">{text('Sales of all items', 'Jualan semua item')} · {activeReport ? `${activeReport.label} (${activeReport.range})` : selectedReportDate}</h2>
-        <div className="mt-3 grid gap-3 md:hidden">
+        <div className="hidden">
           {selectedItemSales.map((item) => (
             <article key={item.product} className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4">
               <div className="flex items-start justify-between gap-3">
@@ -500,7 +500,7 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
             </article>
           ))}
         </div>
-        <div className="mt-3 hidden overflow-x-auto md:block">
+        <div className="mt-3 overflow-x-auto">
           <table className="w-full min-w-[780px] text-left">
             <thead className="bg-shell text-sm">
               <tr>

@@ -108,15 +108,15 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
     <>
       {embedded ? null : <PageHeader title="Stock In" subtitle="Cartons are converted by each product carton size." />}
       <form onSubmit={submit} className="island-panel grid gap-4 rounded-2xl p-3 shadow-soft sm:rounded-[2rem] sm:p-5">
-        <div>
-          <p className="mb-2 text-sm font-black">Entered by / Diisi oleh</p>
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-2xl border border-line bg-white/75 p-2">
+          <p className="text-xs font-black leading-tight sm:text-sm">Entered by / Diisi oleh</p>
+          <div className="grid min-w-0 grid-cols-4 gap-1.5">
             {workers.map((worker) => (
               <button
                 key={worker}
                 type="button"
                 onClick={() => setEnteredBy(worker)}
-                className={`rounded-xl border px-2 py-2 text-sm font-black shadow-soft sm:px-3 sm:py-2.5 ${
+                className={`min-w-0 truncate rounded-xl border px-1.5 py-2 text-xs font-black shadow-soft sm:px-3 sm:text-sm ${
                   enteredBy === worker ? 'border-accent bg-accent text-white' : 'border-line bg-white text-ink'
                 }`}
               >

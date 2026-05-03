@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Field, inputClass } from '../components/Form';
+import { inputClass } from '../components/Form';
 import { PageHeader } from '../components/Page';
 import { useToast } from '../components/Toast';
 import { supabase } from '../lib/supabase';
@@ -57,22 +57,31 @@ export default function Users() {
           <p className="mt-1 text-sm font-bold text-neutral-600">Products, settings, and staff access.</p>
         </div>
       </div>
-      <div className="grid gap-3">
-        {profiles.map((profile) => (
-          <div key={profile.id} className="grid gap-3 rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:p-4 md:grid-cols-[1fr_220px] md:items-center">
-            <div>
-              <h2 className="font-black">{profile.full_name ?? 'Unnamed staff'}</h2>
-              <p className="text-sm font-bold text-neutral-600">Staff account</p>
-            </div>
-            <Field label="Access level">
-              <select className={inputClass} value={profile.role} onChange={(e) => updateRole(profile, e.target.value as Role)}>
-                <option value="cashier">Cashier</option>
-                <option value="manager">Manager</option>
-                <option value="admin">Admin</option>
-              </select>
-            </Field>
-          </div>
-        ))}
+      <div className="overflow-x-auto rounded-2xl border border-line bg-white/85 shadow-soft sm:rounded-[2rem]">
+        <table className="w-full min-w-[620px] text-left">
+          <thead className="bg-paper text-sm">
+            <tr>
+              <th className="p-3">Staff</th>
+              <th className="p-3">Account</th>
+              <th className="p-3">Access level</th>
+            </tr>
+          </thead>
+          <tbody>
+            {profiles.map((profile) => (
+              <tr key={profile.id} className="border-t border-line">
+                <td className="p-3 font-black">{profile.full_name ?? 'Unnamed staff'}</td>
+                <td className="p-3 text-sm font-bold text-neutral-600">Staff account</td>
+                <td className="p-3">
+                  <select className={inputClass} value={profile.role} onChange={(e) => updateRole(profile, e.target.value as Role)}>
+                    <option value="cashier">Cashier</option>
+                    <option value="manager">Manager</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </>
   );

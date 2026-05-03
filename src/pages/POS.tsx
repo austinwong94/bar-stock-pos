@@ -326,15 +326,15 @@ export default function POS({ settings }: { settings: SettingsMap }) {
   function renderLiveCartPanel() {
     if (cart.length === 0) return null;
     return (
-      <section className="island-panel rounded-2xl p-3 2xl:hidden">
+      <section className="island-panel sticky top-[6.25rem] z-20 max-h-[48vh] overflow-y-auto rounded-2xl p-2.5 2xl:hidden">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-black">Selected order</h2>
-            <p className="text-sm font-bold text-accent">Accepted by {orderTakenBy}</p>
+            <h2 className="text-base font-black">Selected order</h2>
+            <p className="text-xs font-bold text-accent">Accepted by {orderTakenBy}</p>
           </div>
           <div className="text-right">
             <p className="text-xs font-black uppercase tracking-widest text-neutral-500">{cartQuantity} item(s)</p>
-            <p className="text-lg font-black">{money(total, String(settings.currency_symbol))}</p>
+            <p className="text-base font-black">{money(total, String(settings.currency_symbol))}</p>
           </div>
         </div>
         <div className="mt-2 grid gap-2">
@@ -381,15 +381,15 @@ export default function POS({ settings }: { settings: SettingsMap }) {
       />
       <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1fr)_400px]">
         <section className="grid min-w-0 gap-4">
-          <section className="rounded-2xl border border-line bg-white/90 p-3 shadow-soft backdrop-blur lg:sticky lg:top-4 lg:z-10 2xl:static">
-            <p className="mb-2 text-sm font-black">{text('Order taken by', 'Diterima oleh')}</p>
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+          <section className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-2xl border border-line bg-white/90 p-2 shadow-soft backdrop-blur lg:sticky lg:top-4 lg:z-10 2xl:static">
+            <p className="text-xs font-black leading-tight sm:text-sm">{text('Order taken by', 'Diterima oleh')}</p>
+            <div className="grid min-w-0 grid-cols-4 gap-1.5">
               {staffUsers.map((user) => (
                 <button
                   key={user}
                   type="button"
                   onClick={() => setOrderTakenBy(user)}
-                  className={`rounded-xl border px-2 py-2 text-center text-sm font-black shadow-soft transition sm:px-3 sm:py-2.5 ${
+                  className={`min-w-0 truncate rounded-xl border px-1.5 py-2 text-center text-xs font-black shadow-soft transition sm:px-3 sm:text-sm ${
                     orderTakenBy === user
                       ? 'border-accent bg-accent text-white'
                       : 'border-line bg-white text-ink hover:border-accent'

@@ -159,7 +159,7 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
           </section>
           <section className="island-panel mt-4 rounded-2xl p-3 sm:mt-5 sm:rounded-[2rem] sm:p-5">
             <h2 className="text-lg font-black sm:text-xl">Stock In History</h2>
-            <div className="mt-3 grid gap-3 md:hidden">
+            <div className="hidden">
               {filteredInRows.map((row, index) => (
                 <article key={`${row.date}-${row.item}-card-${index}`} className={`rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4 ${index === 0 ? 'ring-2 ring-pink-100' : ''}`}>
                   <div className="flex flex-wrap items-start justify-between gap-2">
@@ -177,7 +177,7 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
                 </article>
               ))}
             </div>
-            <div className="mt-3 hidden overflow-x-auto md:block">
+            <div className="mt-3 overflow-x-auto">
               <table className="w-full min-w-[900px] text-left">
                 <thead className="text-sm">
                   <tr>
@@ -210,7 +210,7 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
       ) : (
         <>
           <section className="island-panel rounded-2xl p-3 sm:rounded-[2rem] sm:p-5">
-            <div className="grid gap-3 md:hidden">
+            <div className="hidden">
               {filteredOutRows.map((row, index) => (
                 <article key={`${row.sale}-${row.item}-card-${index}`} className={`rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4 ${index === 0 ? 'ring-2 ring-pink-100' : ''}`}>
                   <div className="flex flex-wrap items-start justify-between gap-2">
@@ -230,7 +230,7 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
                 </article>
               ))}
             </div>
-            <div className="hidden overflow-x-auto md:block">
+            <div className="overflow-x-auto">
               <table className="w-full min-w-[900px] text-left">
                 <thead className="text-sm">
                   <tr>

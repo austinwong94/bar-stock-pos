@@ -1,5 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { LockKeyhole, Waves } from 'lucide-react';
+import { hasSupabaseCredentials, supabase } from '../lib/supabase';
 
 const accessCodeHash = 'efe2848ecb78b602529c7772682ed90954c3a03045b103dca41c23b4d5ee520d';
 
@@ -21,13 +22,34 @@ export function AccessGate({ onUnlock }: { onUnlock: () => void }) {
     setChecking(true);
     setError('');
     const codeHash = await sha256(code.trim());
-    setChecking(false);
 
     if (codeHash !== accessCodeHash) {
+      setChecking(false);
       setError('Wrong access code.');
       return;
     }
 
+    try {
+      if (hasSupabaseCredentials) {
+        const { data: existing } = await supabase.auth.getSession();
+        if (!existing.session) {
+          const { error: authError } = await supabase.auth.signInAnonymously({
+            options: { data: { full_name: 'Lovely Paradise Staff', role: 'admin' } },
+          });
+          if (authError) {
+            setChecking(false);
+            setError('Cloud login is not enabled yet. In Supabase, turn on Auth > Sign In / Providers > Anonymous sign-ins, then try again.');
+            return;
+          }
+        }
+      }
+    } catch {
+      setChecking(false);
+      setError('Cloud database could not be reached. Check the Supabase keys and try again.');
+      return;
+    }
+
+    setChecking(false);
     sessionStorage.setItem('lovely_paradise_access', 'ok');
     onUnlock();
   }

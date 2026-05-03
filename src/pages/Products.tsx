@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Field, buttonClass, inputClass, secondaryButtonClass } from '../components/Form';
 import { Modal } from '../components/Modal';
 import { PageHeader } from '../components/Page';
@@ -34,6 +35,14 @@ const blank = (defaultCartonSize: number): ProductForm => ({
   active: true,
 });
 
+const defaultCategories = [
+  { name: 'Beer', sort_order: 10 },
+  { name: 'Soft Drink', sort_order: 20 },
+  { name: 'Food', sort_order: 30 },
+  { name: 'Cocktail', sort_order: 40 },
+  { name: 'Others', sort_order: 50 },
+];
+
 export default function Products({ settings }: { settings: SettingsMap }) {
   const toast = useToast();
   const [products, setProducts] = useState<ProductWithStock[]>([]);
@@ -54,7 +63,22 @@ export default function Products({ settings }: { settings: SettingsMap }) {
       supabase.from('categories').select('*').order('sort_order'),
     ]);
     setProducts((productData ?? []) as ProductWithStock[]);
-    setCategories((categoryData ?? []) as Category[]);
+    const currentCategories = (categoryData ?? []) as Category[];
+    const missingCategories = defaultCategories.filter(
+      (category) => !currentCategories.some((item) => normalizeCategoryName(item.name) === category.name),
+    );
+    if (missingCategories.length > 0) {
+      const { error } = await supabase.from('categories').upsert(defaultCategories, { onConflict: 'name' });
+      if (error) {
+        toast.error(error.message);
+        setCategories(currentCategories);
+        return;
+      }
+      const { data: nextCategories } = await supabase.from('categories').select('*').order('sort_order');
+      setCategories((nextCategories ?? currentCategories) as Category[]);
+      return;
+    }
+    setCategories(currentCategories);
   }
 
   useEffect(() => {
@@ -74,6 +98,10 @@ export default function Products({ settings }: { settings: SettingsMap }) {
   async function save(event: FormEvent) {
     event.preventDefault();
     if (!effectiveForm) return;
+    if (!effectiveForm.category_id) {
+      toast.error('Choose a category before saving.');
+      return;
+    }
     if (!isSupabaseConfigured) {
       saveLocalProduct({
         id: effectiveForm.id,
@@ -137,8 +165,8 @@ export default function Products({ settings }: { settings: SettingsMap }) {
               <Plus className="h-4 w-4" />
               Add product
             </button>
-            <a className={secondaryButtonClass} href="/settings">Settings</a>
-            <a className={secondaryButtonClass} href="/users">Users</a>
+            <Link className={secondaryButtonClass} to="/settings">Settings</Link>
+            <Link className={secondaryButtonClass} to="/users">Users</Link>
             </>
           ) : null
         }
@@ -174,7 +202,7 @@ export default function Products({ settings }: { settings: SettingsMap }) {
           ))}
         </div>
       </section>
-      <div className="grid gap-3 lg:hidden">
+      <div className="hidden">
         {sortedProducts.map((product) => (
           <article key={product.id} className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4">
             <div className="grid grid-cols-[72px_1fr] gap-3 sm:grid-cols-[88px_1fr]">
@@ -220,8 +248,8 @@ export default function Products({ settings }: { settings: SettingsMap }) {
           </article>
         ))}
       </div>
-      <div className="hidden overflow-x-auto rounded-[2rem] border border-line bg-white/80 shadow-soft lg:block">
-        <table className="w-full min-w-[880px] text-left">
+      <div className="overflow-x-auto rounded-2xl border border-line bg-white/80 shadow-soft sm:rounded-[2rem]">
+        <table className="w-full min-w-[820px] text-left">
           <thead className="bg-paper text-sm">
             <tr>
               <th className="p-3">Name</th>
@@ -290,6 +318,29 @@ export default function Products({ settings }: { settings: SettingsMap }) {
             <Field label="Product name">
               <input className={inputClass} value={effectiveForm.name} onChange={(e) => setForm({ ...effectiveForm, name: e.target.value })} required />
             </Field>
+            <Field label="Category">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {sortedCategories.map((category) => (
+                  <button
+                    key={category.id}
+                    type="button"
+                    onClick={() => setForm({ ...effectiveForm, category_id: category.id })}
+                    className={`min-h-10 rounded-xl border px-3 py-2 text-sm font-black shadow-soft ${
+                      effectiveForm.category_id === category.id
+                        ? 'border-accent bg-accent text-white'
+                        : 'border-line bg-white text-ink'
+                    }`}
+                  >
+                    {normalizeCategoryName(category.name)}
+                  </button>
+                ))}
+              </div>
+              {sortedCategories.length === 0 ? (
+                <p className="rounded-xl border border-warning bg-amber-50 p-3 text-sm font-black text-warning">
+                  Categories are missing. Close this window, reopen Admin, then Add product again.
+                </p>
+              ) : null}
+            </Field>
             <Field label="Product image URL">
               <input className={inputClass} value={effectiveForm.image_url} onChange={(e) => setForm({ ...effectiveForm, image_url: e.target.value })} placeholder="https://..." />
             </Field>
@@ -298,11 +349,6 @@ export default function Products({ settings }: { settings: SettingsMap }) {
                 <img src={effectiveForm.image_url || assetPath('assets/custom-order.svg')} alt="" className="h-20 w-full rounded-xl object-cover sm:h-24" />
                 <input className={inputClass} type="file" accept="image/*" onChange={(event) => attachImage(event.target.files?.[0])} />
               </div>
-            </Field>
-            <Field label="Category">
-              <select className={inputClass} value={effectiveForm.category_id} onChange={(e) => setForm({ ...effectiveForm, category_id: e.target.value })}>
-                {sortedCategories.map((category) => <option key={category.id} value={category.id}>{normalizeCategoryName(category.name)}</option>)}
-              </select>
             </Field>
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Price per unit"><input className={inputClass} type="number" min={0} step="0.01" value={effectiveForm.price_per_unit} onChange={(e) => setForm({ ...effectiveForm, price_per_unit: e.target.value })} /></Field>

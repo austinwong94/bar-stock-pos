@@ -25,7 +25,7 @@ export default function Inventory({ settings }: { settings: SettingsMap }) {
           </>
         }
       />
-      <div className="grid gap-2 md:hidden">
+      <div className="hidden">
         {products.map((product) => {
           const stock = product.inventory_balances?.quantity_on_hand ?? 0;
           const low = stock <= product.low_stock_threshold;
@@ -48,8 +48,8 @@ export default function Inventory({ settings }: { settings: SettingsMap }) {
           );
         })}
       </div>
-      <div className="hidden overflow-x-auto rounded-[2rem] border border-line bg-white/80 shadow-soft md:block">
-        <table className="w-full min-w-[760px] text-left">
+      <div className="overflow-x-auto rounded-2xl border border-line bg-white/80 shadow-soft sm:rounded-[2rem]">
+        <table className="w-full min-w-[680px] text-left">
           <thead className="bg-paper text-sm">
             <tr>
               <th className="p-3">Product</th>
