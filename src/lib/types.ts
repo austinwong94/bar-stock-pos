@@ -147,6 +147,21 @@ export type DailyReport = {
   notes: string | null;
 };
 
+export type CashSession = {
+  id: string;
+  business_date: string;
+  opening_float: number;
+  actual_cash_counted: number | null;
+  expected_cash: number | null;
+  cash_variance: number | null;
+  opened_by: string | null;
+  closed_by: string | null;
+  opened_at: string;
+  closed_at: string | null;
+  status: 'open' | 'closed';
+  notes: string | null;
+};
+
 export type CompleteSaleResult = {
   sale_id: string;
   sale_number: string;
@@ -178,6 +193,7 @@ export type Database = {
         Insert: Partial<StockMovement>;
         Update: Partial<StockMovement>;
       };
+      cash_sessions: { Row: CashSession; Insert: Partial<CashSession>; Update: Partial<CashSession> };
       daily_reports: { Row: DailyReport; Insert: Partial<DailyReport>; Update: Partial<DailyReport> };
       app_settings: {
         Row: { key: AppSettingKey; value: unknown; updated_by: string | null; updated_at: string };

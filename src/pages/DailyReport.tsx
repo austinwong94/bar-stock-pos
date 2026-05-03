@@ -7,10 +7,10 @@ import { Modal } from '../components/Modal';
 import { PageHeader } from '../components/Page';
 import { useToast } from '../components/Toast';
 import { malaysiaDateInputValue, money } from '../lib/format';
-import { demoReports } from '../lib/demo';
-import { loadLocalSaleItems, loadLocalSales } from '../lib/localStore';
+import { demoMovements, demoReports } from '../lib/demo';
+import { loadLocalProducts, loadLocalSaleItems, loadLocalSales } from '../lib/localStore';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
-import type { DailyReport, Sale, SaleItem, SettingsMap } from '../lib/types';
+import type { CashSession, DailyReport, ProductWithStock, Sale, SaleItem, SettingsMap, StockMovement } from '../lib/types';
 import { useLanguage } from '../lib/language';
 import { actualItemSales } from '../lib/reportItems';
 import SalesHistory from './SalesHistory';
@@ -18,6 +18,7 @@ import SalesHistory from './SalesHistory';
 type ReportPeriod = 'daily' | 'weekly' | 'monthly' | 'custom';
 type ClosingStatus = 'closed' | 'not_closed' | 'partial';
 type SaleWithItems = Sale & { sale_items?: SaleItem[] };
+type StockMovementWithProduct = StockMovement & { products?: { name: string } | null };
 
 type ReportDay = {
   id: string;
@@ -95,6 +96,44 @@ function paymentLabel(method: Sale['payment_method']) {
   if (method === 'cash') return 'Cash Payment';
   if (method === 'qr') return 'QR Payment';
   return 'FOC';
+}
+
+function movementCalendarDate(movement: StockMovement) {
+  return malaysiaDateInputValue(movement.created_at);
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return '-';
+  return format(new Date(value), 'dd MMM yyyy, h:mm a');
+}
+
+function signedUnits(value: number) {
+  return value > 0 ? `+${value}` : String(value);
+}
+
+function movementTypeLabel(type: StockMovement['movement_type']) {
+  if (type === 'stock_in') return 'Stock In';
+  if (type === 'sale') return 'Sale';
+  if (type === 'complimentary') return 'FOC';
+  if (type === 'void_sale') return 'Void Sale';
+  return 'Adjustment';
+}
+
+function saleDateInPeriod(sale: Sale, dates: Set<string>) {
+  return dates.has(sale.business_date) || dates.has(saleCalendarDate(sale));
+}
+
+function allocateReportAmount(total: number, weights: number[]) {
+  const cents = Math.round(total * 100);
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+  let used = 0;
+  return weights.map((weight, index) => {
+    if (index === weights.length - 1) return (cents - used) / 100;
+    const share = totalWeight > 0 ? weight / totalWeight : 1 / Math.max(weights.length, 1);
+    const value = Math.round(cents * share);
+    used += value;
+    return value / 100;
+  });
 }
 
 function buildReportDays(reports: DailyReport[], sales: Sale[]): ReportDay[] {
@@ -203,6 +242,9 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
       sale_items: localSaleItems.filter((item) => item.sale_id === sale.id),
     }));
   });
+  const [stockMovements, setStockMovements] = useState<StockMovementWithProduct[]>(demoMovements);
+  const [products, setProducts] = useState<ProductWithStock[]>(() => loadLocalProducts(true));
+  const [cashSessions, setCashSessions] = useState<CashSession[]>([]);
   const [reportPeriod, setReportPeriod] = useState<ReportPeriod>('daily');
   const [, setBusinessDate] = useState(today);
   const [reportMonth, setReportMonth] = useState(today.slice(0, 7));
@@ -219,12 +261,24 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
   useEffect(() => {
     async function loadReports() {
       if (!isSupabaseConfigured) return;
-      const [{ data: reportData }, { data: saleData }] = await Promise.all([
+      const [
+        { data: reportData },
+        { data: saleData },
+        { data: movementData },
+        { data: productData },
+        { data: cashSessionData },
+      ] = await Promise.all([
         supabase.from('daily_reports').select('*').order('business_date', { ascending: false }),
         supabase.from('sales').select('*, sale_items(*, products(name))').order('business_date', { ascending: false }),
+        supabase.from('stock_movements').select('*, products(name)').order('created_at', { ascending: true }),
+        supabase.from('products').select('*, categories(id,name,sort_order), inventory_balances(quantity_on_hand)').order('name'),
+        supabase.from('cash_sessions').select('*').order('business_date', { ascending: false }),
       ]);
       setReports((reportData ?? []) as DailyReport[]);
       setSales((saleData ?? []) as SaleWithItems[]);
+      setStockMovements((movementData ?? []) as StockMovementWithProduct[]);
+      setProducts((productData ?? []) as ProductWithStock[]);
+      setCashSessions((cashSessionData ?? []) as CashSession[]);
     }
     void loadReports();
   }, []);
@@ -307,9 +361,23 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
       toast.error('Popup blocked. Allow popups to download/print PDF.');
       return;
     }
-    const reportItems = actualItemSales(sales, selectedReport.dates);
-    const selectedDates = new Set(selectedReport.dates);
-    const voidedSales = sales.filter((sale) => sale.status === 'voided' && selectedDates.has(saleCalendarDate(sale)));
+    const currency = String(settings.currency_symbol);
+    const periodDates = selectedReport.dates.length > 0 ? selectedReport.dates : [selectedReport.businessDate];
+    const selectedDates = new Set(periodDates);
+    const reportItems = actualItemSales(sales, periodDates);
+    const completedSales = sales.filter((sale) => sale.status === 'completed' && saleDateInPeriod(sale, selectedDates));
+    const allPeriodSales = sales.filter((sale) => saleDateInPeriod(sale, selectedDates));
+    const voidedSales = allPeriodSales.filter((sale) => sale.status === 'voided');
+    const qrSales = completedSales.filter((sale) => sale.payment_method === 'qr');
+    const reportByDate = new Map(reports.map((item) => [item.business_date, item]));
+    const cashSessionByDate = new Map(cashSessions.map((item) => [item.business_date, item]));
+    const periodMovements = stockMovements.filter((movement) => selectedDates.has(movementCalendarDate(movement)));
+    const stockInMovements = periodMovements.filter((movement) => movement.movement_type === 'stock_in');
+    const stockOutMovements = periodMovements.filter((movement) => movement.movement_type !== 'stock_in');
+    const discountTotal = completedSales.reduce((sum, sale) => sum + Number(sale.discount_amount ?? 0), 0);
+    const qrPendingTotal = qrSales.filter((sale) => sale.qr_status === 'pending').reduce((sum, sale) => sum + Number(sale.paid_amount), 0);
+    const qrVerifiedTotal = qrSales.filter((sale) => sale.qr_status === 'verified').reduce((sum, sale) => sum + Number(sale.paid_amount), 0);
+    const qrMismatchTotal = qrSales.filter((sale) => sale.qr_status === 'mismatch').reduce((sum, sale) => sum + Number(sale.paid_amount), 0);
     const reportItemTotals = reportItems.reduce(
       (sum, item) => ({
         quantity: sum.quantity + item.quantity,
@@ -320,36 +388,212 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
       }),
       { quantity: 0, cash: 0, qr: 0, focCost: 0, paidSales: 0 },
     );
+
+    const productById = new Map(products.map((product) => [product.id, product]));
+    const categoryBreakdown = new Map<string, { category: string; quantity: number; cash: number; qr: number; focCost: number }>();
+    completedSales.forEach((sale) => {
+      const items = sale.sale_items ?? [];
+      const allocatedValues = allocateReportAmount(Number(sale.total_amount), items.map((item) => Number(item.line_total)));
+      items.forEach((item, index) => {
+        const product = item.product_id ? productById.get(item.product_id) : null;
+        const category = product?.categories?.name ?? (item.product_id ? 'Others' : 'Custom Order');
+        const current = categoryBreakdown.get(category) ?? { category, quantity: 0, cash: 0, qr: 0, focCost: 0 };
+        const value = allocatedValues[index] ?? 0;
+        current.quantity += Number(item.quantity);
+        if (sale.payment_method === 'cash') current.cash += value;
+        if (sale.payment_method === 'qr') current.qr += value;
+        if (sale.payment_method === 'complimentary') current.focCost += value;
+        categoryBreakdown.set(category, current);
+      });
+    });
+    const inventoryRows = products.map((product) => {
+      const current = Number(product.inventory_balances?.quantity_on_hand ?? 0);
+      const productMovements = stockMovements.filter((movement) => movement.product_id === product.id);
+      const afterPeriodChange = productMovements
+        .filter((movement) => movementCalendarDate(movement) > selectedReport.toDate)
+        .reduce((sum, movement) => sum + Number(movement.quantity_change), 0);
+      const periodProductMovements = productMovements.filter((movement) => selectedDates.has(movementCalendarDate(movement)));
+      const periodNet = periodProductMovements.reduce((sum, movement) => sum + Number(movement.quantity_change), 0);
+      const closing = current - afterPeriodChange;
+      const opening = closing - periodNet;
+      const stockIn = periodProductMovements
+        .filter((movement) => movement.movement_type === 'stock_in')
+        .reduce((sum, movement) => sum + Number(movement.quantity_change), 0);
+      const stockOut = Math.abs(periodProductMovements
+        .filter((movement) => movement.quantity_change < 0)
+        .reduce((sum, movement) => sum + Number(movement.quantity_change), 0));
+      const voidReturns = periodProductMovements
+        .filter((movement) => movement.movement_type === 'void_sale')
+        .reduce((sum, movement) => sum + Number(movement.quantity_change), 0);
+      const adjustmentNet = periodProductMovements
+        .filter((movement) => movement.movement_type === 'adjustment')
+        .reduce((sum, movement) => sum + Number(movement.quantity_change), 0);
+      return {
+        product,
+        opening,
+        stockIn,
+        stockOut,
+        voidReturns,
+        adjustmentNet,
+        closing,
+        low: product.active && closing <= Number(product.low_stock_threshold),
+      };
+    });
+
+    const closingRows = periodDates.map((date) => {
+      const closedReport = reportByDate.get(date);
+      const cashSession = cashSessionByDate.get(date);
+      const daySales = completedSales.filter((sale) => saleDateInPeriod(sale, new Set([date])));
+      const closedSnapshot = closedReport?.status === 'closed';
+      const openingFloat = Number(cashSession?.opening_float ?? closedReport?.report_json?.opening_cash_float ?? 0);
+      const fallbackExpectedCash = openingFloat + daySales.reduce((sum, sale) => sum + (sale.payment_method === 'cash' ? Number(sale.paid_amount) : 0), 0);
+      const actualCash = closedReport?.actual_cash_counted ?? cashSession?.actual_cash_counted ?? null;
+      const expectedCash = closedReport?.expected_cash ?? cashSession?.expected_cash ?? fallbackExpectedCash;
+      const variance = closedReport?.cash_variance ?? cashSession?.cash_variance ?? null;
+      return {
+        date,
+        status: closedSnapshot ? 'Closed' : 'Not closed',
+        openingFloat,
+        cash: closedReport ? Number(closedReport.total_cash) : daySales.reduce((sum, sale) => sum + (sale.payment_method === 'cash' ? Number(sale.paid_amount) : 0), 0),
+        qr: closedReport ? Number(closedReport.total_qr) : daySales.reduce((sum, sale) => sum + (sale.payment_method === 'qr' ? Number(sale.paid_amount) : 0), 0),
+        focCost: closedReport ? Number(closedReport.total_complimentary_value) : daySales.reduce((sum, sale) => sum + (sale.payment_method === 'complimentary' ? Number(sale.total_amount) : 0), 0),
+        totalRevenue: closedReport ? Number(closedReport.total_sales) : daySales.reduce((sum, sale) => sum + (sale.payment_method === 'complimentary' ? 0 : Number(sale.paid_amount)), 0),
+        actualCash,
+        expectedCash,
+        variance,
+        notes: closedReport?.notes ?? cashSession?.notes ?? '',
+        closedAt: closedReport?.closed_at ?? cashSession?.closed_at ?? null,
+      };
+    });
+
+    const tableHtml = (headers: string[], rows: string, emptyText: string) => `
+      <table>
+        <thead><tr>${headers.map((header) => `<th>${htmlEscape(header)}</th>`).join('')}</tr></thead>
+        <tbody>${rows || `<tr><td colspan="${headers.length}" class="empty">${htmlEscape(emptyText)}</td></tr>`}</tbody>
+      </table>
+    `;
+
     const rows = reportItems
-      .map((item) => `<tr><td>${htmlEscape(item.product)}</td><td>${item.quantity}</td><td>${money(item.cash, String(settings.currency_symbol))}</td><td>${money(item.qr, String(settings.currency_symbol))}</td><td>- ${money(item.focCost, String(settings.currency_symbol))}</td><td>${money(item.cash + item.qr, String(settings.currency_symbol))}</td></tr>`)
+      .map((item) => `<tr><td>${htmlEscape(item.product)}</td><td>${item.quantity}</td><td>${money(item.cash, currency)}</td><td>${money(item.qr, currency)}</td><td class="bad">- ${money(item.focCost, currency)}</td><td><strong>${money(item.cash + item.qr, currency)}</strong></td></tr>`)
+      .join('');
+    const categoryRows = Array.from(categoryBreakdown.values())
+      .sort((a, b) => a.category.localeCompare(b.category))
+      .map((item) => `<tr><td>${htmlEscape(item.category)}</td><td>${item.quantity}</td><td>${money(item.cash, currency)}</td><td>${money(item.qr, currency)}</td><td class="bad">- ${money(item.focCost, currency)}</td><td><strong>${money(item.cash + item.qr, currency)}</strong></td></tr>`)
+      .join('');
+    const salesRows = completedSales
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+      .map((sale) => `<tr><td>${htmlEscape(saleCalendarDate(sale))}</td><td>${htmlEscape(sale.sale_number)}</td><td>${htmlEscape(sale.order_taken_by ?? '-')}</td><td>${htmlEscape(paymentLabel(sale.payment_method))}</td><td>${htmlEscape(sale.payment_method === 'qr' ? (sale.qr_payment_type ?? '-') : '-')}</td><td>${htmlEscape(sale.payment_method === 'qr' ? sale.qr_status : '-')}</td><td>${money(Number(sale.discount_amount ?? 0), currency)}</td><td>${money(sale.total_amount, currency)}</td><td>${money(sale.paid_amount, currency)}</td></tr>`)
+      .join('');
+    const qrRows = qrSales
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+      .map((sale) => `<tr><td>${htmlEscape(saleCalendarDate(sale))}</td><td>${htmlEscape(sale.sale_number)}</td><td>${htmlEscape(sale.order_taken_by ?? '-')}</td><td>${htmlEscape(sale.qr_payment_type ?? '-')}</td><td>${htmlEscape(sale.qr_reference ?? '-')}</td><td>${htmlEscape(sale.qr_status)}</td><td>${htmlEscape(sale.qr_receipt_image_path ? 'Attached' : 'Missing')}</td><td>${money(sale.paid_amount, currency)}</td></tr>`)
+      .join('');
+    const closingTableRows = closingRows
+      .map((row) => `<tr><td>${htmlEscape(row.date)}</td><td class="${row.status === 'Closed' ? 'good' : 'warn'}">${htmlEscape(row.status)}</td><td>${money(row.openingFloat, currency)}</td><td>${money(row.cash, currency)}</td><td>${money(row.qr, currency)}</td><td class="bad">- ${money(row.focCost, currency)}</td><td><strong>${money(row.totalRevenue, currency)}</strong></td><td>${row.actualCash === null ? '-' : money(row.actualCash, currency)}</td><td>${row.expectedCash === null ? '-' : money(row.expectedCash, currency)}</td><td>${row.variance === null ? '-' : money(row.variance, currency)}</td><td>${htmlEscape(formatDateTime(row.closedAt))}</td><td>${htmlEscape(row.notes || '-')}</td></tr>`)
       .join('');
     const voidedRows = voidedSales
-      .map((sale) => `<tr><td>${htmlEscape(sale.sale_number)}</td><td>${htmlEscape(format(new Date(sale.voided_at ?? sale.created_at), 'dd MMM yyyy, h:mm a'))}</td><td>${htmlEscape(sale.order_taken_by ?? '-')}</td><td>${htmlEscape(paymentLabel(sale.payment_method))}</td><td>${money(sale.total_amount, String(settings.currency_symbol))}</td><td>${htmlEscape(sale.void_reason ?? '-')}</td></tr>`)
+      .sort((a, b) => (a.voided_at ?? a.created_at).localeCompare(b.voided_at ?? b.created_at))
+      .map((sale) => `<tr><td>${htmlEscape(saleCalendarDate(sale))}</td><td>${htmlEscape(sale.sale_number)}</td><td>${htmlEscape(formatDateTime(sale.voided_at ?? sale.created_at))}</td><td>${htmlEscape(sale.order_taken_by ?? '-')}</td><td>${htmlEscape(paymentLabel(sale.payment_method))}</td><td>${money(sale.total_amount, currency)}</td><td>${htmlEscape(sale.void_reason ?? '-')}</td></tr>`)
       .join('');
     const voidedTotal = voidedSales.reduce((sum, sale) => sum + Number(sale.total_amount), 0);
+    const stockInRows = stockInMovements
+      .map((movement) => `<tr><td>${htmlEscape(movementCalendarDate(movement))}</td><td>${htmlEscape(movement.products?.name ?? (movement.product_id ? productById.get(movement.product_id)?.name : null) ?? '-')}</td><td>${signedUnits(Number(movement.quantity_change))}</td><td>${htmlEscape(movement.unit_input === 'carton' ? `${movement.input_quantity ?? '-'} CARTON(S) x ${movement.carton_size_at_time ?? '-'} units` : `${movement.input_quantity ?? Math.abs(movement.quantity_change)} UNIT(S)`)}</td><td>${htmlEscape(movement.entered_by ?? '-')}</td><td>${htmlEscape(movement.reason ?? '-')}</td><td>${htmlEscape(movement.notes ?? '-')}</td></tr>`)
+      .join('');
+    const stockOutRows = stockOutMovements
+      .map((movement) => `<tr><td>${htmlEscape(movementCalendarDate(movement))}</td><td>${htmlEscape(movement.products?.name ?? (movement.product_id ? productById.get(movement.product_id)?.name : null) ?? '-')}</td><td>${htmlEscape(movementTypeLabel(movement.movement_type))}</td><td>${signedUnits(Number(movement.quantity_change))}</td><td>${htmlEscape(movement.entered_by ?? '-')}</td><td>${htmlEscape(movement.reference_type ?? '-')}</td><td>${htmlEscape(movement.reason ?? movement.notes ?? '-')}</td></tr>`)
+      .join('');
+    const inventoryTableRows = inventoryRows
+      .map((row) => `<tr><td>${htmlEscape(row.product.name)}</td><td>${htmlEscape(row.product.categories?.name ?? 'Others')}</td><td>${row.opening}</td><td>${row.stockIn}</td><td>${row.stockOut}</td><td>${row.voidReturns}</td><td>${signedUnits(row.adjustmentNet)}</td><td><strong>${row.closing}</strong></td><td class="${row.low ? 'bad' : 'good'}">${row.low ? 'Low' : 'OK'}</td></tr>`)
+      .join('');
+    const lowStockRows = inventoryRows
+      .filter((row) => row.low)
+      .map((row) => `<tr><td>${htmlEscape(row.product.name)}</td><td>${row.closing}</td><td>${row.product.low_stock_threshold}</td><td>${htmlEscape(row.product.active ? 'Active' : 'Inactive')}</td></tr>`)
+      .join('');
     const fileTitle = `${selectedReport.label} ${selectedReport.range}`.replace(/[<>]/g, '');
     printable.document.write(`
       <html><head><title>Lovely Paradise Report ${fileTitle}</title>
-      <style>body{font-family:Arial;padding:28px;color:#2b1b27}h1{margin-bottom:4px}.muted{color:#6b5b68}.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:18px 0}.box{border:1px solid #ead1dc;background:#fff7fb;border-radius:14px;padding:12px}.box b{display:block;margin-top:6px;font-size:18px}.warn{color:#b45309}.bad{color:#d94d6a}table{border-collapse:collapse;width:100%;margin-top:20px}td,th{border:1px solid #ddd;padding:10px;text-align:left}th{background:#fff0f5}.total{font-weight:800;background:#fff0f5}@media print{button{display:none}.summary{grid-template-columns:repeat(2,1fr)}}</style>
+      <style>
+        @page{size:A4 landscape;margin:10mm}
+        *{box-sizing:border-box}
+        body{font-family:Arial,Helvetica,sans-serif;padding:0;color:#2b1b27;font-size:11px;line-height:1.35}
+        h1{margin:0 0 3px;font-size:24px}h2{margin:18px 0 8px;font-size:16px}h3{margin:12px 0 6px;font-size:13px}
+        .muted{color:#6b5b68}.good{color:#087f72;font-weight:800}.warn{color:#b45309;font-weight:800}.bad{color:#d94d6a;font-weight:800}
+        .top{display:flex;justify-content:space-between;gap:12px;border-bottom:2px solid #2b1b27;padding-bottom:10px;margin-bottom:12px}
+        .summary{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:12px 0}
+        .box{border:1px solid #ead1dc;background:#fff7fb;border-radius:10px;padding:8px;min-height:54px}.box b{display:block;margin-top:4px;font-size:14px}
+        table{border-collapse:collapse;width:100%;margin:0 0 12px;page-break-inside:auto}tr{page-break-inside:avoid;page-break-after:auto}
+        td,th{border:1px solid #ddd;padding:6px;text-align:left;vertical-align:top}th{background:#fff0f5;font-size:10px;text-transform:uppercase;letter-spacing:.02em}
+        .total{font-weight:800;background:#fff0f5}.empty{color:#6b5b68;text-align:center}
+        .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}.section{break-inside:avoid}
+        @media print{button{display:none}.section{break-inside:avoid}}
+      </style>
       </head><body>
-      <h1>Lovely Paradise Bar Sales Report</h1>
-      <p class="muted">${selectedReport.label} · ${selectedReport.range}</p>
-      <p><strong>Closing status:</strong> <span class="${selectedReport.closingStatus === 'closed' ? '' : 'warn'}">${selectedReport.statusLabel}</span></p>
-      <div class="summary">
-        <div class="box">Cash Payment<b>${money(selectedReport.cash, String(settings.currency_symbol))}</b></div>
-        <div class="box">QR Payment<b>${money(selectedReport.qr, String(settings.currency_symbol))}</b></div>
-        <div class="box">FOC Cost<b class="bad">- ${money(selectedReport.focCost, String(settings.currency_symbol))}</b></div>
-        <div class="box">Total Revenue<b>${money(selectedReport.paidSales, String(settings.currency_symbol))}</b></div>
-        <div class="box">Cash Variance<b>${money(selectedReport.variance, String(settings.currency_symbol))}</b></div>
-        <div class="box">Voided Sales<b>${voidedSales.length}</b></div>
-        <div class="box">Item Detail Dates<b>${selectedReport.range}</b></div>
+      <div class="top">
+        <div>
+          <h1>Lovely Paradise Bar Account Report</h1>
+          <div class="muted">${htmlEscape(selectedReport.label)} · ${htmlEscape(selectedReport.range)}</div>
+        </div>
+        <div>
+          <strong>Generated:</strong> ${htmlEscape(formatDateTime(new Date().toISOString()))}<br>
+          <strong>Closing status:</strong> <span class="${selectedReport.closingStatus === 'closed' ? 'good' : 'warn'}">${htmlEscape(selectedReport.statusLabel)}</span>
+        </div>
       </div>
-      <h2>Sales of all items</h2>
-      <table><thead><tr><th>Item</th><th>Quantity</th><th>Cash Payment</th><th>QR Payment</th><th>FOC Cost</th><th>Total Revenue</th></tr></thead><tbody>${rows}<tr class="total"><td>Total</td><td>${reportItemTotals.quantity}</td><td>${money(reportItemTotals.cash, String(settings.currency_symbol))}</td><td>${money(reportItemTotals.qr, String(settings.currency_symbol))}</td><td>- ${money(reportItemTotals.focCost, String(settings.currency_symbol))}</td><td>${money(reportItemTotals.paidSales, String(settings.currency_symbol))}</td></tr></tbody></table>
-      <h2>Voided sales</h2>
-      ${voidedSales.length > 0
-        ? `<table><thead><tr><th>Sale</th><th>Voided at</th><th>Staff</th><th>Method</th><th>Original value</th><th>Reason</th></tr></thead><tbody>${voidedRows}<tr class="total"><td colspan="4">Total voided original value</td><td>${money(voidedTotal, String(settings.currency_symbol))}</td><td></td></tr></tbody></table>`
-        : '<p class="muted">No voided sales for this report period.</p>'}
+      <div class="summary">
+        <div class="box">Cash Payment<b>${money(selectedReport.cash, currency)}</b></div>
+        <div class="box">QR Payment<b>${money(selectedReport.qr, currency)}</b></div>
+        <div class="box">Total Revenue<b>${money(selectedReport.paidSales, currency)}</b></div>
+        <div class="box">FOC Cost<b class="bad">- ${money(selectedReport.focCost, currency)}</b></div>
+        <div class="box">Discount Given<b>${money(discountTotal, currency)}</b></div>
+        <div class="box">Cash Variance<b>${money(selectedReport.variance, currency)}</b></div>
+        <div class="box">Transactions<b>${completedSales.length}</b></div>
+        <div class="box">Voided Sales<b>${voidedSales.length}</b></div>
+        <div class="box">QR Pending<b>${money(qrPendingTotal, currency)}</b></div>
+        <div class="box">QR Verified<b>${money(qrVerifiedTotal, currency)}</b></div>
+        <div class="box">QR Mismatch<b>${money(qrMismatchTotal, currency)}</b></div>
+        <div class="box">Report Dates<b>${periodDates.length}</b></div>
+      </div>
+      <div class="section">
+        <h2>Daily Closing</h2>
+        ${tableHtml(['Date', 'Status', 'Opening Float', 'Cash Payment', 'QR Payment', 'FOC Cost', 'Total Revenue', 'Actual Cash', 'Expected Cash', 'Variance', 'Closed At', 'Notes'], closingTableRows, 'No closing rows for this period.')}
+      </div>
+      <div class="section">
+        <h2>Sales of All Items</h2>
+        ${tableHtml(['Item', 'Quantity', 'Cash Payment', 'QR Payment', 'FOC Cost', 'Total Revenue'], `${rows}<tr class="total"><td>Total</td><td>${reportItemTotals.quantity}</td><td>${money(reportItemTotals.cash, currency)}</td><td>${money(reportItemTotals.qr, currency)}</td><td class="bad">- ${money(reportItemTotals.focCost, currency)}</td><td>${money(reportItemTotals.paidSales, currency)}</td></tr>`, 'No item sales for this period.')}
+      </div>
+      <div class="section">
+        <h2>Sales by Category</h2>
+        ${tableHtml(['Category', 'Quantity', 'Cash Payment', 'QR Payment', 'FOC Cost', 'Total Revenue'], `${categoryRows}<tr class="total"><td>Total</td><td>${reportItemTotals.quantity}</td><td>${money(reportItemTotals.cash, currency)}</td><td>${money(reportItemTotals.qr, currency)}</td><td class="bad">- ${money(reportItemTotals.focCost, currency)}</td><td>${money(reportItemTotals.paidSales, currency)}</td></tr>`, 'No category sales for this period.')}
+      </div>
+      <div class="section">
+        <h2>Sales Transactions</h2>
+        ${tableHtml(['Date', 'Sale No.', 'Staff', 'Method', 'QR Type', 'QR Status', 'Discount', 'Sale Value', 'Paid'], salesRows, 'No completed sales for this period.')}
+      </div>
+      <div class="two">
+        <div class="section">
+          <h2>QR Payment Verification</h2>
+          ${tableHtml(['Date', 'Sale No.', 'Staff', 'QR Type', 'Reference', 'Status', 'Receipt', 'Amount'], qrRows, 'No QR Payment sales for this period.')}
+        </div>
+        <div class="section">
+          <h2>Voided Sales</h2>
+          ${tableHtml(['Date', 'Sale No.', 'Voided At', 'Staff', 'Method', 'Original Value', 'Reason'], `${voidedRows}${voidedSales.length > 0 ? `<tr class="total"><td colspan="5">Total voided original value</td><td>${money(voidedTotal, currency)}</td><td></td></tr>` : ''}`, 'No voided sales for this period.')}
+        </div>
+      </div>
+      <div class="section">
+        <h2>Stock In</h2>
+        ${tableHtml(['Date', 'Product', 'Units Added', 'Input', 'Entered By', 'Reference', 'Notes'], stockInRows, 'No stock-in records for this period.')}
+      </div>
+      <div class="section">
+        <h2>Stock Out / Adjustments</h2>
+        ${tableHtml(['Date', 'Product', 'Type', 'Quantity Change', 'Entered By', 'Reference', 'Reason / Notes'], stockOutRows, 'No stock-out, void, or adjustment records for this period.')}
+      </div>
+      <div class="section">
+        <h2>Inventory Balance</h2>
+        ${tableHtml(['Product', 'Category', 'Opening', 'Stock In', 'Stock Out', 'Void Returns', 'Adjustments', 'Closing', 'Status'], inventoryTableRows, 'No inventory rows available.')}
+      </div>
+      <div class="section">
+        <h2>Low Stock Items</h2>
+        ${tableHtml(['Product', 'Closing Balance', 'Low Alert Level', 'Product Status'], lowStockRows, 'No low stock items for this period.')}
+      </div>
       <script>window.print();</script>
       </body></html>
     `);
