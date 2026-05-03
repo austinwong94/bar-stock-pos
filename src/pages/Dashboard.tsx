@@ -4,7 +4,7 @@ import { AlertTriangle, ChevronLeft, ChevronRight, PackageCheck, Sparkles } from
 import { PageHeader } from '../components/Page';
 import { loadProducts } from '../lib/data';
 import { loadLocalSales } from '../lib/localStore';
-import { cansAndCartons, dualMoney, money } from '../lib/format';
+import { cansAndCartons, dualMoney, money, todayInputValue } from '../lib/format';
 import { supabase } from '../lib/supabase';
 import { isSupabaseConfigured } from '../lib/supabase';
 import type { ProductWithStock, SettingsMap } from '../lib/types';
@@ -24,9 +24,9 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
     async function load() {
       const [loadedProducts, dateResult] = await Promise.all([
         loadProducts(true),
-        isSupabaseConfigured ? supabase.rpc('get_business_date') : Promise.resolve({ data: format(new Date(), 'yyyy-MM-dd') }),
+        isSupabaseConfigured ? supabase.rpc('get_business_date') : Promise.resolve({ data: todayInputValue() }),
       ]);
-      const currentDate = dateResult.data ?? new Date().toISOString().slice(0, 10);
+      const currentDate = dateResult.data ?? todayInputValue();
       const sales = isSupabaseConfigured
         ? (await supabase
             .from('sales')

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { addDays, addWeeks, format, parseISO, startOfWeek } from 'date-fns';
 import { inputClass } from '../components/Form';
 import { PageHeader } from '../components/Page';
-import { money, todayInputValue } from '../lib/format';
+import { dateInputValue, money, todayInputValue } from '../lib/format';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { useLanguage } from '../lib/language';
 import type { Sale, SaleItem, SettingsMap, StockMovement } from '../lib/types';
@@ -104,7 +104,7 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
 
       setStockInRows(
         ((movementData ?? []) as StockMovement[]).map((movement) => ({
-          date: movement.created_at.slice(0, 10),
+          date: dateInputValue(movement.created_at),
           reference: movement.reason ?? movement.reference_type ?? '-',
           item: movement.products?.name ?? movement.product_id ?? '-',
           qty: Math.abs(movement.quantity_change),

@@ -26,6 +26,10 @@ export function todayInputValue() {
   return format(new Date(), 'yyyy-MM-dd');
 }
 
+export function dateInputValue(value: string | Date) {
+  return format(new Date(value), 'yyyy-MM-dd');
+}
+
 export function csvEscape(value: unknown) {
   const text = String(value ?? '');
   return `"${text.replace(/"/g, '""')}"`;
