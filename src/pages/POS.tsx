@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import { Camera, Minus, Percent, Plus, Trash2 } from 'lucide-react';
+import { Camera, Minus, Percent, Plus, ShoppingCart, Trash2 } from 'lucide-react';
 import { z } from 'zod';
 import { Field, buttonClass, dangerButtonClass, inputClass, secondaryButtonClass } from '../components/Form';
 import { Modal } from '../components/Modal';
@@ -55,6 +55,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
   const [customPrice, setCustomPrice] = useState('');
   const [customDiscount, setCustomDiscount] = useState('');
   const [saving, setSaving] = useState(false);
+  const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
   const cameraInputId = 'qr-receipt-camera';
   const staffUsers = useMemo(() => parseStaffNames(settings), [settings]);
   const todayLabel = format(new Date(), 'EEE, d MMM yyyy');
@@ -76,6 +77,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
   const groups = useMemo(() => groupByCategory(products), [products]);
   const subtotal = cart.reduce((sum, item) => sum + item.quantity * Number(item.customPrice ?? item.product.price_per_unit), 0);
   const total = Math.max(0, subtotal - discount);
+  const cartQuantity = cart.reduce((sum, item) => sum + item.quantity, 0);
   const regularGroups = Object.entries(groups).filter(([category]) => category !== 'Others');
 
   function add(product: ProductWithStock) {
@@ -121,6 +123,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
   }
 
   function choosePayment(nextMethod: PaymentMethod) {
+    setCartDrawerOpen(false);
     setMethod(nextMethod);
     if (nextMethod === 'qr') {
       window.setTimeout(() => document.getElementById(cameraInputId)?.click(), 50);
@@ -213,6 +216,94 @@ export default function POS({ settings }: { settings: SettingsMap }) {
     (method === 'qr' && Boolean(settings.require_qr_reference) && qrReference.trim().length === 0) ||
     (method === 'complimentary' && complimentaryReason.trim().length === 0);
 
+  function renderCartPanel(inDrawer = false) {
+    return (
+      <>
+        {!inDrawer ? <h2 className="text-2xl font-black">{text('Order Cart', 'Bakul')}</h2> : null}
+        <p className="mt-1 text-sm font-bold text-accent">{text('Accepted by', 'Diterima oleh')} {orderTakenBy}</p>
+        <div className="mt-4 grid gap-3">
+          {cart.length === 0 ? <p className="text-neutral-600">{text('No items selected.', 'Tiada item dipilih.')}</p> : null}
+          {cart.map((item) => (
+            <div key={item.product.id} className="rounded-2xl border border-line bg-white/85 p-3">
+              <div className="flex justify-between gap-3">
+                <strong>{item.product.name}</strong>
+                <span>{money(item.quantity * Number(item.customPrice ?? item.product.price_per_unit), String(settings.currency_symbol))}</span>
+              </div>
+              <p className="mt-1 text-sm text-neutral-600">
+                {item.quantity} x {money(item.customPrice ?? item.product.price_per_unit, String(settings.currency_symbol))}
+              </p>
+              <div className="mt-3 flex gap-2">
+                <button className={`${secondaryButtonClass} w-12 px-0`} onClick={() => change(item.product.id, -1)} aria-label="Decrease">
+                  <Minus className="h-4 w-4" />
+                </button>
+                <button className={`${secondaryButtonClass} w-12 px-0`} onClick={() => change(item.product.id, 1)} aria-label="Increase">
+                  <Plus className="h-4 w-4" />
+                </button>
+                <button className={`${dangerButtonClass} w-12 px-0`} onClick={() => change(item.product.id, -9999)} aria-label="Remove">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-5 rounded-[1.5rem] bg-shell p-4">
+          <Field label={text('Discount', 'Diskaun')}>
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+              <button type="button" className={`${secondaryButtonClass} px-2`} onClick={() => { setCustomDiscount(''); setDiscount(0); }}>
+                0%
+              </button>
+              {[0.05, 0.1, 0.15, 0.2].map((rate) => (
+                <button key={rate} type="button" className={`${secondaryButtonClass} px-2`} onClick={() => applyDiscountPercent(rate)}>
+                  {Math.round(rate * 100)}%
+                </button>
+              ))}
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+              <Percent className="h-5 w-5 text-coral" />
+              <input
+                className={inputClass}
+                type="number"
+                min={0}
+                step="0.01"
+                value={customDiscount}
+                onChange={(e) => {
+                  setCustomDiscount(e.target.value);
+                  setDiscount(Number(e.target.value || 0));
+                }}
+                placeholder={text('Custom discount amount', 'Jumlah diskaun khas')}
+              />
+            </div>
+          </Field>
+          <div className="mt-4 flex justify-between gap-3 font-bold">
+            <span>Subtotal</span>
+            <span>{money(subtotal, String(settings.currency_symbol))}</span>
+          </div>
+          <div className="mt-2 flex justify-between gap-3 font-bold text-coral">
+            <span>{text('Discount amount', 'Jumlah diskaun')}</span>
+            <span>- {money(discount, String(settings.currency_symbol))}</span>
+          </div>
+          <div className="mt-2 flex justify-between gap-3 text-2xl font-black">
+            <span>Total</span>
+            <span>{money(total, String(settings.currency_symbol))}</span>
+          </div>
+          <p className="mt-1 text-sm font-bold text-accent">{dualMoney(total, String(settings.currency_symbol))}</p>
+          <div className="mt-4 grid gap-3">
+            <button className={buttonClass} disabled={cart.length === 0} onClick={() => choosePayment('cash')}>
+              {text('Cash Payment', 'Bayaran tunai')} 💵
+            </button>
+            <button className={buttonClass} disabled={cart.length === 0} onClick={() => choosePayment('qr')}>
+              <Camera className="h-5 w-5" />
+              {text('QR Payment', 'Bayaran QR')} 📱
+            </button>
+            <button className={secondaryButtonClass} disabled={cart.length === 0} onClick={() => choosePayment('complimentary')}>
+              Complimentary (FOC) 🎁
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <PageHeader
@@ -259,16 +350,26 @@ export default function POS({ settings }: { settings: SettingsMap }) {
                   const stock = product.inventory_balances?.quantity_on_hand ?? 0;
                   const low = stock <= product.low_stock_threshold;
                   const disabled = stock <= 0 && !settings.allow_negative_stock;
+                  const selectedQuantity = cart.find((item) => item.product.id === product.id)?.quantity ?? 0;
                   return (
                     <button
                       key={product.id}
                       type="button"
                       disabled={disabled}
                       onClick={() => add(product)}
-                      className={`min-h-48 overflow-hidden rounded-[1.5rem] border p-0 text-left shadow-soft transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 ${
-                        low ? 'border-warning bg-amber-50' : 'border-line bg-white/90'
+                      className={`relative min-h-48 overflow-hidden rounded-[1.5rem] border p-0 text-left shadow-soft transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 ${
+                        selectedQuantity > 0
+                          ? 'border-accent bg-teal-50 ring-4 ring-teal-100'
+                          : low
+                            ? 'border-warning bg-amber-50'
+                            : 'border-line bg-white/90'
                       }`}
                     >
+                      {selectedQuantity > 0 ? (
+                        <span className="absolute right-3 top-3 z-10 grid h-11 min-w-11 place-items-center rounded-full bg-accent px-3 text-base font-black text-white shadow-glow">
+                          {selectedQuantity}
+                        </span>
+                      ) : null}
                       <img
                         src={product.image_url ?? localDrinkFallback(product)}
                         data-fallback={localDrinkFallback(product)}
@@ -307,90 +408,36 @@ export default function POS({ settings }: { settings: SettingsMap }) {
             </div>
           </div>
         </section>
-        <aside className="island-panel min-w-0 rounded-[2rem] p-4 2xl:sticky 2xl:top-4 2xl:self-start">
-          <h2 className="text-2xl font-black">{text('Order Cart', 'Bakul')}</h2>
-          <p className="mt-1 text-sm font-bold text-accent">{text('Accepted by', 'Diterima oleh')} {orderTakenBy}</p>
-          <div className="mt-4 grid gap-3">
-            {cart.length === 0 ? <p className="text-neutral-600">{text('No items selected.', 'Tiada item dipilih.')}</p> : null}
-            {cart.map((item) => (
-              <div key={item.product.id} className="rounded-2xl border border-line bg-white/85 p-3">
-                <div className="flex justify-between gap-3">
-                  <strong>{item.product.name}</strong>
-                  <span>{money(item.quantity * Number(item.customPrice ?? item.product.price_per_unit), String(settings.currency_symbol))}</span>
-                </div>
-                <p className="mt-1 text-sm text-neutral-600">
-                  {item.quantity} x {money(item.customPrice ?? item.product.price_per_unit, String(settings.currency_symbol))}
-                </p>
-                <div className="mt-3 flex gap-2">
-                  <button className={`${secondaryButtonClass} w-12 px-0`} onClick={() => change(item.product.id, -1)} aria-label="Decrease">
-                    <Minus className="h-4 w-4" />
-                  </button>
-                  <button className={`${secondaryButtonClass} w-12 px-0`} onClick={() => change(item.product.id, 1)} aria-label="Increase">
-                    <Plus className="h-4 w-4" />
-                  </button>
-                  <button className={`${dangerButtonClass} w-12 px-0`} onClick={() => change(item.product.id, -9999)} aria-label="Remove">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="mt-5 rounded-[1.5rem] bg-shell p-4">
-            <Field label={text('Discount', 'Diskaun')}>
-              <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-                <button type="button" className={`${secondaryButtonClass} px-2`} onClick={() => { setCustomDiscount(''); setDiscount(0); }}>
-                  0%
-                </button>
-                {[0.05, 0.1, 0.15, 0.2].map((rate) => (
-                  <button key={rate} type="button" className={`${secondaryButtonClass} px-2`} onClick={() => applyDiscountPercent(rate)}>
-                    {Math.round(rate * 100)}%
-                  </button>
-                ))}
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <Percent className="h-5 w-5 text-coral" />
-                <input
-                  className={inputClass}
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={customDiscount}
-                  onChange={(e) => {
-                    setCustomDiscount(e.target.value);
-                    setDiscount(Number(e.target.value || 0));
-                  }}
-                  placeholder={text('Custom discount amount', 'Jumlah diskaun khas')}
-                />
-              </div>
-            </Field>
-            <div className="mt-4 flex justify-between gap-3 font-bold">
-              <span>Subtotal</span>
-              <span>{money(subtotal, String(settings.currency_symbol))}</span>
-            </div>
-            <div className="mt-2 flex justify-between gap-3 font-bold text-coral">
-              <span>{text('Discount amount', 'Jumlah diskaun')}</span>
-              <span>- {money(discount, String(settings.currency_symbol))}</span>
-            </div>
-            <div className="mt-2 flex justify-between gap-3 text-2xl font-black">
-              <span>Total</span>
-              <span>{money(total, String(settings.currency_symbol))}</span>
-            </div>
-            <p className="mt-1 text-sm font-bold text-accent">{dualMoney(total, String(settings.currency_symbol))}</p>
-            <div className="mt-4 grid gap-3">
-              <button className={buttonClass} disabled={cart.length === 0} onClick={() => choosePayment('cash')}>
-                {text('Cash Payment', 'Bayaran tunai')} 💵
-              </button>
-              <button className={buttonClass} disabled={cart.length === 0} onClick={() => choosePayment('qr')}>
-                <Camera className="h-5 w-5" />
-                {text('QR Payment', 'Bayaran QR')} 📱
-              </button>
-              <button className={secondaryButtonClass} disabled={cart.length === 0} onClick={() => choosePayment('complimentary')}>
-                Complimentary (FOC) 🎁
-              </button>
-            </div>
-          </div>
+        <aside className="island-panel hidden min-w-0 rounded-[2rem] p-4 2xl:sticky 2xl:top-4 2xl:block 2xl:self-start">
+          {renderCartPanel()}
         </aside>
       </div>
+      <div className="no-print fixed inset-x-0 bottom-0 z-30 border-t border-line bg-white/95 p-3 shadow-[0_-18px_45px_rgba(196,70,115,0.18)] backdrop-blur 2xl:hidden">
+        <div className="mx-auto grid max-w-[760px] grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setCartDrawerOpen(true)}
+            className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-2xl border border-accent bg-teal-50 px-4 py-3 text-left shadow-soft"
+          >
+            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-accent text-white">
+              <ShoppingCart className="h-5 w-5" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-black text-accent">{cartQuantity} item(s) selected</span>
+              <span className="block truncate text-xl font-black">{money(total, String(settings.currency_symbol))}</span>
+            </span>
+          </button>
+          <button className={`${buttonClass} min-h-[68px] px-4`} disabled={cart.length === 0} onClick={() => setCartDrawerOpen(true)}>
+            View cart
+          </button>
+        </div>
+      </div>
+      {cartDrawerOpen ? (
+        <Modal title={text('Order Cart', 'Bakul')} onClose={() => setCartDrawerOpen(false)}>
+          {renderCartPanel(true)}
+        </Modal>
+      ) : null}
+      <div className="h-28 2xl:hidden" />
       {method ? (
         <Modal
           title={`Confirm ${method === 'qr' ? 'QR Payment' : method === 'cash' ? 'Cash Payment' : 'Complimentary (FOC)'}`}
