@@ -130,7 +130,7 @@ export default function SalesHistory({ settings, embedded = false }: { settings:
 
   return (
     <>
-      {embedded ? null : <PageHeader title={text('Sales History', 'Sejarah Jualan')} subtitle={text('Review completed sales, QR Payment status, staff, item details, and voids.', 'Semak jualan siap, status Bayaran QR, staf, butiran item, dan batal jualan.')} />}
+      {embedded ? null : <PageHeader title={text('Sales History', 'Sejarah Jualan')} />}
 
       <section className="mb-4 grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-5">
         <div className="rounded-2xl border border-violet-200 bg-violet-50 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4 lg:p-5">

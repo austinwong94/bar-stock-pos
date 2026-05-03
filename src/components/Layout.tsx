@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   BarChart3,
@@ -38,6 +39,10 @@ export function Layout({
   const visibleLinks = links.filter((link) => roleAtLeast(profile.role, link.min));
   const activePath =
     visibleLinks.find((link) => (link.to === '/' ? location.pathname === '/' : location.pathname.startsWith(link.to)))?.to ?? '/';
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0 });
+  }, [location.pathname]);
 
   async function exitApp() {
     await supabase.auth.signOut();
@@ -126,7 +131,7 @@ export function Layout({
             </select>
           </div>
         </header>
-        <main className="mx-auto w-full max-w-[1500px] min-w-0 px-2.5 py-3 sm:px-4 sm:py-4 lg:px-6 xl:px-8">
+        <main className="mx-auto w-full max-w-[1320px] min-w-0 px-2.5 py-3 sm:px-4 sm:py-4 lg:px-5 xl:mx-0 xl:px-6">
           <Outlet />
         </main>
       </div>

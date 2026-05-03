@@ -42,7 +42,7 @@ export default function Users() {
 
   return (
     <>
-      <PageHeader title="Staff Access" subtitle="Choose what each staff member is allowed to do in the app." />
+      <PageHeader title="Staff Access" />
       <div className="mb-4 grid gap-2 md:grid-cols-3">
         <div className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:p-4">
           <p className="font-black">Cashier</p>

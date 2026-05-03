@@ -68,7 +68,7 @@ export default function Settings({ settings, onSaved }: { settings: SettingsMap;
 
   return (
     <>
-      <PageHeader title={text('Settings', 'Tetapan')} subtitle={text('Admin-only controls for business rules and receipt/report defaults.', 'Tetapan pentadbir untuk peraturan bisnes dan nota resit/laporan.')} />
+      <PageHeader title={text('Settings', 'Tetapan')} />
       <form onSubmit={save} className="island-panel grid max-w-4xl gap-4 rounded-2xl p-3 sm:rounded-[2rem] sm:p-5">
         <section className="rounded-2xl border border-line bg-white/80 p-3 sm:rounded-[1.5rem] sm:p-4">
           <h2 className="text-lg font-black sm:text-xl">{text('Staff names', 'Nama staf')}</h2>

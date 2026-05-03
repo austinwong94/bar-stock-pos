@@ -19,7 +19,6 @@ export default function Inventory({ settings }: { settings: SettingsMap }) {
     <>
       <PageHeader
         title={text('Stock Hub', 'Hab Stok')}
-        subtitle={text('Inventory, stock-in, and movement history are combined here to reduce tabs.', 'Inventori, stok masuk, dan sejarah pergerakan digabungkan di sini.')}
         actions={
           <>
             <Link className={secondaryButtonClass} to="/stock-out-report">{text('Stock Activity', 'Aktiviti Stok')}</Link>

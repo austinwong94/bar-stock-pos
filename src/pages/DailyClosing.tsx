@@ -76,6 +76,13 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
     toast.success('Report unlocked for editing.');
   }
 
+  function consumeReportEditUnlock(date: string) {
+    const key = `lovely_paradise_report_edit:${date}`;
+    const unlocked = sessionStorage.getItem(key) === 'ok';
+    if (unlocked) sessionStorage.removeItem(key);
+    return unlocked;
+  }
+
   useEffect(() => {
     const queryDate = searchParams.get('date');
     const editFromReports = searchParams.get('edit') === '1';
@@ -83,14 +90,22 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
       const initialDate = queryDate || '2026-05-03';
       setBusinessDate(initialDate);
       refresh(initialDate).then((loadedReport) => {
-        if (editFromReports) void openCorrectionFromReports(initialDate, loadedReport);
+        if (editFromReports && consumeReportEditUnlock(initialDate)) {
+          void openCorrectionFromReports(initialDate, loadedReport);
+        } else if (editFromReports) {
+          toast.error('Open edit from Reports and enter the admin password first.');
+        }
       });
       return;
     }
     if (queryDate) {
       setBusinessDate(queryDate);
       refresh(queryDate).then((loadedReport) => {
-        if (editFromReports) void openCorrectionFromReports(queryDate, loadedReport);
+        if (editFromReports && consumeReportEditUnlock(queryDate)) {
+          void openCorrectionFromReports(queryDate, loadedReport);
+        } else if (editFromReports) {
+          toast.error('Open edit from Reports and enter the admin password first.');
+        }
       });
       return;
     }

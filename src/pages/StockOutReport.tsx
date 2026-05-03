@@ -127,18 +127,18 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
       />
       <section className="mb-4 grid grid-cols-2 gap-2">
         <button
-          className={`rounded-2xl border p-3 text-left shadow-soft transition sm:rounded-[2rem] sm:p-5 ${mode === 'in' ? 'border-accent bg-teal-50 ring-2 ring-teal-100 sm:ring-4' : 'border-line bg-white/85 hover:border-accent'}`}
+          className={`rounded-2xl border p-3 text-left shadow-soft transition sm:p-4 ${mode === 'in' ? 'border-accent bg-teal-50 ring-2 ring-teal-100' : 'border-line bg-white/85 hover:border-accent'}`}
           onClick={() => setMode('in')}
         >
           <p className="text-xs font-black uppercase tracking-widest text-accent">{text('Record', 'Rekod')}</p>
-          <h2 className="mt-1.5 text-lg font-black sm:mt-2 sm:text-2xl">{text('Stock In', 'Stok Masuk')}</h2>
+          <h2 className="mt-1.5 text-lg font-black sm:text-xl">{text('Stock In', 'Stok Masuk')}</h2>
         </button>
         <button
-          className={`rounded-2xl border p-3 text-left shadow-soft transition sm:rounded-[2rem] sm:p-5 ${mode === 'out' ? 'border-accent bg-teal-50 ring-2 ring-teal-100 sm:ring-4' : 'border-line bg-white/85 hover:border-accent'}`}
+          className={`rounded-2xl border p-3 text-left shadow-soft transition sm:p-4 ${mode === 'out' ? 'border-accent bg-teal-50 ring-2 ring-teal-100' : 'border-line bg-white/85 hover:border-accent'}`}
           onClick={() => setMode('out')}
         >
-          <p className="text-xs font-black uppercase tracking-widest text-coral">{text('Review', 'Semak')}</p>
-          <h2 className="mt-1.5 text-lg font-black sm:mt-2 sm:text-2xl">{text('Stock Out', 'Stok Keluar')}</h2>
+          <p className="text-xs font-black uppercase tracking-widest text-coral">{text('History', 'Sejarah')}</p>
+          <h2 className="mt-1.5 text-lg font-black sm:text-xl">{text('Stock Out', 'Stok Keluar')}</h2>
         </button>
       </section>
 

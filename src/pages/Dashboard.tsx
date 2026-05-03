@@ -114,39 +114,38 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
           </div>
         </div>
       </section>
-      <section className="mb-4 rounded-2xl border border-line bg-gradient-to-br from-pink-100 via-rose-200 to-teal-100 p-3 text-ink shadow-glow sm:mb-5 sm:rounded-[2rem] sm:p-5 lg:p-6">
+      <section className="mb-4 rounded-2xl border border-line bg-gradient-to-br from-pink-100 via-rose-200 to-teal-100 p-3 text-ink shadow-glow sm:rounded-[1.5rem] sm:p-4">
         <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(260px,380px)] lg:items-end">
           <div className="min-w-0">
             <p className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-accent sm:text-sm"><Sparkles className="h-4 w-4" /> {period.toUpperCase()}</p>
             <p className="mt-1.5 text-lg font-black text-ink sm:text-xl">{periodTitle}</p>
-            <h2 className="mt-2 break-words text-3xl font-black leading-tight sm:text-3xl lg:text-4xl xl:text-5xl">{money(totals.paidRevenue, String(settings.currency_symbol))}</h2>
-            <p className="mt-1.5 text-sm font-bold text-neutral-700 lg:text-base xl:text-lg">{text('Total Revenue excludes FOC. FOC Cost is tracked separately.', 'Total Revenue tidak termasuk FOC. FOC Cost direkod berasingan.')}</p>
-            <p className="mt-1 text-sm font-bold text-neutral-700 lg:text-base xl:text-lg">{dualMoney(totals.paidRevenue, String(settings.currency_symbol))}</p>
+            <h2 className="mt-2 break-words text-2xl font-black leading-tight sm:text-3xl lg:text-4xl">{money(totals.paidRevenue, String(settings.currency_symbol))}</h2>
+            <p className="mt-1.5 text-xs font-bold text-neutral-700 sm:text-sm">{text('Total Revenue excludes FOC. FOC Cost is tracked separately.', 'Total Revenue tidak termasuk FOC. FOC Cost direkod berasingan.')}</p>
+            <p className="mt-1 text-xs font-bold text-neutral-700 sm:text-sm">{dualMoney(totals.paidRevenue, String(settings.currency_symbol))}</p>
           </div>
           <div className="grid min-w-0 grid-cols-2 gap-2 lg:grid-cols-1 min-[1450px]:grid-cols-2">
-            <div className="min-w-0 rounded-2xl bg-white/70 p-3 shadow-soft backdrop-blur sm:rounded-3xl sm:p-4">
+            <div className="min-w-0 rounded-2xl bg-white/70 p-3 shadow-soft backdrop-blur">
               <p className="text-xs font-bold text-neutral-600 sm:text-sm">Total Revenue</p>
-              <p className="break-words text-lg font-black sm:text-xl lg:text-2xl">{money(totals.paidRevenue, String(settings.currency_symbol))}</p>
+              <p className="break-words text-lg font-black sm:text-xl">{money(totals.paidRevenue, String(settings.currency_symbol))}</p>
             </div>
-            <div className="min-w-0 rounded-2xl bg-white/70 p-3 shadow-soft backdrop-blur sm:rounded-3xl sm:p-4">
+            <div className="min-w-0 rounded-2xl bg-white/70 p-3 shadow-soft backdrop-blur">
               <p className="text-xs font-bold text-neutral-600 sm:text-sm">FOC Cost 🎁</p>
-              <p className="break-words text-lg font-black text-coral sm:text-xl lg:text-2xl">- {money(totals.focCost, String(settings.currency_symbol))}</p>
+              <p className="break-words text-lg font-black text-coral sm:text-xl">- {money(totals.focCost, String(settings.currency_symbol))}</p>
             </div>
           </div>
         </div>
       </section>
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-3 min-[1450px]:grid-cols-5">
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4 lg:p-5"><p className="text-xs font-black text-emerald-700 sm:text-sm">{text('Cash Payment', 'Bayaran tunai')} 💵</p><p className="mt-1.5 text-lg font-black sm:text-xl lg:text-2xl">{money(totals.cash, String(settings.currency_symbol))}</p></div>
-        <div className="rounded-2xl border border-sky-200 bg-sky-50 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4 lg:p-5"><p className="text-xs font-black text-sky-700 sm:text-sm">{text('QR Payment', 'Bayaran QR')} 📱</p><p className="mt-1.5 text-lg font-black sm:text-xl lg:text-2xl">{money(totals.qr, String(settings.currency_symbol))}</p></div>
-        <div className="rounded-2xl border border-pink-200 bg-pink-50 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4 lg:p-5"><p className="text-xs font-black text-pink-700 sm:text-sm">FOC Cost 🎁</p><p className="mt-1.5 text-lg font-black text-coral sm:text-xl lg:text-2xl">- {money(totals.focCost, String(settings.currency_symbol))}</p></div>
-        <div className="rounded-2xl border border-violet-200 bg-violet-50 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4 lg:p-5"><p className="text-xs font-black text-violet-700 sm:text-sm">Total Revenue</p><p className="mt-1.5 text-lg font-black sm:text-xl lg:text-2xl">{money(totals.paidRevenue, String(settings.currency_symbol))}</p></div>
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4 lg:p-5"><p className="text-xs font-black text-amber-700 sm:text-sm">{text('Transactions', 'Transaksi')}</p><p className="mt-1.5 text-lg font-black sm:text-xl lg:text-2xl">{totals.tx}</p></div>
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 shadow-soft sm:p-4"><p className="text-xs font-black text-emerald-700 sm:text-sm">{text('Cash Payment', 'Bayaran tunai')} 💵</p><p className="mt-1.5 text-lg font-black sm:text-xl">{money(totals.cash, String(settings.currency_symbol))}</p></div>
+        <div className="rounded-2xl border border-sky-200 bg-sky-50 p-3 shadow-soft sm:p-4"><p className="text-xs font-black text-sky-700 sm:text-sm">{text('QR Payment', 'Bayaran QR')} 📱</p><p className="mt-1.5 text-lg font-black sm:text-xl">{money(totals.qr, String(settings.currency_symbol))}</p></div>
+        <div className="rounded-2xl border border-pink-200 bg-pink-50 p-3 shadow-soft sm:p-4"><p className="text-xs font-black text-pink-700 sm:text-sm">FOC Cost 🎁</p><p className="mt-1.5 text-lg font-black text-coral sm:text-xl">- {money(totals.focCost, String(settings.currency_symbol))}</p></div>
+        <div className="rounded-2xl border border-violet-200 bg-violet-50 p-3 shadow-soft sm:p-4"><p className="text-xs font-black text-violet-700 sm:text-sm">Total Revenue</p><p className="mt-1.5 text-lg font-black sm:text-xl">{money(totals.paidRevenue, String(settings.currency_symbol))}</p></div>
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 shadow-soft sm:p-4"><p className="text-xs font-black text-amber-700 sm:text-sm">{text('Transactions', 'Transaksi')}</p><p className="mt-1.5 text-lg font-black sm:text-xl">{totals.tx}</p></div>
       </div>
       <section className="island-panel mt-4 rounded-2xl p-3 sm:mt-5 sm:rounded-[2rem] sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="flex items-center gap-2 text-xl font-black"><PackageCheck className="h-5 w-5 text-accent" /> {text('Stock Hub', 'Hab Stok')}</h2>
-            <p className="mt-1 text-sm font-bold text-neutral-600">{text('Current inventory overview is shown here on the dashboard.', 'Gambaran inventori semasa dipaparkan di papan pemuka.')}</p>
           </div>
           <div className="grid grid-cols-3 gap-2 text-center text-sm font-black">
             <div className="rounded-2xl border border-line bg-white/80 px-3 py-2">

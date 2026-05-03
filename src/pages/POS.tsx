@@ -379,9 +379,9 @@ export default function POS({ settings }: { settings: SettingsMap }) {
         capture="environment"
         onChange={(event) => setQrReceipt(event.target.files?.[0] ?? null)}
       />
-      <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1fr)_400px]">
-        <section className="grid min-w-0 gap-4">
-          <section className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-2xl border border-line bg-white/90 p-2 shadow-soft backdrop-blur lg:sticky lg:top-4 lg:z-10 2xl:static">
+      <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
+        <section className="grid min-w-0 content-start gap-4">
+          <section className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-2xl border border-line bg-white/90 p-2 shadow-soft backdrop-blur sm:p-2.5 lg:sticky lg:top-4 lg:z-10 2xl:static">
             <p className="text-xs font-black leading-tight sm:text-sm">{text('Order taken by', 'Diterima oleh')}</p>
             <div className="grid min-w-0 grid-cols-4 gap-1.5">
               {staffUsers.map((user) => (
@@ -404,7 +404,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
           {regularGroups.map(([category, items]) => (
             <div key={category}>
               <h2 className="mb-2 text-lg font-black sm:mb-3 sm:text-xl">{text(category, category === 'Soft Drink' ? 'Minuman Ringan' : category === 'Beer' ? 'Bir' : 'Lain-lain')}</h2>
-              <div className="grid min-w-0 grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 2xl:grid-cols-2 min-[1700px]:grid-cols-3">
+              <div className="grid min-w-0 grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3">
                 {items.map((product) => {
                   const stock = product.inventory_balances?.quantity_on_hand ?? 0;
                   const low = stock <= product.low_stock_threshold;
@@ -416,7 +416,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
                       type="button"
                       disabled={disabled}
                       onClick={() => add(product)}
-                      className={`relative min-h-32 overflow-hidden rounded-2xl border p-0 text-left shadow-soft transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-36 sm:rounded-[1.5rem] lg:min-h-44 ${
+                      className={`relative min-h-28 overflow-hidden rounded-2xl border p-0 text-left shadow-soft transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-32 sm:rounded-[1.25rem] lg:min-h-36 ${
                         selectedQuantity > 0
                           ? 'border-accent bg-teal-50 ring-4 ring-teal-100'
                           : low
@@ -433,7 +433,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
                         src={product.image_url ?? localDrinkFallback(product)}
                         data-fallback={localDrinkFallback(product)}
                         alt=""
-                        className="h-16 w-full object-cover sm:h-20 lg:h-28"
+                        className="h-14 w-full object-cover sm:h-16 lg:h-20"
                         onError={(event) => {
                           const fallback = event.currentTarget.dataset.fallback;
                           if (fallback && !event.currentTarget.src.endsWith(fallback)) {
@@ -441,9 +441,9 @@ export default function POS({ settings }: { settings: SettingsMap }) {
                           }
                         }}
                       />
-                      <span className="block px-2.5 pt-2 text-sm font-black leading-tight sm:px-3 sm:text-base lg:px-4 lg:pt-3 lg:text-lg">{product.name}</span>
-                      <span className="mt-0.5 block px-2.5 text-sm font-bold sm:px-3 sm:text-sm lg:px-4 lg:text-base">{money(product.price_per_unit, String(settings.currency_symbol))}</span>
-                      <span className="block px-2.5 pb-2.5 pt-0.5 text-xs text-neutral-600 sm:px-3 lg:px-4 lg:pb-4 lg:pt-1 lg:text-sm">{stock} {text('cans available', 'tin tersedia')}</span>
+                      <span className="block px-2.5 pt-2 text-sm font-black leading-tight sm:px-3 sm:text-base lg:px-3">{product.name}</span>
+                      <span className="mt-0.5 block px-2.5 text-sm font-bold sm:px-3">{money(product.price_per_unit, String(settings.currency_symbol))}</span>
+                      <span className="block px-2.5 pb-2.5 pt-0.5 text-xs text-neutral-600 sm:px-3 lg:text-sm">{stock} {text('cans available', 'tin tersedia')}</span>
                     </button>
                   );
                 })}
@@ -467,7 +467,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
             </div>
           </div>
         </section>
-        <aside className="island-panel hidden min-w-0 rounded-[2rem] p-4 2xl:sticky 2xl:top-4 2xl:block 2xl:self-start">
+        <aside className="island-panel hidden min-w-0 rounded-[1.5rem] p-3 2xl:sticky 2xl:top-4 2xl:block 2xl:self-start">
           {renderCartPanel()}
         </aside>
       </div>

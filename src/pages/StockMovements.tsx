@@ -24,7 +24,7 @@ export default function StockMovements() {
 
   return (
     <>
-      <PageHeader title="Stock Movement History" subtitle="Ledger of stock-ins, sales, complimentary stock-outs, void reversals, and adjustments." />
+      <PageHeader title="Stock Movement History" />
       <div className="hidden">
         {movements.map((movement) => (
           <article key={movement.id} className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4">

@@ -343,6 +343,7 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
       toast.error('Wrong admin password.');
       return;
     }
+    sessionStorage.setItem(`lovely_paradise_report_edit:${editTarget.businessDate}`, 'ok');
     navigate(`/daily-closing?date=${editTarget.businessDate}&edit=1`);
   }
 
@@ -387,8 +388,8 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
       </section>
       <section className="island-panel rounded-2xl p-3 sm:rounded-[2rem] sm:p-5">
         <h2 className="text-lg font-black sm:text-xl">{text('All reports table', 'Jadual semua laporan')}</h2>
-        <div className="mt-2 grid gap-2 md:grid-cols-[minmax(320px,1fr)_minmax(200px,260px)] md:items-center lg:grid-cols-[minmax(430px,560px)_minmax(220px,1fr)]">
-          <div className="grid w-full grid-cols-4 gap-1 rounded-2xl bg-white/80 p-1 text-sm font-black">
+        <div className="mt-2 flex min-w-0 flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+          <div className="grid w-full min-w-0 grid-cols-4 gap-1 rounded-2xl bg-white/80 p-1 text-sm font-black lg:max-w-[520px]">
             {(['daily', 'weekly', 'monthly', 'custom'] as const).map((item) => (
               <button
                 key={item}
@@ -399,17 +400,17 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
               </button>
             ))}
           </div>
-          <div className="grid w-full min-w-0 gap-2 lg:justify-end">
+          <div className="grid w-full min-w-0 gap-2 lg:max-w-[560px] lg:justify-end">
             {reportPeriod === 'daily' ? (
               <input
-                className={inputClass}
+                className={`${inputClass} lg:w-[240px]`}
                 type="month"
                 value={reportMonth}
                 onChange={(event) => setReportMonth(event.target.value)}
               />
             ) : null}
             {reportPeriod === 'custom' ? (
-              <div className="grid w-full min-w-0 gap-2 lg:grid-cols-[minmax(0,180px)_minmax(0,180px)_auto]">
+              <div className="grid w-full min-w-0 gap-2 lg:grid-cols-[minmax(0,170px)_minmax(0,170px)_auto]">
                 <input className={inputClass} type="date" value={customStart} onChange={(event) => setCustomStart(event.target.value)} />
                 <input className={inputClass} type="date" value={customEnd} onChange={(event) => setCustomEnd(event.target.value)} />
                 <button className={`${secondaryButtonClass} justify-center`} onClick={() => downloadPdfReport(selectedPeriodRow)}>
@@ -421,18 +422,18 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
           </div>
         </div>
         <div className="mt-3 overflow-x-auto rounded-2xl border border-line bg-white/75 sm:rounded-[1.5rem]">
-          <table className="w-full min-w-[980px] table-fixed text-left text-xs sm:text-sm">
+          <table className="w-full min-w-[1120px] table-fixed text-left text-xs sm:text-sm">
             <thead className="bg-shell text-sm">
               <tr>
                 <th className="w-[112px] px-2 py-2 whitespace-nowrap sm:px-3">Period</th>
                 <th className="w-[180px] px-2 py-2 whitespace-nowrap sm:px-3">Dates</th>
                 <th className="w-[90px] px-3 py-2 whitespace-nowrap">Closing</th>
-                <th className="w-[120px] px-3 py-2 whitespace-nowrap">Cash Payment 💵</th>
-                <th className="w-[115px] px-3 py-2 whitespace-nowrap">QR Payment 📱</th>
-                <th className="w-[105px] px-3 py-2 whitespace-nowrap">FOC Cost 🎁</th>
-                <th className="w-[120px] px-3 py-2 whitespace-nowrap">Total Revenue</th>
+                <th className="w-[145px] px-3 py-2 whitespace-nowrap">Cash Payment 💵</th>
+                <th className="w-[135px] px-3 py-2 whitespace-nowrap">QR Payment 📱</th>
+                <th className="w-[130px] px-3 py-2 whitespace-nowrap">FOC Cost 🎁</th>
+                <th className="w-[140px] px-3 py-2 whitespace-nowrap">Total Revenue</th>
                 <th className="w-[105px] px-3 py-2 whitespace-nowrap">Variance</th>
-                <th className="w-[115px] px-3 py-2 whitespace-nowrap">Action</th>
+                <th className="w-[135px] px-3 py-2 whitespace-nowrap">Action</th>
               </tr>
             </thead>
             <tbody>
