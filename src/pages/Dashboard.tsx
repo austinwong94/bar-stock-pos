@@ -4,7 +4,7 @@ import { AlertTriangle, ChevronLeft, ChevronRight, PackageCheck, Sparkles } from
 import { PageHeader } from '../components/Page';
 import { loadProducts } from '../lib/data';
 import { loadLocalSaleItems, loadLocalSales } from '../lib/localStore';
-import { cansAndCartons, dualMoney, malaysiaDateInputValue, money } from '../lib/format';
+import { dualMoney, malaysiaDateInputValue, money } from '../lib/format';
 import { supabase } from '../lib/supabase';
 import { isSupabaseConfigured } from '../lib/supabase';
 import type { ProductWithStock, SettingsMap } from '../lib/types';
@@ -163,20 +163,20 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 shadow-soft sm:p-4"><p className="text-xs font-black text-amber-700 sm:text-sm">{text('Transactions', 'Transaksi')}</p><p className="mt-1.5 text-lg font-black sm:text-xl">{totals.tx}</p></div>
       </div>
       <section className="island-panel mt-4 rounded-2xl p-3 sm:mt-5 sm:rounded-[2rem] sm:p-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)] lg:items-end">
+          <div className="min-w-0">
             <h2 className="flex items-center gap-2 text-xl font-black"><PackageCheck className="h-5 w-5 text-accent" /> {text('Stock Hub', 'Hab Stok')}</h2>
           </div>
           <div className="grid grid-cols-3 gap-2 text-center text-sm font-black">
-            <div className="rounded-2xl border border-line bg-white/80 px-3 py-2">
+            <div className="grid min-h-16 place-items-center rounded-2xl border border-line bg-white/80 px-3 py-2">
               <p className="text-neutral-500">Items</p>
               <p className="text-xl text-ink">{activeProducts.length}</p>
             </div>
-            <div className="rounded-2xl border border-line bg-white/80 px-3 py-2">
+            <div className="grid min-h-16 place-items-center rounded-2xl border border-line bg-white/80 px-3 py-2">
               <p className="text-neutral-500">Balance</p>
               <p className="text-xl text-ink">{totalCans}</p>
             </div>
-            <div className="rounded-2xl border border-warning bg-amber-50 px-3 py-2">
+            <div className="grid min-h-16 place-items-center rounded-2xl border border-warning bg-amber-50 px-3 py-2">
               <p className="text-warning">Low</p>
               <p className="text-xl text-ink">{lowStock.length}</p>
             </div>
@@ -200,21 +200,21 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2 text-sm font-bold">
                   <div className="rounded-2xl bg-shell p-3"><p className="text-neutral-500">Sold Today</p><p>{soldToday} units</p></div>
-                  <div className="rounded-2xl bg-shell p-3"><p className="text-neutral-500">Balance</p><p className={low ? 'text-warning' : 'text-ink'}>{cansAndCartons(stock, product.carton_size)}</p></div>
+                  <div className="rounded-2xl bg-shell p-3"><p className="text-neutral-500">Balance</p><p className={low ? 'text-warning' : 'text-ink'}>{stock} units</p></div>
                 </div>
               </article>
             );
           })}
         </div>
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[680px] text-left">
+        <div className="mt-4 overflow-x-auto rounded-2xl border border-line bg-white/75">
+          <table className="w-full min-w-[720px] table-fixed text-left">
             <thead className="bg-shell text-sm">
               <tr>
-                <th className="p-3">Product</th>
-                <th className="p-3">Category</th>
-                <th className="p-3">Sold Today</th>
-                <th className="p-3">Balance</th>
-                <th className="p-3">Status</th>
+                <th className="w-[30%] p-3">Product</th>
+                <th className="w-[18%] p-3">Category</th>
+                <th className="w-[18%] p-3">Sold Today</th>
+                <th className="w-[18%] p-3">Balance</th>
+                <th className="w-[16%] p-3">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -227,7 +227,7 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
                     <td className="p-3 font-black">{product.name}</td>
                     <td className="p-3">{product.categories?.name === 'Other' ? 'Others' : product.categories?.name ?? 'Others'}</td>
                     <td className="p-3 font-bold">{soldToday} units</td>
-                    <td className={`p-3 font-bold ${low ? 'text-warning' : ''}`}>{cansAndCartons(stock, product.carton_size)}</td>
+                    <td className={`p-3 font-bold ${low ? 'text-warning' : ''}`}>{stock} units</td>
                     <td className="p-3">
                       <span className={`rounded-full px-3 py-1 text-xs font-black ${low ? 'bg-amber-100 text-warning' : 'bg-teal-50 text-accent'}`}>
                         {low ? 'Low stock' : 'OK'}
@@ -248,7 +248,7 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
               lowStock.map((product) => (
                 <div key={product.id} className="flex justify-between gap-3 text-sm">
                   <span className="font-bold">{product.name}</span>
-                  <span>{product.inventory_balances?.quantity_on_hand ?? 0} cans</span>
+                  <span>{product.inventory_balances?.quantity_on_hand ?? 0} units</span>
                 </div>
               ))
             )}
