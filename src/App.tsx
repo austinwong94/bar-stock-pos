@@ -5,7 +5,7 @@ import { Layout } from './components/Layout';
 import { ToastProvider } from './components/Toast';
 import { defaultSettings, loadSettings } from './lib/data';
 import { demoProfile, demoSettings } from './lib/demo';
-import { isSupabaseConfigured, supabase } from './lib/supabase';
+import { hasSupabaseCredentials, setPublicPreviewMode, supabase } from './lib/supabase';
 import type { Profile, SettingsMap } from './lib/types';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -26,9 +26,11 @@ export default function App() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [settings, setSettings] = useState<SettingsMap>(defaultSettings);
   const [loading, setLoading] = useState(true);
+  const previewProfile = useMemo<Profile>(() => ({ ...demoProfile, full_name: 'Public Preview', role: 'admin' }), []);
 
   useEffect(() => {
-    if (!isSupabaseConfigured) {
+    if (!hasSupabaseCredentials) {
+      setPublicPreviewMode(true);
       setLoading(false);
       return;
     }
@@ -43,11 +45,14 @@ export default function App() {
   useEffect(() => {
     async function loadUserContext() {
       if (!session?.user) {
-        setProfile(null);
+        setPublicPreviewMode(true);
+        setProfile(previewProfile);
+        setSettings(demoSettings);
         setLoading(false);
         return;
       }
       setLoading(true);
+      setPublicPreviewMode(false);
       const [{ data: profileData, error: profileError }, nextSettings] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', session.user.id).single(),
         loadSettings().catch(() => defaultSettings),
@@ -60,16 +65,16 @@ export default function App() {
       setLoading(false);
     }
     void loadUserContext();
-  }, [session]);
+  }, [previewProfile, session]);
 
   const context = useMemo(() => ({ profile, settings }), [profile, settings]);
 
-  if (!isSupabaseConfigured) {
+  if (!hasSupabaseCredentials) {
     return (
       <LanguageProvider>
       <ToastProvider>
         <Routes>
-          <Route element={<Layout profile={demoProfile} settings={demoSettings} />}>
+          <Route element={<Layout profile={demoProfile} settings={demoSettings} publicPreview />}>
             <Route index element={<Dashboard settings={demoSettings} />} />
             <Route path="/pos" element={<POS settings={demoSettings} />} />
             <Route path="/stock-in" element={<StockOutReport settings={demoSettings} />} />
@@ -101,8 +106,8 @@ export default function App() {
         <Route path="/login" element={session ? <Navigate to="/" replace /> : <Login />} />
         <Route
           element={
-            session && context.profile ? (
-              <Layout profile={context.profile} settings={context.settings} />
+            context.profile ? (
+              <Layout profile={context.profile} settings={context.settings} publicPreview={!session} />
             ) : (
               <Navigate to="/login" replace />
             )

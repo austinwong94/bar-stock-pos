@@ -3,6 +3,7 @@ import type { Database } from './types';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+export const hasSupabaseCredentials = Boolean(supabaseUrl && supabaseAnonKey);
 
 if (!supabaseUrl || !supabaseAnonKey) {
   // Vite still renders the app; pages show a clearer setup message.
@@ -21,4 +22,8 @@ export const supabase = createClient<Database>(
   },
 ) as any;
 
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+export let isSupabaseConfigured = hasSupabaseCredentials;
+
+export function setPublicPreviewMode(enabled: boolean) {
+  isSupabaseConfigured = hasSupabaseCredentials && !enabled;
+}

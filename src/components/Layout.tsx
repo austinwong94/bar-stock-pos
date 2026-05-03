@@ -26,14 +26,20 @@ const links = [
 export function Layout({
   profile,
   settings,
+  publicPreview = false,
 }: {
   profile: Profile;
   settings: SettingsMap;
+  publicPreview?: boolean;
 }) {
   const navigate = useNavigate();
   const { language, setLanguage, text } = useLanguage();
 
   async function signOut() {
+    if (publicPreview) {
+      navigate('/login');
+      return;
+    }
     await supabase.auth.signOut();
     navigate('/login');
   }
@@ -47,7 +53,9 @@ export function Layout({
           </div>
           <p className="text-xs font-black uppercase tracking-widest text-accent">Island Bar POS</p>
           <h1 className="mt-1 text-3xl font-black">{String(settings.business_name)}</h1>
-          <p className="mt-2 text-sm font-bold text-neutral-600">{profile.full_name ?? profile.role} · {profile.role}</p>
+          <p className="mt-2 text-sm font-bold text-neutral-600">
+            {publicPreview ? text('Public preview', 'Pratonton awam') : `${profile.full_name ?? profile.role} · ${profile.role}`}
+          </p>
           <p className="mt-3 rounded-2xl bg-shell px-3 py-2 text-xs font-bold text-neutral-600">
             {text('English', 'Bahasa Melayu')} · MYR / RMB
           </p>
@@ -83,7 +91,7 @@ export function Layout({
           className="absolute bottom-5 left-5 right-5 flex items-center justify-center gap-2 rounded-2xl border border-line bg-white/80 px-3 py-3 font-bold shadow-soft"
         >
           <LogOut className="h-5 w-5" />
-          Sign out
+          {publicPreview ? 'Staff login' : 'Sign out'}
         </button>
       </aside>
       <div className="lg:pl-72">
@@ -96,7 +104,7 @@ export function Layout({
                 <button onClick={() => setLanguage('ms')} className={`rounded-xl px-3 py-2 ${language === 'ms' ? 'bg-accent text-white' : ''}`}>BM</button>
               </div>
               <button type="button" onClick={signOut} className="rounded-2xl border border-line px-3 py-2 text-sm font-bold">
-                Sign out
+                {publicPreview ? 'Staff login' : 'Sign out'}
               </button>
             </div>
           </div>
