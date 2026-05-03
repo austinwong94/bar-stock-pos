@@ -54,7 +54,7 @@ export function Layout({
           <p className="text-xs font-black uppercase tracking-widest text-accent">Island Bar POS</p>
           <h1 className="mt-1 text-3xl font-black">{String(settings.business_name)}</h1>
           <p className="mt-2 text-sm font-bold text-neutral-600">
-            {publicPreview ? text('Public preview', 'Pratonton awam') : `${profile.full_name ?? profile.role} · ${profile.role}`}
+            {publicPreview ? text('Access verified', 'Akses disahkan') : `${profile.full_name ?? profile.role} · ${profile.role}`}
           </p>
           <p className="mt-3 rounded-2xl bg-shell px-3 py-2 text-xs font-bold text-neutral-600">
             {text('English', 'Bahasa Melayu')} · MYR / RMB

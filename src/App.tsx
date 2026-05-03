@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
+import { AccessGate } from './components/AccessGate';
 import { Layout } from './components/Layout';
 import { ToastProvider } from './components/Toast';
 import { defaultSettings, loadSettings } from './lib/data';
@@ -26,7 +27,8 @@ export default function App() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [settings, setSettings] = useState<SettingsMap>(defaultSettings);
   const [loading, setLoading] = useState(true);
-  const previewProfile = useMemo<Profile>(() => ({ ...demoProfile, full_name: 'Public Preview', role: 'admin' }), []);
+  const [siteUnlocked, setSiteUnlocked] = useState(() => sessionStorage.getItem('lovely_paradise_access') === 'ok');
+  const previewProfile = useMemo<Profile>(() => ({ ...demoProfile, full_name: 'Access Verified', role: 'admin' }), []);
 
   useEffect(() => {
     if (!hasSupabaseCredentials) {
@@ -68,6 +70,10 @@ export default function App() {
   }, [previewProfile, session]);
 
   const context = useMemo(() => ({ profile, settings }), [profile, settings]);
+
+  if (!siteUnlocked) {
+    return <AccessGate onUnlock={() => setSiteUnlocked(true)} />;
+  }
 
   if (!hasSupabaseCredentials) {
     return (
