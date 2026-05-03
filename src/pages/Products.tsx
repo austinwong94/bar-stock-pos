@@ -137,9 +137,6 @@ export default function Products({ settings }: { settings: SettingsMap }) {
           </div>
         </div>
       ) : null}
-      <div className="mb-4 rounded-[2rem] border border-coral bg-pink-50 p-4 font-bold text-ink">
-        Admin password / Kata laluan admin: 200000 for demo. In production, use Supabase Auth admin role and do not rely on a browser password.
-      </div>
       {!demoAdminUnlocked ? null : (
       <>
       <section className="island-panel mb-5 rounded-[2rem] p-5">

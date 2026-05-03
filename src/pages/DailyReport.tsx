@@ -413,64 +413,19 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
             ) : null}
           </div>
         </div>
-        <div className="mt-3 grid gap-3 xl:hidden">
-          {visibleReportRows.map((sample) => (
-            <article
-              key={sample.id}
-              role="button"
-              tabIndex={0}
-              className={`cursor-pointer rounded-[1.5rem] border border-line bg-white/85 p-4 text-left shadow-soft ${activeReport?.id === sample.id ? 'ring-2 ring-accent' : ''}`}
-              onClick={() => selectReport(sample)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  selectReport(sample);
-                }
-              }}
-            >
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <p className="text-lg font-black">{sample.label}</p>
-                  <p className="text-sm font-bold text-neutral-600">{sample.range}</p>
-                </div>
-                <span className={`rounded-xl px-3 py-1 text-xs font-black ${sample.closingStatus === 'closed' ? 'bg-teal-50 text-accent' : sample.closingStatus === 'partial' ? 'bg-amber-50 text-warning' : 'bg-pink-100 text-coral'}`}>
-                  {sample.statusLabel}
-                </span>
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                <div className="rounded-2xl bg-emerald-50 p-3"><p className="font-black text-emerald-700">Cash Payment 💵</p><p className="mt-1 font-black">{money(sample.cash, String(settings.currency_symbol))}</p></div>
-                <div className="rounded-2xl bg-sky-50 p-3"><p className="font-black text-sky-700">QR Payment 📱</p><p className="mt-1 font-black">{money(sample.qr, String(settings.currency_symbol))}</p></div>
-                <div className="rounded-2xl bg-pink-50 p-3"><p className="font-black text-pink-700">FOC Cost 🎁</p><p className="mt-1 font-black text-coral">- {money(sample.focCost, String(settings.currency_symbol))}</p></div>
-                <div className="rounded-2xl bg-violet-50 p-3"><p className="font-black text-violet-700">Total Revenue</p><p className="mt-1 font-black">{money(sample.paidSales, String(settings.currency_symbol))}</p></div>
-              </div>
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-bold text-neutral-600">Cash Variance: {money(sample.variance, String(settings.currency_symbol))}</p>
-                <span className="flex gap-2">
-                  <button className={`${secondaryButtonClass} min-h-10 px-3 py-2 text-xs`} onClick={(event) => openEditReport(event, sample)}>
-                    Edit
-                  </button>
-                  <button className={`${secondaryButtonClass} min-h-10 px-3 py-2 text-xs`} onClick={(event) => downloadRowPdf(event, sample)}>
-                    <Download className="h-4 w-4" />
-                    PDF
-                  </button>
-                </span>
-              </div>
-            </article>
-          ))}
-        </div>
-        <div className="mt-3 hidden overflow-x-auto xl:block">
-          <table className="w-full min-w-[1210px] table-fixed text-left text-sm">
+        <div className="mt-3 overflow-x-auto rounded-[1.5rem] border border-line bg-white/75">
+          <table className="w-full min-w-[1040px] table-fixed text-left text-sm">
             <thead className="bg-shell text-sm">
               <tr>
-                <th className="w-[125px] p-3 whitespace-nowrap">Period</th>
-                <th className="w-[205px] p-3 whitespace-nowrap">Dates</th>
-                <th className="w-[90px] p-3 whitespace-nowrap">Closing</th>
-                <th className="w-[135px] p-3 whitespace-nowrap">Cash Payment 💵</th>
-                <th className="w-[125px] p-3 whitespace-nowrap">QR Payment 📱</th>
-                <th className="w-[110px] p-3 whitespace-nowrap">FOC Cost 🎁</th>
-                <th className="w-[120px] p-3 whitespace-nowrap">Total Revenue</th>
-                <th className="w-[110px] p-3 whitespace-nowrap">Cash Variance</th>
-                <th className="w-[125px] p-3 whitespace-nowrap">Action</th>
+                <th className="w-[120px] px-3 py-2 whitespace-nowrap">Period</th>
+                <th className="w-[190px] px-3 py-2 whitespace-nowrap">Dates</th>
+                <th className="w-[90px] px-3 py-2 whitespace-nowrap">Closing</th>
+                <th className="w-[120px] px-3 py-2 whitespace-nowrap">Cash Payment 💵</th>
+                <th className="w-[115px] px-3 py-2 whitespace-nowrap">QR Payment 📱</th>
+                <th className="w-[105px] px-3 py-2 whitespace-nowrap">FOC Cost 🎁</th>
+                <th className="w-[120px] px-3 py-2 whitespace-nowrap">Total Revenue</th>
+                <th className="w-[105px] px-3 py-2 whitespace-nowrap">Variance</th>
+                <th className="w-[115px] px-3 py-2 whitespace-nowrap">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -480,24 +435,24 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
                   className={`cursor-pointer border-t border-line hover:bg-shell ${activeReport?.id === sample.id ? 'bg-pink-50' : ''}`}
                   onClick={() => selectReport(sample)}
                 >
-                  <td className="p-3 font-black whitespace-nowrap">{sample.label}</td>
-                  <td className="p-3 whitespace-nowrap">{sample.range}</td>
-                  <td className="p-3 whitespace-nowrap">
+                  <td className="px-3 py-2 font-black whitespace-nowrap">{sample.label}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{sample.range}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
                     <span className={`rounded-xl px-3 py-1 text-xs font-black ${sample.closingStatus === 'closed' ? 'bg-teal-50 text-accent' : sample.closingStatus === 'partial' ? 'bg-amber-50 text-warning' : 'bg-pink-100 text-coral'}`}>
                       {sample.statusLabel}
                     </span>
                   </td>
-                  <td className="p-3 whitespace-nowrap">{money(sample.cash, String(settings.currency_symbol))}</td>
-                  <td className="p-3 whitespace-nowrap">{money(sample.qr, String(settings.currency_symbol))}</td>
-                  <td className="p-3 whitespace-nowrap text-coral">- {money(sample.focCost, String(settings.currency_symbol))}</td>
-                  <td className="p-3 font-black whitespace-nowrap">{money(sample.paidSales, String(settings.currency_symbol))}</td>
-                  <td className="p-3 whitespace-nowrap">{money(sample.variance, String(settings.currency_symbol))}</td>
-                  <td className="p-3 whitespace-nowrap">
+                  <td className="px-3 py-2 whitespace-nowrap">{money(sample.cash, String(settings.currency_symbol))}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{money(sample.qr, String(settings.currency_symbol))}</td>
+                  <td className="px-3 py-2 whitespace-nowrap text-coral">- {money(sample.focCost, String(settings.currency_symbol))}</td>
+                  <td className="px-3 py-2 font-black whitespace-nowrap">{money(sample.paidSales, String(settings.currency_symbol))}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{money(sample.variance, String(settings.currency_symbol))}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
                     <div className="flex gap-2">
-                      <button className={`${secondaryButtonClass} min-h-10 justify-center px-3 py-2 text-xs`} onClick={(event) => openEditReport(event, sample)}>
+                      <button className={`${secondaryButtonClass} min-h-9 justify-center rounded-xl px-3 py-1.5 text-xs`} onClick={(event) => openEditReport(event, sample)}>
                         Edit
                       </button>
-                      <button className={`${secondaryButtonClass} min-h-10 justify-center px-3 py-2 text-xs`} onClick={(event) => downloadRowPdf(event, sample)}>
+                      <button className={`${secondaryButtonClass} min-h-9 justify-center rounded-xl px-3 py-1.5 text-xs`} onClick={(event) => downloadRowPdf(event, sample)}>
                         <Download className="h-4 w-4" />
                         PDF
                       </button>
