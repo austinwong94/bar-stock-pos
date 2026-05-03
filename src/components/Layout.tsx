@@ -98,10 +98,21 @@ export function Layout({
         </button>
       </aside>
       <div className="xl:pl-72">
-        <header className="no-print sticky top-0 z-20 border-b border-line bg-white/90 px-3 py-3 shadow-sm backdrop-blur sm:px-4 xl:hidden">
-          <div className="mx-auto flex max-w-[1500px] flex-wrap items-center gap-2 sm:gap-3">
-            <strong className="mr-auto min-w-0 truncate pr-2 text-base font-black sm:text-lg">{String(settings.business_name)}</strong>
-            <nav className="order-3 flex w-full gap-2 overflow-x-auto pb-1 pt-1 md:order-none md:w-auto md:flex-1 md:justify-center md:pb-0 md:pt-0">
+        <header className="no-print sticky top-0 z-20 border-b border-line bg-white/85 px-3 py-3 backdrop-blur sm:px-4 xl:hidden">
+          <div className="mx-auto max-w-[1500px]">
+            <div className="flex items-center justify-between gap-3">
+              <strong className="min-w-0 truncate text-base font-black sm:text-lg">{String(settings.business_name)}</strong>
+              <div className="flex shrink-0 items-center gap-2">
+                <div className="grid grid-cols-2 rounded-2xl bg-white/80 p-1 text-xs font-black">
+                  <button onClick={() => setLanguage('en')} className={`rounded-xl px-3 py-2 ${language === 'en' ? 'bg-accent text-white' : ''}`}>EN</button>
+                  <button onClick={() => setLanguage('ms')} className={`rounded-xl px-3 py-2 ${language === 'ms' ? 'bg-accent text-white' : ''}`}>BM</button>
+                </div>
+                <button type="button" onClick={exitApp} className="rounded-2xl border border-line px-3 py-2 text-sm font-bold">
+                  {publicPreview ? 'Lock app' : 'Sign out'}
+                </button>
+              </div>
+            </div>
+            <nav className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
               {links
                 .filter((link) => roleAtLeast(profile.role, link.min))
                 .map((link) => (
@@ -109,7 +120,7 @@ export function Layout({
                     key={link.to}
                     to={link.to}
                     className={({ isActive }) =>
-                      `whitespace-nowrap rounded-2xl border px-4 py-2 text-sm font-black ${
+                      `flex min-h-10 items-center justify-center rounded-2xl border px-2 py-2 text-center text-xs font-black leading-tight sm:text-sm ${
                         isActive ? 'border-accent bg-accent text-white' : 'border-line bg-white'
                       }`
                     }
@@ -118,15 +129,6 @@ export function Layout({
                   </NavLink>
                 ))}
             </nav>
-            <div className="ml-auto flex shrink-0 items-center gap-2">
-              <div className="grid grid-cols-2 rounded-2xl bg-white/80 p-1 text-xs font-black">
-                <button onClick={() => setLanguage('en')} className={`rounded-xl px-3 py-2 ${language === 'en' ? 'bg-accent text-white' : ''}`}>EN</button>
-                <button onClick={() => setLanguage('ms')} className={`rounded-xl px-3 py-2 ${language === 'ms' ? 'bg-accent text-white' : ''}`}>BM</button>
-              </div>
-              <button type="button" onClick={exitApp} className="rounded-2xl border border-line px-3 py-2 text-sm font-bold">
-                {publicPreview ? 'Lock app' : 'Sign out'}
-              </button>
-            </div>
           </div>
         </header>
         <main className="mx-auto w-full max-w-[1500px] min-w-0 px-3 py-5 sm:px-4 lg:px-6 xl:px-8">
