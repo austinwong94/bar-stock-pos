@@ -10,14 +10,35 @@
     sans-serif;
 }
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-height: 100%;
+}
+
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  overflow-x: hidden;
   background:
     radial-gradient(circle at 8% 12%, rgba(255, 111, 145, 0.18), transparent 28rem),
     radial-gradient(circle at 92% 4%, rgba(0, 166, 163, 0.18), transparent 30rem),
     linear-gradient(180deg, #fff7fa 0%, #fff0f5 52%, #f4fffb 100%);
+}
+
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
 }
 
 button,

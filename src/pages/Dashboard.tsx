@@ -85,8 +85,8 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
   return (
     <>
       <PageHeader title={text('Island Sales Dashboard', 'Papan Jualan Island')} />
-      <section className="island-panel mb-5 rounded-[1.75rem] p-4">
-        <div className="grid gap-3 md:grid-cols-[auto_1fr] md:items-center">
+      <section className="island-panel mb-5 rounded-[1.75rem] p-3 sm:p-4">
+        <div className="grid min-w-0 gap-3 lg:grid-cols-[auto_1fr] lg:items-center">
           <div className="grid grid-cols-3 gap-2 rounded-2xl bg-white/80 p-1 font-black">
             {(['day', 'week', 'month'] as const).map((item) => (
               <button key={item} className={`rounded-xl px-3 py-3 text-sm sm:text-base ${period === item ? 'bg-accent text-white' : ''}`} onClick={() => setPeriod(item)}>
@@ -94,41 +94,41 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
               </button>
             ))}
           </div>
-          <div className="grid grid-cols-[auto_1fr_auto] gap-2">
-            <button type="button" className="grid h-12 w-12 place-items-center rounded-2xl border border-line bg-white font-black shadow-soft" onClick={() => shiftPeriod(-1)} aria-label="Previous period">
+          <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] gap-2">
+            <button type="button" className="grid h-12 w-11 place-items-center rounded-2xl border border-line bg-white font-black shadow-soft sm:w-12" onClick={() => shiftPeriod(-1)} aria-label="Previous period">
               <ChevronLeft className="h-5 w-5" />
             </button>
-            {period === 'day' ? <input className="w-full rounded-2xl border border-line bg-white px-4 py-3 font-bold" type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} /> : null}
-            {period === 'week' ? <input className="w-full rounded-2xl border border-line bg-white px-4 py-3 font-bold" type="week" value={selectedWeek} onChange={(e) => setSelectedWeek(e.target.value)} /> : null}
-            {period === 'month' ? <input className="w-full rounded-2xl border border-line bg-white px-4 py-3 font-bold" type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} /> : null}
-            <button type="button" className="grid h-12 w-12 place-items-center rounded-2xl border border-line bg-white font-black shadow-soft" onClick={() => shiftPeriod(1)} aria-label="Next period">
+            {period === 'day' ? <input className="min-w-0 w-full rounded-2xl border border-line bg-white px-3 py-3 font-bold sm:px-4" type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} /> : null}
+            {period === 'week' ? <input className="min-w-0 w-full rounded-2xl border border-line bg-white px-3 py-3 font-bold sm:px-4" type="week" value={selectedWeek} onChange={(e) => setSelectedWeek(e.target.value)} /> : null}
+            {period === 'month' ? <input className="min-w-0 w-full rounded-2xl border border-line bg-white px-3 py-3 font-bold sm:px-4" type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} /> : null}
+            <button type="button" className="grid h-12 w-11 place-items-center rounded-2xl border border-line bg-white font-black shadow-soft sm:w-12" onClick={() => shiftPeriod(1)} aria-label="Next period">
               <ChevronRight className="h-5 w-5" />
             </button>
           </div>
         </div>
       </section>
-      <section className="mb-6 rounded-[2rem] border border-line bg-gradient-to-br from-pink-100 via-rose-200 to-teal-100 p-6 text-ink shadow-glow">
-        <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-          <div>
+      <section className="mb-6 rounded-[2rem] border border-line bg-gradient-to-br from-pink-100 via-rose-200 to-teal-100 p-4 text-ink shadow-glow sm:p-6">
+        <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(260px,380px)] lg:items-end">
+          <div className="min-w-0">
             <p className="flex items-center gap-2 text-sm font-black uppercase tracking-widest text-accent"><Sparkles className="h-4 w-4" /> {period.toUpperCase()}</p>
             <p className="mt-2 text-xl font-black text-ink">{periodTitle}</p>
-            <h2 className="mt-3 text-4xl font-black leading-tight sm:text-5xl">{money(totals.paidRevenue, String(settings.currency_symbol))}</h2>
+            <h2 className="mt-3 break-words text-4xl font-black leading-tight sm:text-5xl">{money(totals.paidRevenue, String(settings.currency_symbol))}</h2>
             <p className="mt-2 text-base font-bold text-neutral-700 sm:text-lg">{text('Total Revenue excludes FOC. FOC Cost is tracked separately.', 'Total Revenue tidak termasuk FOC. FOC Cost direkod berasingan.')}</p>
             <p className="mt-1 text-base font-bold text-neutral-700 sm:text-lg">{dualMoney(totals.paidRevenue, String(settings.currency_symbol))}</p>
           </div>
-          <div className="grid grid-cols-2 gap-3 md:w-[420px]">
-            <div className="rounded-3xl bg-white/70 p-4 shadow-soft backdrop-blur">
+          <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-1 min-[1450px]:grid-cols-2">
+            <div className="min-w-0 rounded-3xl bg-white/70 p-4 shadow-soft backdrop-blur">
               <p className="text-sm font-bold text-neutral-600">Total Revenue</p>
-              <p className="whitespace-nowrap text-xl font-black sm:text-2xl">{money(totals.paidRevenue, String(settings.currency_symbol))}</p>
+              <p className="break-words text-xl font-black sm:text-2xl">{money(totals.paidRevenue, String(settings.currency_symbol))}</p>
             </div>
-            <div className="rounded-3xl bg-white/70 p-4 shadow-soft backdrop-blur">
+            <div className="min-w-0 rounded-3xl bg-white/70 p-4 shadow-soft backdrop-blur">
               <p className="text-sm font-bold text-neutral-600">FOC Cost 🎁</p>
-              <p className="whitespace-nowrap text-xl font-black text-coral sm:text-2xl">- {money(totals.focCost, String(settings.currency_symbol))}</p>
+              <p className="break-words text-xl font-black text-coral sm:text-2xl">- {money(totals.focCost, String(settings.currency_symbol))}</p>
             </div>
           </div>
         </div>
       </section>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 min-[1450px]:grid-cols-5">
         <div className="rounded-[1.5rem] border border-emerald-200 bg-emerald-50 p-4 shadow-soft sm:p-5"><p className="text-sm font-black text-emerald-700">{text('Cash Payment', 'Bayaran tunai')} 💵</p><p className="mt-2 text-xl font-black sm:text-2xl">{money(totals.cash, String(settings.currency_symbol))}</p></div>
         <div className="rounded-[1.5rem] border border-sky-200 bg-sky-50 p-4 shadow-soft sm:p-5"><p className="text-sm font-black text-sky-700">{text('QR Payment', 'Bayaran QR')} 📱</p><p className="mt-2 text-xl font-black sm:text-2xl">{money(totals.qr, String(settings.currency_symbol))}</p></div>
         <div className="rounded-[1.5rem] border border-pink-200 bg-pink-50 p-4 shadow-soft sm:p-5"><p className="text-sm font-black text-pink-700">FOC Cost 🎁</p><p className="mt-2 text-xl font-black text-coral sm:text-2xl">- {money(totals.focCost, String(settings.currency_symbol))}</p></div>

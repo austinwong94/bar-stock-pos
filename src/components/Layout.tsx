@@ -49,7 +49,7 @@ export function Layout({
 
   return (
     <div className="min-h-screen">
-      <aside className="no-print fixed inset-y-0 left-0 z-30 hidden w-72 p-5 lg:block">
+      <aside className="no-print fixed inset-y-0 left-0 z-30 hidden w-72 p-5 xl:block">
         <div className="island-panel mb-5 rounded-[2rem] p-5">
           <div className="mb-4 grid h-14 w-14 place-items-center rounded-3xl bg-coral text-white shadow-soft">
             <Waves className="h-7 w-7" />
@@ -97,8 +97,8 @@ export function Layout({
           {publicPreview ? 'Lock app' : 'Sign out'}
         </button>
       </aside>
-      <div className="lg:pl-72">
-        <header className="no-print sticky top-0 z-20 border-b border-line bg-white/85 px-4 py-3 backdrop-blur lg:hidden">
+      <div className="xl:pl-72">
+        <header className="no-print sticky top-0 z-20 border-b border-line bg-white/85 px-3 py-3 backdrop-blur sm:px-4 xl:hidden">
           <div className="flex items-center justify-between gap-3">
             <strong>{String(settings.business_name)}</strong>
             <div className="flex items-center gap-2">
@@ -129,7 +129,7 @@ export function Layout({
               ))}
           </nav>
         </header>
-        <main className="w-full max-w-[1500px] px-4 py-6 lg:px-8">
+        <main className="mx-auto w-full max-w-[1500px] min-w-0 px-3 py-5 sm:px-4 lg:px-6 xl:px-8">
           <Outlet />
         </main>
       </div>

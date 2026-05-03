@@ -230,9 +230,9 @@ export default function POS({ settings }: { settings: SettingsMap }) {
         capture="environment"
         onChange={(event) => setQrReceipt(event.target.files?.[0] ?? null)}
       />
-      <div className="grid gap-5 lg:grid-cols-[1fr_430px]">
-        <section className="grid gap-5">
-          <section className="rounded-[1.5rem] border border-line bg-white/90 p-3 shadow-soft backdrop-blur lg:sticky lg:top-4 lg:z-10">
+      <div className="grid min-w-0 gap-5 2xl:grid-cols-[minmax(0,1fr)_400px]">
+        <section className="grid min-w-0 gap-5">
+          <section className="rounded-[1.5rem] border border-line bg-white/90 p-3 shadow-soft backdrop-blur lg:sticky lg:top-4 lg:z-10 2xl:static">
             <p className="mb-2 text-sm font-black">{text('Order taken by', 'Diterima oleh')}</p>
             <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
               {staffUsers.map((user) => (
@@ -254,7 +254,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
           {regularGroups.map(([category, items]) => (
             <div key={category}>
               <h2 className="mb-3 text-xl font-black">{text(category, category === 'Soft Drink' ? 'Minuman Ringan' : category === 'Beer' ? 'Bir' : 'Lain-lain')}</h2>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-2 min-[1700px]:grid-cols-3">
                 {items.map((product) => {
                   const stock = product.inventory_balances?.quantity_on_hand ?? 0;
                   const low = stock <= product.low_stock_threshold;
@@ -292,8 +292,8 @@ export default function POS({ settings }: { settings: SettingsMap }) {
           ))}
           <div>
             <h2 className="mb-3 text-xl font-black">{text('Custom Order', 'Pesanan Khas')}</h2>
-            <div className="island-card grid gap-4 rounded-[1.75rem] p-4 md:grid-cols-[160px_1fr_1fr_auto] md:items-end">
-              <img src={assetPath('assets/custom-order.svg')} alt="" className="h-32 w-full rounded-3xl object-cover" />
+            <div className="island-card grid min-w-0 gap-4 rounded-[1.75rem] p-4 sm:grid-cols-[140px_1fr] sm:items-end lg:grid-cols-[150px_minmax(0,1fr)_minmax(0,1fr)_auto]">
+              <img src={assetPath('assets/custom-order.svg')} alt="" className="h-32 w-full rounded-3xl object-cover sm:h-full" />
               <Field label={text('Product name', 'Nama produk')}>
                 <input className={inputClass} value={customName} onChange={(e) => setCustomName(e.target.value)} />
               </Field>
@@ -307,7 +307,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
             </div>
           </div>
         </section>
-        <aside className="island-panel rounded-[2rem] p-4">
+        <aside className="island-panel min-w-0 rounded-[2rem] p-4 2xl:sticky 2xl:top-4 2xl:self-start">
           <h2 className="text-2xl font-black">{text('Order Cart', 'Bakul')}</h2>
           <p className="mt-1 text-sm font-bold text-accent">{text('Accepted by', 'Diterima oleh')} {orderTakenBy}</p>
           <div className="mt-4 grid gap-3">
@@ -337,7 +337,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
           </div>
           <div className="mt-5 rounded-[1.5rem] bg-shell p-4">
             <Field label={text('Discount', 'Diskaun')}>
-              <div className="grid grid-cols-5 gap-2">
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
                 <button type="button" className={`${secondaryButtonClass} px-2`} onClick={() => { setCustomDiscount(''); setDiscount(0); }}>
                   0%
                 </button>
@@ -363,15 +363,15 @@ export default function POS({ settings }: { settings: SettingsMap }) {
                 />
               </div>
             </Field>
-            <div className="mt-4 flex justify-between font-bold">
+            <div className="mt-4 flex justify-between gap-3 font-bold">
               <span>Subtotal</span>
               <span>{money(subtotal, String(settings.currency_symbol))}</span>
             </div>
-            <div className="mt-2 flex justify-between font-bold text-coral">
+            <div className="mt-2 flex justify-between gap-3 font-bold text-coral">
               <span>{text('Discount amount', 'Jumlah diskaun')}</span>
               <span>- {money(discount, String(settings.currency_symbol))}</span>
             </div>
-            <div className="mt-2 flex justify-between text-2xl font-black">
+            <div className="mt-2 flex justify-between gap-3 text-2xl font-black">
               <span>Total</span>
               <span>{money(total, String(settings.currency_symbol))}</span>
             </div>
