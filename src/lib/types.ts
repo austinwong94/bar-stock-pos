@@ -56,6 +56,7 @@ export type Sale = {
   order_taken_by?: string | null;
   complimentary_reason: string | null;
   qr_reference: string | null;
+  qr_payment_type?: string | null;
   qr_receipt_image_path?: string | null;
   qr_status: QrStatus;
   cashier_id: string | null;
@@ -207,6 +208,20 @@ export type Database = {
           p_payment_method: PaymentMethod;
           p_qr_reference?: string | null;
           p_qr_receipt_image_path?: string | null;
+          p_complimentary_reason?: string | null;
+          p_discount_amount?: number | null;
+          p_order_taken_by?: string | null;
+          p_idempotency_key?: string | null;
+        };
+        Returns: CompleteSaleResult;
+      };
+      complete_sale_with_qr_type: {
+        Args: {
+          p_items: Array<{ product_id: string | null; name?: string; quantity: number; custom_price?: number | null }>;
+          p_payment_method: PaymentMethod;
+          p_qr_reference?: string | null;
+          p_qr_receipt_image_path?: string | null;
+          p_qr_payment_type?: string | null;
           p_complimentary_reason?: string | null;
           p_discount_amount?: number | null;
           p_order_taken_by?: string | null;

@@ -257,7 +257,7 @@ export default function SalesHistory({ settings, embedded = false }: { settings:
                         {isFoc ? '- ' : ''}{money(isFoc ? sale.total_amount : sale.paid_amount, String(settings.currency_symbol))}
                       </td>
                       <td className="p-3 whitespace-nowrap">
-                        {sale.payment_method === 'qr' ? `${sale.qr_status} / ${sale.qr_reference ?? '-'}` : '-'}
+                        {sale.payment_method === 'qr' ? `${sale.qr_payment_type ?? '-'} / ${sale.qr_status} / ${sale.qr_reference ?? '-'}` : '-'}
                       </td>
                       <td className="p-3">
                         {sale.status === 'completed' ? (

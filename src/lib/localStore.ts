@@ -106,6 +106,7 @@ export function saveLocalSale(input: {
   discountAmount: number;
   orderTakenBy: string;
   qrReference?: string | null;
+  qrPaymentType?: string | null;
   qrReceiptName?: string | null;
   complimentaryReason?: string | null;
 }) {
@@ -126,6 +127,7 @@ export function saveLocalSale(input: {
     order_taken_by: input.orderTakenBy,
     complimentary_reason: input.complimentaryReason ?? null,
     qr_reference: input.qrReference ?? null,
+    qr_payment_type: input.qrPaymentType ?? null,
     qr_receipt_image_path: input.qrReceiptName ? `local/${input.qrReceiptName}` : null,
     qr_status: input.paymentMethod === 'qr' ? 'pending' : 'not_applicable',
     cashier_id: null,

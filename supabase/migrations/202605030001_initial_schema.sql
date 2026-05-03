@@ -66,6 +66,7 @@ create table public.sales (
   order_taken_by text,
   complimentary_reason text,
   qr_reference text,
+  qr_payment_type text,
   qr_receipt_image_path text,
   qr_status text not null default 'not_applicable' check (qr_status in ('not_applicable', 'pending', 'verified', 'mismatch')),
   cashier_id uuid references auth.users(id),

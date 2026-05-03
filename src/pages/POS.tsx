@@ -16,6 +16,8 @@ import { useLanguage } from '../lib/language';
 import { assetPath } from '../lib/assets';
 
 type CartItem = { product: ProductWithStock; quantity: number; customPrice?: number };
+const qrPaymentTypes = ['WeChat Pay', 'AliPay', 'TnGo', 'Grab', 'Others'] as const;
+type QrPaymentType = (typeof qrPaymentTypes)[number];
 
 function parseStaffNames(settings: SettingsMap) {
   return String(settings.staff_names || 'Chloe, Happy, Elle, NekoMiao')
@@ -38,6 +40,7 @@ function localDrinkFallback(product: ProductWithStock) {
 const confirmationSchema = z.object({
   method: z.enum(['cash', 'qr', 'complimentary']),
   qrReference: z.string().optional(),
+  qrPaymentType: z.string().optional(),
   complimentaryReason: z.string().optional(),
 });
 
@@ -48,6 +51,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [method, setMethod] = useState<PaymentMethod | null>(null);
   const [qrReference, setQrReference] = useState('');
+  const [qrPaymentType, setQrPaymentType] = useState<QrPaymentType | ''>('');
   const [qrReceipt, setQrReceipt] = useState<File | null>(null);
   const [complimentaryReason, setComplimentaryReason] = useState('');
   const [orderTakenBy, setOrderTakenBy] = useState(parseStaffNames(settings)[0] ?? 'Chloe');
@@ -126,6 +130,10 @@ export default function POS({ settings }: { settings: SettingsMap }) {
   function choosePayment(nextMethod: PaymentMethod) {
     setCartDrawerOpen(false);
     setMethod(nextMethod);
+    setQrReference('');
+    setQrPaymentType('');
+    setQrReceipt(null);
+    setComplimentaryReason('');
     if (nextMethod === 'qr') {
       window.setTimeout(() => document.getElementById(cameraInputId)?.click(), 50);
     }
@@ -148,7 +156,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
 
   async function confirmSale() {
     if (!method) return;
-    const parsed = confirmationSchema.safeParse({ method, qrReference, complimentaryReason });
+    const parsed = confirmationSchema.safeParse({ method, qrReference, qrPaymentType, complimentaryReason });
     if (!parsed.success) {
       toast.error('Check the confirmation fields.');
       return;
@@ -169,6 +177,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
         discountAmount: discount,
         orderTakenBy,
         qrReference: qrReference || null,
+        qrPaymentType: method === 'qr' ? qrPaymentType : null,
         qrReceiptName: qrReceipt?.name ?? null,
         complimentaryReason: complimentaryReason || null,
       });
@@ -176,6 +185,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
       setCart([]);
       setMethod(null);
       setQrReference('');
+      setQrPaymentType('');
       setQrReceipt(null);
       setComplimentaryReason('');
       await refreshProducts();
@@ -193,7 +203,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
       }
       qrReceiptPath = upload.data.path;
     }
-    const { data, error } = await supabase.rpc('complete_sale', {
+    const { data, error } = await supabase.rpc('complete_sale_with_qr_type', {
       p_items: cart.map((item) => ({
         product_id: item.product.id.startsWith('custom-') ? null : item.product.id,
         name: item.product.name,
@@ -203,6 +213,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
       p_payment_method: method,
       p_qr_reference: qrReference || null,
       p_qr_receipt_image_path: qrReceiptPath,
+      p_qr_payment_type: method === 'qr' ? qrPaymentType : null,
       p_complimentary_reason: complimentaryReason || null,
       p_discount_amount: discount,
       p_order_taken_by: orderTakenBy,
@@ -220,6 +231,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
     setCart([]);
     setMethod(null);
     setQrReference('');
+    setQrPaymentType('');
     setQrReceipt(null);
     setComplimentaryReason('');
     await refreshProducts();
@@ -231,6 +243,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
     cart.length === 0 ||
     !orderTakenBy ||
     discount > subtotal ||
+    (method === 'qr' && !qrPaymentType) ||
     (method === 'qr' && !qrReceipt) ||
     (method === 'qr' && Boolean(settings.require_qr_reference) && qrReference.trim().length === 0) ||
     (method === 'complimentary' && complimentaryReason.trim().length === 0);
@@ -538,6 +551,25 @@ export default function POS({ settings }: { settings: SettingsMap }) {
             <p className="rounded-2xl bg-shell p-3 text-sm font-bold">{text('Order accepted by', 'Diterima oleh')}: {orderTakenBy}</p>
             {method === 'qr' ? (
               <>
+                <div>
+                  <p className="mb-2 text-sm font-black">{text('QR Payment type', 'Jenis Bayaran QR')}</p>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                    {qrPaymentTypes.map((type) => (
+                      <button
+                        key={type}
+                        type="button"
+                        className={`min-h-11 rounded-xl border px-2 py-2 text-center text-sm font-black leading-tight shadow-soft transition sm:min-h-12 sm:rounded-2xl ${
+                          qrPaymentType === type
+                            ? 'border-accent bg-accent text-white'
+                            : 'border-line bg-white/90 text-ink hover:border-accent'
+                        }`}
+                        onClick={() => setQrPaymentType(type)}
+                      >
+                        {type}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <Field label={text('QR Payment reference or transaction ID', 'Rujukan Bayaran QR atau ID transaksi')}>
                   <input className={inputClass} value={qrReference} onChange={(e) => setQrReference(e.target.value)} />
                 </Field>

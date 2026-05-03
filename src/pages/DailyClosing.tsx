@@ -355,7 +355,7 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
             <div key={sale.id} className="flex flex-col gap-2 rounded-xl border border-line bg-white/80 p-3 md:flex-row md:items-center md:justify-between sm:rounded-2xl sm:p-4">
               <div>
                 <p className="font-black">{sale.sale_number} · {money(sale.paid_amount, String(settings.currency_symbol))}</p>
-                <p className="text-sm text-neutral-600">Staff: {sale.order_taken_by ?? '-'} · Ref: {sale.qr_reference ?? '-'} · Status: {sale.qr_status}</p>
+                <p className="text-sm text-neutral-600">Staff: {sale.order_taken_by ?? '-'} · Type: {sale.qr_payment_type ?? '-'} · Ref: {sale.qr_reference ?? '-'} · Status: {sale.qr_status}</p>
               </div>
               <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end">
                 {sale.qr_receipt_image_path ? (
@@ -408,7 +408,7 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
         >
           <div className="grid gap-3">
             <div className="rounded-2xl border border-line bg-shell p-3 text-sm font-bold">
-              {money(receiptPreview.sale.paid_amount, String(settings.currency_symbol))} · Ref: {receiptPreview.sale.qr_reference ?? '-'} · Staff: {receiptPreview.sale.order_taken_by ?? '-'}
+              {money(receiptPreview.sale.paid_amount, String(settings.currency_symbol))} · Type: {receiptPreview.sale.qr_payment_type ?? '-'} · Ref: {receiptPreview.sale.qr_reference ?? '-'} · Staff: {receiptPreview.sale.order_taken_by ?? '-'}
             </div>
             <img className="max-h-[70vh] w-full rounded-2xl border border-line object-contain" src={receiptPreview.url} alt={`QR Payment receipt for ${receiptPreview.sale.sale_number}`} />
           </div>
