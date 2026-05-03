@@ -101,11 +101,11 @@ export function Layout({
         </button>
       </aside>
       <div className="xl:pl-72">
-        <header className="no-print sticky top-0 z-20 border-b border-line bg-white/85 px-3 py-3 backdrop-blur sm:px-4 xl:hidden">
+        <header className="no-print sticky top-0 z-20 border-b border-line bg-white/90 px-3 py-2 backdrop-blur sm:px-4 xl:hidden">
           <div className="mx-auto max-w-[1500px]">
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2">
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-coral text-white shadow-soft">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-accent bg-accent text-white shadow-soft">
                   <Waves className="h-5 w-5" />
                 </span>
                 <strong className="min-w-0 truncate text-base font-black sm:text-lg">{String(settings.business_name)}</strong>
@@ -121,7 +121,7 @@ export function Layout({
               </div>
             </div>
             <select
-              className="mt-2 h-11 w-full rounded-2xl border border-line bg-white px-3 text-sm font-black text-ink outline-none focus:border-accent focus:ring-4 focus:ring-teal-100 sm:hidden"
+              className="mt-2 h-10 w-full rounded-2xl border border-line bg-white px-3 text-sm font-black text-ink outline-none focus:border-accent focus:ring-4 focus:ring-teal-100"
               value={activePath}
               onChange={(event) => navigate(event.target.value)}
               aria-label="Current page"
@@ -132,21 +132,6 @@ export function Layout({
                 </option>
               ))}
             </select>
-            <nav className="mt-3 hidden grid-cols-6 gap-2 sm:grid">
-              {visibleLinks.map((link) => (
-                  <NavLink
-                    key={link.to}
-                    to={link.to}
-                    className={({ isActive }) =>
-                      `flex min-h-10 items-center justify-center rounded-2xl border px-2 py-2 text-center text-xs font-black leading-tight sm:text-sm ${
-                        isActive ? 'border-accent bg-accent text-white' : 'border-line bg-white'
-                      }`
-                    }
-                  >
-                    {link.label}
-                  </NavLink>
-                ))}
-            </nav>
           </div>
         </header>
         <main className="mx-auto w-full max-w-[1500px] min-w-0 px-3 py-5 sm:px-4 lg:px-6 xl:px-8">

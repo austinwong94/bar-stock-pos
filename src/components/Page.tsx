@@ -8,9 +8,9 @@ export function PageHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <div className="mb-5 flex flex-col gap-4 rounded-[1.75rem] border border-line bg-white/75 p-4 shadow-soft backdrop-blur sm:p-5 lg:flex-row lg:items-center lg:justify-between">
+    <div className="mb-3 flex flex-col gap-3 rounded-[1.25rem] border border-line bg-white/75 p-3 shadow-soft backdrop-blur sm:mb-4 sm:p-4 lg:flex-row lg:items-center lg:justify-between">
       <div className="min-w-0">
-        <h1 className="text-2xl font-black leading-tight tracking-normal text-ink sm:text-3xl md:text-4xl">{title}</h1>
+        <h1 className="text-xl font-black leading-tight tracking-normal text-ink sm:text-2xl lg:text-4xl">{title}</h1>
         {subtitle ? <p className="mt-1 max-w-3xl text-sm font-semibold leading-relaxed text-neutral-600 sm:text-base">{subtitle}</p> : null}
       </div>
       {actions ? <div className="flex w-full flex-wrap gap-2 lg:w-auto lg:flex-shrink-0 lg:justify-end">{actions}</div> : null}

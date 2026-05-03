@@ -87,29 +87,29 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
       <PageHeader
         title={
           <>
-            <span className="sm:hidden">{text('Dashboard', 'Dashboard')}</span>
-            <span className="hidden sm:inline">{text('Island Sales Dashboard', 'Papan Jualan Island')}</span>
+            <span className="lg:hidden">{text('Dashboard', 'Dashboard')}</span>
+            <span className="hidden lg:inline">{text('Island Sales Dashboard', 'Papan Jualan Island')}</span>
           </>
         }
       />
-      <section className="island-panel mb-4 rounded-[1.75rem] p-2.5 sm:mb-5 sm:p-4">
-        <div className="grid min-w-0 gap-3 lg:grid-cols-[auto_1fr] lg:items-center">
-          <div className="grid grid-cols-3 gap-1 rounded-2xl bg-white/80 p-1 font-black sm:gap-2">
+      <section className="island-panel mb-4 rounded-[1.5rem] p-2 sm:p-3">
+        <div className="grid min-w-0 grid-cols-[minmax(132px,0.82fr)_minmax(0,1fr)] items-center gap-2 sm:grid-cols-[minmax(220px,360px)_minmax(0,1fr)]">
+          <div className="grid grid-cols-3 gap-1 rounded-2xl bg-white/80 p-1 font-black">
             {(['day', 'week', 'month'] as const).map((item) => (
-              <button key={item} className={`min-h-10 whitespace-nowrap rounded-xl px-2 py-2 text-xs sm:min-h-12 sm:px-3 sm:py-3 sm:text-base ${period === item ? 'bg-accent text-white' : ''}`} onClick={() => setPeriod(item)}>
+              <button key={item} className={`min-h-9 whitespace-nowrap rounded-xl px-1.5 py-1.5 text-[0.72rem] sm:min-h-10 sm:px-2 sm:py-2 sm:text-sm ${period === item ? 'bg-accent text-white' : ''}`} onClick={() => setPeriod(item)}>
                 {item === 'day' ? text('Day', 'Hari') : item === 'week' ? text('Week', 'Minggu') : text('Month', 'Bulan')}
               </button>
             ))}
           </div>
-          <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] gap-2">
-            <button type="button" className="grid h-11 w-10 place-items-center rounded-2xl border border-line bg-white font-black shadow-soft sm:h-12 sm:w-12" onClick={() => shiftPeriod(-1)} aria-label="Previous period">
-              <ChevronLeft className="h-5 w-5" />
+          <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] gap-1.5 sm:gap-2">
+            <button type="button" className="grid h-9 w-8 place-items-center rounded-xl border border-line bg-white font-black shadow-soft sm:h-10 sm:w-10 sm:rounded-2xl" onClick={() => shiftPeriod(-1)} aria-label="Previous period">
+              <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5" />
             </button>
-            {period === 'day' ? <input className="min-h-11 min-w-0 w-full rounded-2xl border border-line bg-white px-3 py-2 text-sm font-bold sm:min-h-12 sm:px-4 sm:py-3 sm:text-base" type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} /> : null}
-            {period === 'week' ? <input className="min-h-11 min-w-0 w-full rounded-2xl border border-line bg-white px-3 py-2 text-sm font-bold sm:min-h-12 sm:px-4 sm:py-3 sm:text-base" type="week" value={selectedWeek} onChange={(e) => setSelectedWeek(e.target.value)} /> : null}
-            {period === 'month' ? <input className="min-h-11 min-w-0 w-full rounded-2xl border border-line bg-white px-3 py-2 text-sm font-bold sm:min-h-12 sm:px-4 sm:py-3 sm:text-base" type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} /> : null}
-            <button type="button" className="grid h-11 w-10 place-items-center rounded-2xl border border-line bg-white font-black shadow-soft sm:h-12 sm:w-12" onClick={() => shiftPeriod(1)} aria-label="Next period">
-              <ChevronRight className="h-5 w-5" />
+            {period === 'day' ? <input className="min-h-9 min-w-0 w-full rounded-xl border border-line bg-white px-2 py-1.5 text-xs font-bold sm:min-h-10 sm:rounded-2xl sm:px-3 sm:py-2 sm:text-sm" type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} /> : null}
+            {period === 'week' ? <input className="min-h-9 min-w-0 w-full rounded-xl border border-line bg-white px-2 py-1.5 text-xs font-bold sm:min-h-10 sm:rounded-2xl sm:px-3 sm:py-2 sm:text-sm" type="week" value={selectedWeek} onChange={(e) => setSelectedWeek(e.target.value)} /> : null}
+            {period === 'month' ? <input className="min-h-9 min-w-0 w-full rounded-xl border border-line bg-white px-2 py-1.5 text-xs font-bold sm:min-h-10 sm:rounded-2xl sm:px-3 sm:py-2 sm:text-sm" type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} /> : null}
+            <button type="button" className="grid h-9 w-8 place-items-center rounded-xl border border-line bg-white font-black shadow-soft sm:h-10 sm:w-10 sm:rounded-2xl" onClick={() => shiftPeriod(1)} aria-label="Next period">
+              <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
             </button>
           </div>
         </div>
