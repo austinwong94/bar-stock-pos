@@ -3,7 +3,7 @@ import { addDays, addMonths, addWeeks, format, startOfWeek } from 'date-fns';
 import { AlertTriangle, ChevronLeft, ChevronRight, PackageCheck, Sparkles } from 'lucide-react';
 import { PageHeader } from '../components/Page';
 import { loadProducts } from '../lib/data';
-import { demoSales } from '../lib/demo';
+import { loadLocalSales } from '../lib/localStore';
 import { cansAndCartons, dualMoney, money } from '../lib/format';
 import { supabase } from '../lib/supabase';
 import { isSupabaseConfigured } from '../lib/supabase';
@@ -14,9 +14,9 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
   const [products, setProducts] = useState<ProductWithStock[]>([]);
   const [businessDate, setBusinessDate] = useState('');
   const [period, setPeriod] = useState<'day' | 'week' | 'month'>('day');
-  const [selectedDate, setSelectedDate] = useState('2026-05-03');
-  const [selectedWeek, setSelectedWeek] = useState('2026-W18');
-  const [selectedMonth, setSelectedMonth] = useState('2026-05');
+  const [selectedDate, setSelectedDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
+  const [selectedWeek, setSelectedWeek] = useState(() => format(new Date(), "RRRR-'W'II"));
+  const [selectedMonth, setSelectedMonth] = useState(() => format(new Date(), 'yyyy-MM'));
   const [totals, setTotals] = useState({ cash: 0, qr: 0, focCost: 0, tx: 0, paidRevenue: 0 });
   const { text } = useLanguage();
 
@@ -24,7 +24,7 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
     async function load() {
       const [loadedProducts, dateResult] = await Promise.all([
         loadProducts(true),
-        isSupabaseConfigured ? supabase.rpc('get_business_date') : Promise.resolve({ data: '2026-05-03' }),
+        isSupabaseConfigured ? supabase.rpc('get_business_date') : Promise.resolve({ data: format(new Date(), 'yyyy-MM-dd') }),
       ]);
       const currentDate = dateResult.data ?? new Date().toISOString().slice(0, 10);
       const sales = isSupabaseConfigured
@@ -32,7 +32,7 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
             .from('sales')
             .select('payment_method,total_amount,paid_amount,business_date')
             .eq('status', 'completed')).data
-        : demoSales;
+        : loadLocalSales();
       const filteredSales = ((sales ?? []) as Array<{ payment_method: string; total_amount: number; paid_amount: number; business_date?: string }>).filter((sale) => {
         if (period === 'day') return sale.business_date === selectedDate;
         if (period === 'month') return sale.business_date?.startsWith(selectedMonth);

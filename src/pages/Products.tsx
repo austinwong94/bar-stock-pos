@@ -7,7 +7,7 @@ import { useToast } from '../components/Toast';
 import { categoryRank, groupByCategory, normalizeCategoryName } from '../lib/data';
 import { supabase } from '../lib/supabase';
 import { isSupabaseConfigured } from '../lib/supabase';
-import { demoCategories, demoProducts } from '../lib/demo';
+import { loadLocalCategories, loadLocalProducts, saveLocalProduct } from '../lib/localStore';
 import type { Category, ProductWithStock, SettingsMap } from '../lib/types';
 import { assetPath } from '../lib/assets';
 
@@ -45,8 +45,8 @@ export default function Products({ settings }: { settings: SettingsMap }) {
 
   async function refresh() {
     if (!isSupabaseConfigured) {
-      setProducts(demoProducts);
-      setCategories(demoCategories);
+      setProducts(loadLocalProducts(true));
+      setCategories(loadLocalCategories());
       return;
     }
     const [{ data: productData }, { data: categoryData }] = await Promise.all([
@@ -75,7 +75,23 @@ export default function Products({ settings }: { settings: SettingsMap }) {
     event.preventDefault();
     if (!effectiveForm) return;
     if (!isSupabaseConfigured) {
-      toast.error('Demo mode: connect Supabase to save products.');
+      saveLocalProduct({
+        id: effectiveForm.id,
+        name: effectiveForm.name,
+        category_id: effectiveForm.category_id,
+        price_per_unit: Number(effectiveForm.price_per_unit),
+        cost_per_unit: effectiveForm.cost_per_unit ? Number(effectiveForm.cost_per_unit) : null,
+        carton_size: Number(effectiveForm.carton_size),
+        low_stock_threshold: Number(effectiveForm.low_stock_threshold),
+        image_url: effectiveForm.image_url.trim() || null,
+        active: effectiveForm.active,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        inventory_balances: { quantity_on_hand: products.find((item) => item.id === effectiveForm.id)?.inventory_balances?.quantity_on_hand ?? 0 },
+      });
+      setForm(null);
+      await refresh();
+      toast.success('Product saved.');
       return;
     }
     const payload = {

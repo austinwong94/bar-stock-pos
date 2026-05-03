@@ -10,6 +10,7 @@ import { groupByCategory, loadProducts } from '../lib/data';
 import { dualMoney, money } from '../lib/format';
 import { supabase } from '../lib/supabase';
 import { isSupabaseConfigured } from '../lib/supabase';
+import { saveLocalSale } from '../lib/localStore';
 import type { PaymentMethod, ProductWithStock, SettingsMap } from '../lib/types';
 import { useLanguage } from '../lib/language';
 import { assetPath } from '../lib/assets';
@@ -154,13 +155,31 @@ export default function POS({ settings }: { settings: SettingsMap }) {
     }
     setSaving(true);
     if (!isSupabaseConfigured) {
+      const savedSale = saveLocalSale({
+        items: cart.map((item) => ({
+          product_id: item.product.id.startsWith('custom-') ? null : item.product.id,
+          name: item.product.name,
+          quantity: item.quantity,
+          unit_price: Number(item.customPrice ?? item.product.price_per_unit),
+          line_total: item.quantity * Number(item.customPrice ?? item.product.price_per_unit),
+        })),
+        paymentMethod: method,
+        totalAmount: total,
+        paidAmount: method === 'complimentary' ? 0 : total,
+        discountAmount: discount,
+        orderTakenBy,
+        qrReference: qrReference || null,
+        qrReceiptName: qrReceipt?.name ?? null,
+        complimentaryReason: complimentaryReason || null,
+      });
       setSaving(false);
       setCart([]);
       setMethod(null);
       setQrReference('');
       setQrReceipt(null);
       setComplimentaryReason('');
-      toast.success(`Demo sale saved by ${orderTakenBy}. Total ${dualMoney(total, String(settings.currency_symbol))}. Complimentary (FOC) is included in reports.`);
+      await refreshProducts();
+      toast.success(`Sale ${savedSale.sale_number} saved by ${orderTakenBy}. Total ${dualMoney(total, String(settings.currency_symbol))}.`);
       return;
     }
     let qrReceiptPath: string | null = null;
@@ -304,6 +323,45 @@ export default function POS({ settings }: { settings: SettingsMap }) {
     );
   }
 
+  function renderLiveCartPanel() {
+    if (cart.length === 0) return null;
+    return (
+      <section className="island-panel rounded-2xl p-3 2xl:hidden">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-black">Selected order</h2>
+            <p className="text-sm font-bold text-accent">Accepted by {orderTakenBy}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs font-black uppercase tracking-widest text-neutral-500">{cartQuantity} item(s)</p>
+            <p className="text-lg font-black">{money(total, String(settings.currency_symbol))}</p>
+          </div>
+        </div>
+        <div className="mt-2 grid gap-2">
+          {cart.map((item) => (
+            <div key={item.product.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-xl border border-line bg-white/85 p-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-black">{item.product.name}</p>
+                <p className="text-xs font-bold text-neutral-600">
+                  {item.quantity} x {money(item.customPrice ?? item.product.price_per_unit, String(settings.currency_symbol))}
+                </p>
+              </div>
+              <div className="flex items-center gap-1">
+                <button className={`${secondaryButtonClass} h-9 min-h-9 w-9 px-0`} onClick={() => change(item.product.id, -1)} aria-label="Decrease">
+                  <Minus className="h-4 w-4" />
+                </button>
+                <span className="grid h-9 min-w-9 place-items-center rounded-xl bg-teal-50 px-2 text-sm font-black text-accent">{item.quantity}</span>
+                <button className={`${secondaryButtonClass} h-9 min-h-9 w-9 px-0`} onClick={() => change(item.product.id, 1)} aria-label="Increase">
+                  <Plus className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
   return (
     <>
       <PageHeader
@@ -342,6 +400,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
               ))}
             </div>
           </section>
+          {renderLiveCartPanel()}
           {regularGroups.map(([category, items]) => (
             <div key={category}>
               <h2 className="mb-2 text-lg font-black sm:mb-3 sm:text-xl">{text(category, category === 'Soft Drink' ? 'Minuman Ringan' : category === 'Beer' ? 'Bir' : 'Lain-lain')}</h2>

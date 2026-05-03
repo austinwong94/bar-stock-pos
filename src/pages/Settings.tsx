@@ -4,6 +4,7 @@ import { Field, buttonClass, dangerButtonClass, inputClass, secondaryButtonClass
 import { PageHeader } from '../components/Page';
 import { useToast } from '../components/Toast';
 import { defaultSettings } from '../lib/data';
+import { saveLocalSettings } from '../lib/localStore';
 import { supabase } from '../lib/supabase';
 import { isSupabaseConfigured } from '../lib/supabase';
 import type { AppSettingKey, SettingsMap } from '../lib/types';
@@ -46,8 +47,9 @@ export default function Settings({ settings, onSaved }: { settings: SettingsMap;
   async function save(event: FormEvent) {
     event.preventDefault();
     if (!isSupabaseConfigured) {
+      saveLocalSettings(form);
       onSaved(form);
-      toast.success('Demo settings updated for this preview.');
+      toast.success('Settings saved on this device.');
       return;
     }
     setSaving(true);

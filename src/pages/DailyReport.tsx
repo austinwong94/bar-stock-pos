@@ -7,7 +7,8 @@ import { Modal } from '../components/Modal';
 import { PageHeader } from '../components/Page';
 import { useToast } from '../components/Toast';
 import { money } from '../lib/format';
-import { demoReports, demoSales } from '../lib/demo';
+import { demoReports } from '../lib/demo';
+import { loadLocalSales } from '../lib/localStore';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import type { DailyReport, Sale, SettingsMap } from '../lib/types';
 import { useLanguage } from '../lib/language';
@@ -174,7 +175,7 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
   const toast = useToast();
   const { text } = useLanguage();
   const [reports, setReports] = useState<DailyReport[]>(demoReports);
-  const [sales, setSales] = useState<Sale[]>(demoSales);
+  const [sales, setSales] = useState<Sale[]>(() => loadLocalSales());
   const [reportPeriod, setReportPeriod] = useState<ReportPeriod>('daily');
   const [, setBusinessDate] = useState('2026-05-03');
   const [reportMonth, setReportMonth] = useState('2026-05');

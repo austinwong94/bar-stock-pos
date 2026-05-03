@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
-import { demoProducts, demoSettings } from './demo';
 import { isSupabaseConfigured } from './supabase';
+import { loadLocalProducts, loadLocalSettings } from './localStore';
 import type { ProductWithStock, SettingsMap } from './types';
 
 const categoryOrder = ['Beer', 'Soft Drink', 'Food', 'Cocktail', 'Others'];
@@ -36,7 +36,7 @@ export const defaultSettings: SettingsMap = {
 };
 
 export async function loadSettings(): Promise<SettingsMap> {
-  if (!isSupabaseConfigured) return demoSettings;
+  if (!isSupabaseConfigured) return loadLocalSettings();
   const { data, error } = await supabase.from('app_settings').select('key,value');
   if (error) throw error;
   const rows = (data ?? []) as Array<{ key: keyof SettingsMap; value: SettingsMap[keyof SettingsMap] }>;
@@ -48,7 +48,7 @@ export async function loadSettings(): Promise<SettingsMap> {
 
 export async function loadProducts(includeInactive = false): Promise<ProductWithStock[]> {
   if (!isSupabaseConfigured) {
-    return demoProducts.filter((product) => includeInactive || product.active);
+    return loadLocalProducts(includeInactive);
   }
   let query = supabase
     .from('products')

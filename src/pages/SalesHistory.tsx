@@ -8,7 +8,7 @@ import { useToast } from '../components/Toast';
 import { money, todayInputValue } from '../lib/format';
 import { supabase } from '../lib/supabase';
 import { isSupabaseConfigured } from '../lib/supabase';
-import { demoSaleItems, demoSales } from '../lib/demo';
+import { loadLocalSaleItems, loadLocalSales } from '../lib/localStore';
 import type { PaymentMethod, Sale, SaleItem, SettingsMap } from '../lib/types';
 
 type SaleWithItems = Sale & { sale_items?: SaleItem[] };
@@ -54,11 +54,13 @@ export default function SalesHistory({ settings, embedded = false }: { settings:
 
   async function refresh() {
     if (!isSupabaseConfigured) {
+      const localSales = loadLocalSales();
+      const localSaleItems = loadLocalSaleItems();
       setSales(
-        demoSales
+        localSales
           .filter((sale) => sale.business_date === date)
           .filter((sale) => method === 'all' || sale.payment_method === method)
-          .map((sale) => ({ ...sale, sale_items: demoSaleItems.filter((item) => item.sale_id === sale.id) })),
+          .map((sale) => ({ ...sale, sale_items: localSaleItems.filter((item) => item.sale_id === sale.id) })),
       );
       return;
     }
@@ -92,7 +94,7 @@ export default function SalesHistory({ settings, embedded = false }: { settings:
   async function voidSale() {
     if (!voiding || !reason.trim()) return;
     if (!isSupabaseConfigured) {
-      toast.error('Demo mode: connect Supabase to void sales.');
+      toast.error('Connect Supabase to void saved sales across devices.');
       return;
     }
     const { error } = await supabase.rpc('void_sale', { p_sale_id: voiding.id, p_reason: reason });
@@ -108,7 +110,7 @@ export default function SalesHistory({ settings, embedded = false }: { settings:
 
   async function verifyQr(sale: Sale, status: 'verified' | 'mismatch') {
     if (!isSupabaseConfigured) {
-      toast.error(`Demo mode: QR Payment would be marked ${status}.`);
+      toast.error(`Connect Supabase to mark QR Payment as ${status} across devices.`);
       return;
     }
     const { error } = await supabase.rpc('verify_qr_payment', {

@@ -7,6 +7,7 @@ import { useToast } from '../components/Toast';
 import { loadProducts } from '../lib/data';
 import { supabase } from '../lib/supabase';
 import { isSupabaseConfigured } from '../lib/supabase';
+import { adjustLocalStock } from '../lib/localStore';
 import type { ProductWithStock, SettingsMap } from '../lib/types';
 
 const stockInSchema = z.object({
@@ -72,9 +73,11 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
     if (!product) return;
     setSaving(true);
     if (!isSupabaseConfigured) {
+      const updatedProduct = adjustLocalStock(product.id, cans);
       setSaving(false);
       setConfirming(false);
-      toast.success(`Demo stock-in saved by ${enteredBy}: ${cans} unit(s) added to ${product.name}.`);
+      await refresh();
+      toast.success(`Stock updated by ${enteredBy}: ${updatedProduct?.inventory_balances?.quantity_on_hand ?? cans} unit(s) now on hand.`);
       return;
     }
     const { data, error } = await supabase.rpc('stock_in_product', {

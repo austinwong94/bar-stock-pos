@@ -8,7 +8,8 @@ import { useToast } from '../components/Toast';
 import { money, todayInputValue } from '../lib/format';
 import { supabase } from '../lib/supabase';
 import { isSupabaseConfigured } from '../lib/supabase';
-import { demoReports, demoSales } from '../lib/demo';
+import { demoReports } from '../lib/demo';
+import { loadLocalSales } from '../lib/localStore';
 import type { DailyReport, Sale, SettingsMap } from '../lib/types';
 import { useLanguage } from '../lib/language';
 import { assetPath } from '../lib/assets';
@@ -33,7 +34,7 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
 
   async function refresh(date = businessDate) {
     if (!isSupabaseConfigured) {
-      setSales(demoSales.filter((sale) => sale.business_date === date));
+      setSales(loadLocalSales().filter((sale) => sale.business_date === date));
       const demoReport = demoReports.find((item) => item.business_date === date) ?? null;
       setReport(demoReport);
       setCorrectionMode(false);

@@ -5,7 +5,7 @@ import { AccessGate } from './components/AccessGate';
 import { Layout } from './components/Layout';
 import { ToastProvider } from './components/Toast';
 import { defaultSettings, loadSettings } from './lib/data';
-import { demoProfile, demoSettings } from './lib/demo';
+import { demoProfile } from './lib/demo';
 import { hasSupabaseCredentials, setPublicPreviewMode, supabase } from './lib/supabase';
 import type { Profile, SettingsMap } from './lib/types';
 import Dashboard from './pages/Dashboard';
@@ -32,6 +32,7 @@ export default function App() {
   useEffect(() => {
     if (!hasSupabaseCredentials) {
       setPublicPreviewMode(true);
+      loadSettings().then(setSettings).catch(() => setSettings(defaultSettings));
       setLoading(false);
       return;
     }
@@ -46,9 +47,9 @@ export default function App() {
   useEffect(() => {
     async function loadUserContext() {
       if (!session?.user) {
-        setPublicPreviewMode(true);
+        setPublicPreviewMode(false);
         setProfile(previewProfile);
-        setSettings(demoSettings);
+        setSettings(await loadSettings().catch(() => defaultSettings));
         setLoading(false);
         return;
       }
@@ -79,18 +80,18 @@ export default function App() {
       <LanguageProvider>
       <ToastProvider>
         <Routes>
-          <Route element={<Layout profile={demoProfile} settings={demoSettings} publicPreview />}>
-            <Route index element={<Dashboard settings={demoSettings} />} />
-            <Route path="/pos" element={<POS settings={demoSettings} />} />
-            <Route path="/stock-in" element={<StockOutReport settings={demoSettings} />} />
-            <Route path="/inventory" element={<Inventory settings={demoSettings} />} />
-            <Route path="/products" element={<Products settings={demoSettings} />} />
-            <Route path="/daily-closing" element={<DailyClosing settings={demoSettings} />} />
-            <Route path="/daily-report" element={<DailyReport settings={demoSettings} />} />
-            <Route path="/stock-out-report" element={<StockOutReport settings={demoSettings} />} />
-            <Route path="/sales" element={<SalesHistory settings={demoSettings} />} />
+          <Route element={<Layout profile={demoProfile} settings={settings} publicPreview />}>
+            <Route index element={<Dashboard settings={settings} />} />
+            <Route path="/pos" element={<POS settings={settings} />} />
+            <Route path="/stock-in" element={<StockOutReport settings={settings} />} />
+            <Route path="/inventory" element={<Inventory settings={settings} />} />
+            <Route path="/products" element={<Products settings={settings} />} />
+            <Route path="/daily-closing" element={<DailyClosing settings={settings} />} />
+            <Route path="/daily-report" element={<DailyReport settings={settings} />} />
+            <Route path="/stock-out-report" element={<StockOutReport settings={settings} />} />
+            <Route path="/sales" element={<SalesHistory settings={settings} />} />
             <Route path="/movements" element={<StockMovements />} />
-            <Route path="/settings" element={<Settings settings={demoSettings} onSaved={() => undefined} />} />
+            <Route path="/settings" element={<Settings settings={settings} onSaved={setSettings} />} />
             <Route path="/users" element={<Users />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

@@ -28,7 +28,7 @@ export default function Users() {
   async function updateRole(profile: Profile, role: Role) {
     if (!isSupabaseConfigured) {
       setProfiles((items) => items.map((item) => item.id === profile.id ? { ...item, role } : item));
-      toast.success('Demo role updated for this preview.');
+      toast.success('Role updated on this device.');
       return;
     }
     const { error } = await supabase.from('profiles').update({ role }).eq('id', profile.id);

@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { addDays, addWeeks, parseISO, startOfWeek } from 'date-fns';
 import { inputClass } from '../components/Form';
 import { PageHeader } from '../components/Page';
-import { demoMovements, demoSaleItems, demoSales } from '../lib/demo';
+import { demoMovements } from '../lib/demo';
+import { loadLocalSaleItems, loadLocalSales } from '../lib/localStore';
 import { money } from '../lib/format';
 import type { SettingsMap } from '../lib/types';
 import StockIn from './StockIn';
@@ -45,8 +46,8 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
   const [customStart, setCustomStart] = useState('2026-04-30');
   const [customEnd, setCustomEnd] = useState('2026-05-03');
 
-  const stockOutRows = useMemo(() => demoSaleItems.map((item) => {
-    const sale = demoSales.find((entry) => entry.id === item.sale_id);
+  const stockOutRows = useMemo(() => loadLocalSaleItems().map((item) => {
+    const sale = loadLocalSales().find((entry) => entry.id === item.sale_id);
     return {
       date: sale?.business_date ?? '-',
       sale: sale?.sale_number ?? '-',
