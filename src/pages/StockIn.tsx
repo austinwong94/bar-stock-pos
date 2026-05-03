@@ -188,7 +188,7 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
 
   return (
     <>
-      {embedded ? null : <PageHeader title={text('Stock In', 'Stok Masuk')} subtitle={text('Cartons are converted by each product carton size.', 'Karton ditukar mengikut saiz karton setiap produk.')} />}
+      {embedded ? null : <PageHeader title={text('Stock In', 'Stok Masuk')} />}
       <form onSubmit={addLine} className="island-panel grid gap-4 rounded-2xl p-3 shadow-soft sm:rounded-[2rem] sm:p-5">
         <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-2xl border border-line bg-white/75 p-2">
           <p className="text-xs font-black leading-tight sm:text-sm">{text('Entered by', 'Diisi oleh')}</p>
@@ -271,7 +271,6 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-lg font-black">{text('Stock-in list', 'Senarai stok masuk')}</h2>
-            <p className="text-sm font-bold text-neutral-600">{text('Add multiple products here before confirming.', 'Tambah beberapa produk di sini sebelum sahkan.')}</p>
           </div>
           <p className="rounded-xl bg-teal-50 px-3 py-2 text-sm font-black text-accent">{totalBatchUnits} unit(s)</p>
         </div>

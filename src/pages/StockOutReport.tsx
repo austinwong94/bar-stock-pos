@@ -132,7 +132,6 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
         >
           <p className="text-xs font-black uppercase tracking-widest text-accent">{text('Record', 'Rekod')}</p>
           <h2 className="mt-1.5 text-lg font-black sm:mt-2 sm:text-2xl">{text('Stock In', 'Stok Masuk')}</h2>
-          <p className="mt-1 text-sm font-bold text-neutral-600">{text('Add units or cartons into inventory.', 'Tambah unit atau karton ke inventori.')}</p>
         </button>
         <button
           className={`rounded-2xl border p-3 text-left shadow-soft transition sm:rounded-[2rem] sm:p-5 ${mode === 'out' ? 'border-accent bg-teal-50 ring-2 ring-teal-100 sm:ring-4' : 'border-line bg-white/85 hover:border-accent'}`}
@@ -140,7 +139,6 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
         >
           <p className="text-xs font-black uppercase tracking-widest text-coral">{text('Review', 'Semak')}</p>
           <h2 className="mt-1.5 text-lg font-black sm:mt-2 sm:text-2xl">{text('Stock Out', 'Stok Keluar')}</h2>
-          <p className="mt-1 text-sm font-bold text-neutral-600">{text('Review sales and FOC stock deductions.', 'Semak jualan dan penolakan stok FOC.')}</p>
         </button>
       </section>
 
@@ -162,28 +160,28 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
         </section>
       ) : null}
 
-      <section className="island-panel mb-4 rounded-2xl p-3 sm:mb-5 sm:rounded-[2rem] sm:p-5">
-        <h2 className="text-lg font-black sm:text-xl">{mode === 'in' ? 'What was added' : 'What was stocked out'}</h2>
-        <div className="mt-2 grid gap-2 lg:grid-cols-[auto_1fr] lg:items-center">
-          <div className="grid grid-cols-4 gap-1 rounded-2xl bg-white/80 p-1 text-xs font-black sm:text-sm">
+      <section className="island-panel mb-4 rounded-2xl p-2.5 sm:mb-5 sm:rounded-[2rem] sm:p-4">
+        <h2 className="text-lg font-black sm:text-xl">{mode === 'in' ? text('What was added', 'Apa yang ditambah') : text('What was stocked out', 'Apa yang keluar')}</h2>
+        <div className="mt-2 flex min-w-0 flex-col gap-2 xl:flex-row xl:items-center">
+          <div className="grid w-full min-w-0 grid-cols-4 gap-1 rounded-2xl bg-white/80 p-1 text-xs font-black sm:text-sm xl:w-[430px] xl:shrink-0">
             {(['day', 'week', 'month', 'custom'] as const).map((item) => (
               <button
                 key={item}
-                className={`min-h-9 rounded-xl px-1.5 py-1.5 ${period === item ? 'bg-accent text-white' : ''}`}
+                className={`min-h-9 min-w-0 truncate rounded-xl px-1.5 py-1.5 ${period === item ? 'bg-accent text-white' : ''}`}
                 onClick={() => setPeriod(item)}
               >
                 {item === 'day' ? text('Daily', 'Harian') : item === 'week' ? text('Weekly', 'Mingguan') : item === 'month' ? text('Monthly', 'Bulanan') : text('Selected', 'Pilihan')}
               </button>
             ))}
           </div>
-          <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
-            {period === 'day' ? <input className={inputClass} type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} /> : null}
-            {period === 'week' ? <input className={inputClass} type="week" value={selectedWeek} onChange={(event) => setSelectedWeek(event.target.value)} /> : null}
-            {period === 'month' ? <input className={inputClass} type="month" value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)} /> : null}
+          <div className={`grid w-full min-w-0 gap-2 ${period === 'custom' ? 'sm:grid-cols-2 xl:flex-1' : 'xl:max-w-sm'}`}>
+            {period === 'day' ? <input className={`${inputClass} w-full`} type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} /> : null}
+            {period === 'week' ? <input className={`${inputClass} w-full`} type="week" value={selectedWeek} onChange={(event) => setSelectedWeek(event.target.value)} /> : null}
+            {period === 'month' ? <input className={`${inputClass} w-full`} type="month" value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)} /> : null}
             {period === 'custom' ? (
               <>
-                <input className={inputClass} type="date" value={customStart} onChange={(event) => setCustomStart(event.target.value)} />
-                <input className={inputClass} type="date" value={customEnd} onChange={(event) => setCustomEnd(event.target.value)} />
+                <input className={`${inputClass} w-full`} type="date" value={customStart} onChange={(event) => setCustomStart(event.target.value)} />
+                <input className={`${inputClass} w-full`} type="date" value={customEnd} onChange={(event) => setCustomEnd(event.target.value)} />
               </>
             ) : null}
           </div>

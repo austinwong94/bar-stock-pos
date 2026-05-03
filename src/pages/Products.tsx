@@ -159,7 +159,6 @@ export default function Products({ settings }: { settings: SettingsMap }) {
     <>
       <PageHeader
         title={text('Admin', 'Pentadbir')}
-        subtitle={text('Admin-only product management. Use inactive instead of physical delete so old records stay intact.', 'Pengurusan produk untuk pentadbir sahaja. Gunakan tidak aktif supaya rekod lama kekal.')}
         actions={
           demoAdminUnlocked ? (
             <>
@@ -176,7 +175,6 @@ export default function Products({ settings }: { settings: SettingsMap }) {
       {!demoAdminUnlocked ? (
         <div className="island-panel mb-4 max-w-xl rounded-2xl p-3 sm:mb-5 sm:rounded-[2rem] sm:p-5">
           <h2 className="text-xl font-black sm:text-2xl">{text('Admin Access', 'Akses Pentadbir')}</h2>
-          <p className="mt-2 text-sm font-bold text-neutral-600">{text('Enter admin password to manage products and records.', 'Masukkan kata laluan pentadbir untuk mengurus produk dan rekod.')}</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
             <input className={inputClass} type="password" value={adminPin} onChange={(e) => setAdminPin(e.target.value)} placeholder="Admin password" />
             <button className={buttonClass} onClick={() => setDemoAdminUnlocked(adminPin === '200000')}>Unlock</button>
@@ -189,7 +187,6 @@ export default function Products({ settings }: { settings: SettingsMap }) {
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h2 className="text-lg font-black sm:text-xl">{text('Product Categories', 'Kategori Produk')}</h2>
-            <p className="mt-1 text-sm font-bold text-neutral-600">{text('Choose one of these categories when adding or editing products.', 'Pilih kategori semasa menambah atau mengedit produk.')}</p>
           </div>
           <button className={secondaryButtonClass} onClick={() => setForm(blank(defaultCartonSize))}>
             <Plus className="h-4 w-4" />
