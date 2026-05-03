@@ -123,7 +123,7 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
     toast.success(`${product.name} ${text('added to stock-in list.', 'ditambah ke senarai stok masuk.')}`);
   }
 
-  function reviewBatch() {
+  function openStockInConfirmation() {
     if (lines.length === 0) {
       toast.error(text('Add at least one product to the stock-in list.', 'Tambah sekurang-kurangnya satu produk ke senarai stok masuk.'));
       return;
@@ -257,22 +257,26 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
             <input className={inputClass} value={notes} onChange={(e) => setNotes(e.target.value)} />
           </Field>
         </div>
-        <div className="grid gap-2 sm:grid-cols-2">
-          <button type="submit" className={`${secondaryButtonClass} justify-center`}>
+        <div className="flex">
+          <button type="submit" className={`${secondaryButtonClass} w-full justify-center`}>
             <Plus className="h-4 w-4" />
             {text('Add to stock-in list', 'Tambah ke senarai stok masuk')}
-          </button>
-          <button type="button" className={`${buttonClass} justify-center`} disabled={lines.length === 0} onClick={reviewBatch}>
-            {text('Review', 'Semak')} {lines.length} {text(lines.length === 1 ? 'item' : 'items', 'item')}
           </button>
         </div>
       </form>
       <section className="island-panel mt-4 rounded-2xl p-3 shadow-soft sm:rounded-[2rem] sm:p-5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-lg font-black">{text('Stock-in list', 'Senarai stok masuk')}</h2>
           </div>
-          <p className="rounded-xl bg-teal-50 px-3 py-2 text-sm font-black text-accent">{totalBatchUnits} unit(s)</p>
+          <div className="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] gap-2 sm:flex sm:items-center">
+            <p className="flex min-h-10 items-center justify-center rounded-xl bg-teal-50 px-3 py-2 text-sm font-black text-accent">
+              {totalBatchUnits} unit(s)
+            </p>
+            <button type="button" className={`${buttonClass} min-w-0 justify-center`} disabled={lines.length === 0} onClick={openStockInConfirmation}>
+              {text('Confirm Stock-in', 'Sahkan stok masuk')}
+            </button>
+          </div>
         </div>
         {lines.length === 0 ? (
           <p className="mt-3 rounded-2xl border border-line bg-white/80 p-3 text-sm font-bold text-neutral-600">
@@ -318,18 +322,18 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
       </section>
       {confirming ? (
         <Modal
-          title={text('Confirm Stock-In Batch', 'Sahkan stok masuk berkumpulan')}
+          title={text('Confirm Stock-in', 'Sahkan stok masuk')}
           onClose={() => setConfirming(false)}
           footer={
             <div className="flex flex-wrap justify-end gap-2">
               <button className={secondaryButtonClass} onClick={() => setConfirming(false)}>{text('Cancel', 'Batal')}</button>
               <button className={buttonClass} disabled={saving} onClick={confirm}>
-                {saving ? text('Saving...', 'Menyimpan...') : `${text('Yes, confirm', 'Ya, sahkan')} ${lines.length} ${text(lines.length === 1 ? 'item' : 'items', 'item')}`}
+                {saving ? text('Saving...', 'Menyimpan...') : text('Yes, confirm stock-in', 'Ya, sahkan stok masuk')}
               </button>
             </div>
           }
         >
-          <p className="text-xl font-black leading-tight sm:text-2xl">{text('Confirm Stock-In', 'Sahkan Stok Masuk')}: {totalBatchUnits} {text('unit(s)', 'unit')}?</p>
+          <p className="text-xl font-black leading-tight sm:text-2xl">{text('Confirm Stock-in', 'Sahkan stok masuk')}: {totalBatchUnits} {text('unit(s)', 'unit')}?</p>
           <div className="mt-3 max-h-[45vh] overflow-auto rounded-2xl border border-line bg-white/80">
             <table className="w-full min-w-[560px] text-left text-sm">
               <thead className="bg-shell">
