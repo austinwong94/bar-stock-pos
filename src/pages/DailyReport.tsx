@@ -82,6 +82,21 @@ function saleCalendarDate(sale: Sale) {
   return sale.created_at ? malaysiaDateInputValue(sale.created_at) : sale.business_date;
 }
 
+function htmlEscape(value: unknown) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function paymentLabel(method: Sale['payment_method']) {
+  if (method === 'cash') return 'Cash Payment';
+  if (method === 'qr') return 'QR Payment';
+  return 'FOC';
+}
+
 function buildReportDays(reports: DailyReport[], sales: Sale[]): ReportDay[] {
   const reportsByDate = new Map(reports.map((report) => [report.business_date, report]));
   const salesDates = Array.from(new Set(sales.map((sale) => saleCalendarDate(sale))));
@@ -293,6 +308,8 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
       return;
     }
     const reportItems = actualItemSales(sales, selectedReport.dates);
+    const selectedDates = new Set(selectedReport.dates);
+    const voidedSales = sales.filter((sale) => sale.status === 'voided' && selectedDates.has(saleCalendarDate(sale)));
     const reportItemTotals = reportItems.reduce(
       (sum, item) => ({
         quantity: sum.quantity + item.quantity,
@@ -304,8 +321,12 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
       { quantity: 0, cash: 0, qr: 0, focCost: 0, paidSales: 0 },
     );
     const rows = reportItems
-      .map((item) => `<tr><td>${item.product}</td><td>${item.quantity}</td><td>${money(item.cash, String(settings.currency_symbol))}</td><td>${money(item.qr, String(settings.currency_symbol))}</td><td>- ${money(item.focCost, String(settings.currency_symbol))}</td><td>${money(item.cash + item.qr, String(settings.currency_symbol))}</td></tr>`)
+      .map((item) => `<tr><td>${htmlEscape(item.product)}</td><td>${item.quantity}</td><td>${money(item.cash, String(settings.currency_symbol))}</td><td>${money(item.qr, String(settings.currency_symbol))}</td><td>- ${money(item.focCost, String(settings.currency_symbol))}</td><td>${money(item.cash + item.qr, String(settings.currency_symbol))}</td></tr>`)
       .join('');
+    const voidedRows = voidedSales
+      .map((sale) => `<tr><td>${htmlEscape(sale.sale_number)}</td><td>${htmlEscape(format(new Date(sale.voided_at ?? sale.created_at), 'dd MMM yyyy, h:mm a'))}</td><td>${htmlEscape(sale.order_taken_by ?? '-')}</td><td>${htmlEscape(paymentLabel(sale.payment_method))}</td><td>${money(sale.total_amount, String(settings.currency_symbol))}</td><td>${htmlEscape(sale.void_reason ?? '-')}</td></tr>`)
+      .join('');
+    const voidedTotal = voidedSales.reduce((sum, sale) => sum + Number(sale.total_amount), 0);
     const fileTitle = `${selectedReport.label} ${selectedReport.range}`.replace(/[<>]/g, '');
     printable.document.write(`
       <html><head><title>Lovely Paradise Report ${fileTitle}</title>
@@ -320,10 +341,15 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
         <div class="box">FOC Cost<b class="bad">- ${money(selectedReport.focCost, String(settings.currency_symbol))}</b></div>
         <div class="box">Total Revenue<b>${money(selectedReport.paidSales, String(settings.currency_symbol))}</b></div>
         <div class="box">Cash Variance<b>${money(selectedReport.variance, String(settings.currency_symbol))}</b></div>
+        <div class="box">Voided Sales<b>${voidedSales.length}</b></div>
         <div class="box">Item Detail Dates<b>${selectedReport.range}</b></div>
       </div>
       <h2>Sales of all items</h2>
       <table><thead><tr><th>Item</th><th>Quantity</th><th>Cash Payment</th><th>QR Payment</th><th>FOC Cost</th><th>Total Revenue</th></tr></thead><tbody>${rows}<tr class="total"><td>Total</td><td>${reportItemTotals.quantity}</td><td>${money(reportItemTotals.cash, String(settings.currency_symbol))}</td><td>${money(reportItemTotals.qr, String(settings.currency_symbol))}</td><td>- ${money(reportItemTotals.focCost, String(settings.currency_symbol))}</td><td>${money(reportItemTotals.paidSales, String(settings.currency_symbol))}</td></tr></tbody></table>
+      <h2>Voided sales</h2>
+      ${voidedSales.length > 0
+        ? `<table><thead><tr><th>Sale</th><th>Voided at</th><th>Staff</th><th>Method</th><th>Original value</th><th>Reason</th></tr></thead><tbody>${voidedRows}<tr class="total"><td colspan="4">Total voided original value</td><td>${money(voidedTotal, String(settings.currency_symbol))}</td><td></td></tr></tbody></table>`
+        : '<p class="muted">No voided sales for this report period.</p>'}
       <script>window.print();</script>
       </body></html>
     `);
