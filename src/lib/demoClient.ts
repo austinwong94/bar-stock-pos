@@ -22,6 +22,8 @@ import {
 } from './demoBackend';
 import { TODAY } from './demoSeed';
 
+const KL_TZ = 'Asia/Kuala_Lumpur';
+
 type Row = Record<string, any>;
 type Filter = { op: string; column: string; value: any };
 
@@ -199,7 +201,7 @@ class DemoQuery implements PromiseLike<{ data: any; error: any }> {
 
 // Triggers, replayed.
 function afterWrite(table: string, row: Row, op: 'insert' | 'update' | 'delete') {
-  if (table === 'boat_fuel_logs' && op !== 'delete') {
+  if (table === 'fuel_purchases' && op !== 'delete') {
     if (!row.total_cost) row.total_cost = Number(((row.litres ?? 0) * (row.price_per_litre ?? 0)).toFixed(2));
   }
   if (table === 'boat_repairs' && op !== 'delete') {
@@ -230,13 +232,86 @@ function afterWrite(table: string, row: Row, op: 'insert' | 'update' | 'delete')
   }
 }
 
+
+function logAttendance(passengerIds: string[], action: string, toValue: string) {
+  const actor = db.profiles.find((row) => row.id === currentUserIdRef.value)?.full_name ?? 'unknown';
+  passengerIds.forEach((passengerId) => {
+    const passenger = db.trip_passengers.find((row) => row.id === passengerId);
+    if (!passenger) return;
+    const assignment = db.boat_assignments.find((row) => row.id === passenger.assignment_id);
+    const boat = db.boats.find((row) => row.id === assignment?.boat_id);
+    const tourist = db.tourists.find((row) => row.id === passenger.tourist_id);
+    const booking = db.bookings.find((row) => row.id === passenger.booking_id);
+    db.attendance_log.push({
+      id: uid(),
+      service_date: assignment?.service_date ?? null,
+      assignment_id: passenger.assignment_id,
+      boat_code: boat?.code ?? null,
+      passenger_id: passengerId,
+      tourist_name: tourist?.full_name ?? null,
+      booking_ref: booking?.booking_ref ?? null,
+      action,
+      from_value: null,
+      to_value: toValue,
+      actor_id: currentUserIdRef.value,
+      actor_name: actor,
+      created_at: new Date().toISOString(),
+    });
+  });
+}
+
+function logMilestone(assignmentId: string, eventCode: string, department: string, detail: string) {
+  const assignment = db.boat_assignments.find((row) => row.id === assignmentId);
+  if (!assignment) return;
+  const exists = db.operations_events.some(
+    (row) => row.event_code === eventCode && row.reference_id === assignmentId);
+  if (exists) return;
+  db.operations_events.push({
+    id: uid(),
+    service_date: assignment.service_date,
+    department_code: department,
+    event_code: eventCode,
+    subject: db.boats.find((row) => row.id === assignment.boat_id)?.code ?? null,
+    detail,
+    severity: 'info',
+    reference_type: 'boat_assignment',
+    reference_id: assignmentId,
+    occurred_at: new Date().toISOString(),
+    actor_id: currentUserIdRef.value,
+  });
+}
+
+function refreshMilestones(assignmentId: string) {
+  const list = db.trip_passengers.filter((row) => row.assignment_id === assignmentId);
+  if (list.length === 0) return;
+  const settled = list.filter((row) => row.boarding_status !== 'pending').length;
+  const arrived = list.filter((row) => row.boarding_status === 'arrived');
+  if (settled === list.length) {
+    logMilestone(assignmentId, 'boarding.completed', 'boarding',
+      `${arrived.length} of ${list.length} guests checked in`);
+  }
+  if (arrived.length > 0 && arrived.every((row) => row.activity_code)) {
+    logMilestone(assignmentId, 'activities.selected', 'activities',
+      `All ${arrived.length} guests have an activity`);
+  }
+  if (arrived.length > 0 && arrived.every((row) => row.activity_status !== 'pending')) {
+    logMilestone(assignmentId, 'activities.completed', 'activities',
+      `Activity roll call done for ${arrived.length} guests`);
+  }
+  if (arrived.length > 0 && arrived.every((row) => row.returned)) {
+    logMilestone(assignmentId, 'activities.all_returned', 'activities',
+      `All ${arrived.length} guests back on board`);
+  }
+}
+
 function recountPax(bookingId: string) {
   const booking = db.bookings.find((row) => row.id === bookingId);
   if (!booking) return;
   const people = db.tourists.filter((row) => row.booking_id === bookingId);
   booking.pax_total = people.length;
   booking.pax_adults = people.filter((row) => row.age_band === 'adult').length;
-  booking.pax_children = people.length - booking.pax_adults;
+  booking.pax_elderly = people.filter((row) => row.age_band === 'elderly').length;
+  booking.pax_children = people.length - booking.pax_adults - booking.pax_elderly;
 }
 
 function distanceKm(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -274,6 +349,87 @@ function syncPassengers(assignmentId: string, bookingId: string) {
     });
 }
 
+
+// The message body is built once, exactly as the SQL does, so the outbox
+// shows what would really be sent.
+function purchaseRequestMessage(requestId: string) {
+  const request = db.purchase_requests.find((row) => row.id === requestId);
+  if (!request) return '';
+  const who = db.profiles.find((row) => row.id === request.requested_by)?.full_name ?? 'Kitchen';
+  const lines = db.purchase_request_items
+    .filter((row) => row.request_id === requestId)
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map((row, index) =>
+      `${index + 1}. ${row.item_name} - ${Number(row.quantity)} ${row.unit}${row.note ? ` (${row.note})` : ''}`)
+    .join('\n');
+
+  const readable = new Date(`${request.needed_for_date}T00:00:00`).toLocaleDateString('en-GB', {
+    weekday: 'short', day: '2-digit', month: 'short', year: 'numeric',
+  });
+
+  return [
+    '*THINGS TO PURCHASE*',
+    `Request: ${request.request_no}`,
+    `Needed for: ${readable}`,
+    `Pax: ${request.pax_count}`,
+    request.purpose ? `For: ${request.purpose}` : null,
+    '',
+    lines,
+    request.notes ? `\nNote: ${request.notes}` : null,
+    `\nRequested by: ${who}`,
+  ].filter((line) => line !== null).join('\n');
+}
+
+function boatAssignmentMessage(serviceDate: string) {
+  const parts: string[] = ['*BOAT ASSIGNMENT*', serviceDate, ''];
+  db.boat_assignments
+    .filter((a) => a.service_date === serviceDate && a.status !== 'cancelled')
+    .forEach((assignment) => {
+      const boat = db.boats.find((b) => b.id === assignment.boat_id);
+      const seated = db.trip_bookings.filter((tb) => tb.assignment_id === assignment.id);
+      if (seated.length === 0) return;
+      const pax = seated.reduce(
+        (sum, tb) => sum + (db.bookings.find((b) => b.id === tb.booking_id)?.pax_total ?? 0), 0);
+      parts.push(`*${boat?.code}${boat?.name ? ` (${boat.name})` : ''}*${assignment.departure_time ? ` - ${assignment.departure_time}` : ''}`);
+      parts.push(`Captain: ${db.employees.find((e) => e.id === assignment.captain_employee_id)?.full_name ?? 'not set'}  |  Guide: ${db.employees.find((e) => e.id === assignment.guide_employee_id)?.full_name ?? 'not set'}`);
+      parts.push(`Pax: ${pax}/${boat?.capacity_pax}`);
+      seated.forEach((tb) => {
+        const booking = db.bookings.find((b) => b.id === tb.booking_id);
+        if (!booking) return;
+        parts.push(`- ${booking.lead_name} (${booking.pax_total} pax${booking.pickup_hotel_name ? `, ${booking.pickup_hotel_name}` : ''})`);
+        db.tourists
+          .filter((tourist) => tourist.booking_id === booking.id)
+          .sort((a, b) => a.sort_order - b.sort_order)
+          .forEach((tourist) => parts.push(`   . ${tourist.full_name}`));
+      });
+      parts.push('');
+    });
+  return parts.join('\n');
+}
+
+// A message is only produced when its rule is on, so switching a rule off
+// really does stop it rather than queueing silently.
+function queueMessage(
+  ruleCode: string,
+  title: string,
+  body: string,
+  serviceDate: string | null,
+  referenceType: string | null,
+  referenceId: string | null,
+) {
+  const rule = db.notification_rules.find((row) => row.code === ruleCode);
+  if (!rule || !rule.enabled) return null;
+  const message = {
+    id: uid(), rule_code: ruleCode, department_code: rule.department_code,
+    channel: rule.channel, service_date: serviceDate, title, body,
+    reference_type: referenceType, reference_id: referenceId,
+    status: 'queued', created_by: currentUserIdRef.value,
+    created_at: new Date().toISOString(), sent_at: null, sent_by: null, send_note: null,
+  };
+  db.outbound_messages.push(message);
+  return message.id;
+}
+
 const rpcHandlers: Record<string, (args: any) => any> = {
   my_permissions: () => db.permissions.filter((row) => can(row.code)).map((row) => row.code),
 
@@ -300,6 +456,514 @@ const rpcHandlers: Record<string, (args: any) => any> = {
         variance_pct: trips.length && baseline ? Number((((avg - baseline) / baseline) * 100).toFixed(1)) : null,
       };
     });
+  },
+
+
+  // ---- kitchen and purchasing ----------------------------------------
+  save_purchase_request: ({ p_request, p_items }: any) => {
+    const isNew = !p_request.id;
+    if (isNew) requirePermission('kitchen.request.create');
+    let request = isNew ? null : db.purchase_requests.find((row) => row.id === p_request.id);
+    if (!isNew && !request) throw new Error('Request not found.');
+    if (!isNew) {
+      const mine = request!.requested_by === currentUserIdRef.value && ['draft', 'submitted'].includes(request!.status);
+      if (!can('kitchen.manage') && !mine) throw new Error('You cannot edit this request.');
+    }
+
+    if (isNew) {
+      const sameDay = db.purchase_requests.filter((row) => row.needed_for_date === p_request.needed_for_date).length + 1;
+      request = {
+        id: uid(),
+        request_no: `PR-${String(p_request.needed_for_date).replace(/-/g, '').slice(2)}-${String(sameDay).padStart(3, '0')}`,
+        origin: p_request.origin || 'kitchen',
+        status: 'draft',
+        requested_by: currentUserIdRef.value,
+        submitted_at: null,
+        completed_at: null,
+        cancelled_reason: null,
+        created_at: new Date().toISOString(),
+      };
+      db.purchase_requests.push(request!);
+    }
+    Object.assign(request!, {
+      needed_for_date: p_request.needed_for_date,
+      pax_count: Number(p_request.pax_count) || 0,
+      purpose: p_request.purpose || null,
+      notes: p_request.notes || null,
+    });
+
+    const keep: string[] = [];
+    (p_items ?? []).forEach((item: Row, index: number) => {
+      if (!item.item_name?.trim()) return;
+      let row = item.id ? db.purchase_request_items.find((x) => x.id === item.id) : null;
+      if (!row) {
+        row = { id: uid(), request_id: request!.id };
+        db.purchase_request_items.push(row);
+      }
+      Object.assign(row, {
+        item_name: item.item_name.trim(),
+        quantity: Number(item.quantity) || 0,
+        unit: item.unit || 'kg',
+        note: item.note || null,
+        purchase_status: row.purchase_status ?? 'pending',
+        sort_order: index + 1,
+      });
+      keep.push(row.id);
+    });
+    if (keep.length === 0) throw new Error('Add at least one item to the request.');
+    db.purchase_request_items = db.purchase_request_items.filter(
+      (row) => row.request_id !== request!.id || keep.includes(row.id),
+    );
+    return request!.id;
+  },
+
+  submit_purchase_request: ({ p_request_id }: any) => {
+    requirePermission('kitchen.request.submit');
+    const request = db.purchase_requests.find((row) => row.id === p_request_id);
+    if (!request) throw new Error('Request not found.');
+    if (request.status !== 'draft') throw new Error('This request has already been sent.');
+    request.status = 'submitted';
+    request.submitted_at = new Date().toISOString();
+    queueMessage('kitchen.request_submitted', `Kitchen request ${request.request_no}`,
+      purchaseRequestMessage(request.id), request.needed_for_date, 'purchase_request', request.id);
+    return request;
+  },
+
+  set_purchase_item_status: (args: any) => {
+    requirePermission('purchasing.fulfil');
+    const ids: string[] = args.p_item_ids ?? [];
+    let count = 0;
+    db.purchase_request_items
+      .filter((row) => ids.includes(row.id))
+      .forEach((row) => {
+        row.purchase_status = args.p_status;
+        const clearing = args.p_status === 'pending';
+        row.purchased_quantity = clearing ? null : args.p_purchased_quantity ?? row.quantity;
+        row.actual_cost = clearing ? null : args.p_actual_cost ?? row.actual_cost;
+        row.supplier = clearing ? null : args.p_supplier ?? row.supplier;
+        row.purchase_note = args.p_note ?? null;
+        row.purchased_by = clearing ? null : currentUserIdRef.value;
+        row.purchased_at = clearing ? null : new Date().toISOString();
+        count += 1;
+      });
+
+    const touched = new Set(
+      db.purchase_request_items.filter((row) => ids.includes(row.id)).map((row) => row.request_id),
+    );
+    touched.forEach((requestId) => {
+      const request = db.purchase_requests.find((row) => row.id === requestId);
+      if (!request || !['submitted', 'buying', 'completed'].includes(request.status)) return;
+      const outstanding = db.purchase_request_items.some(
+        (row) => row.request_id === requestId && row.purchase_status === 'pending',
+      );
+      request.status = outstanding ? 'buying' : 'completed';
+      request.completed_at = outstanding ? null : new Date().toISOString();
+    });
+    return count;
+  },
+
+  cancel_purchase_request: ({ p_request_id, p_reason }: any) => {
+    if (!p_reason?.trim()) throw new Error('Say why this request is being cancelled.');
+    const request = db.purchase_requests.find((row) => row.id === p_request_id);
+    if (!request) throw new Error('Request not found.');
+    const mine = request.requested_by === currentUserIdRef.value && request.status === 'draft';
+    if (!can('kitchen.manage') && !can('purchasing.manage') && !mine) {
+      throw new Error('You cannot cancel this request.');
+    }
+    request.status = 'cancelled';
+    request.cancelled_reason = p_reason.trim();
+    return null;
+  },
+
+  // ---- messaging ------------------------------------------------------
+  set_notification_rule: ({ p_code, p_enabled }: any) => {
+    requirePermission('ops.messages.manage');
+    const rule = db.notification_rules.find((row) => row.code === p_code);
+    if (!rule) throw new Error(`Unknown notification rule "${p_code}".`);
+    rule.enabled = p_enabled;
+    return rule;
+  },
+
+  mark_outbound_sent: ({ p_message_id, p_status, p_note }: any) => {
+    requirePermission('ops.messages.send');
+    const message = db.outbound_messages.find((row) => row.id === p_message_id);
+    if (!message) throw new Error('Message not found.');
+    message.status = p_status ?? 'sent';
+    message.sent_at = message.status === 'sent' ? new Date().toISOString() : null;
+    message.send_note = p_note ?? null;
+    return message;
+  },
+
+  // ---- operations log --------------------------------------------------
+  operations_day_status: ({ p_service_date }: any) => {
+    requirePermission('ops.log.view');
+    const rows: Row[] = [];
+    const now = new Date();
+    db.operations_checkpoints
+      .filter((checkpoint) => checkpoint.enabled)
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .forEach((checkpoint) => {
+        const subjects =
+          checkpoint.scope === 'per_day'
+            ? [{ subject: null as string | null, assignmentId: null as string | null }]
+            : db.boat_assignments
+                .filter(
+                  (assignment) =>
+                    assignment.service_date === p_service_date &&
+                    assignment.status !== 'cancelled' &&
+                    db.trip_passengers.some((tp) => tp.assignment_id === assignment.id),
+                )
+                .map((assignment) => ({
+                  subject: db.boats.find((boat) => boat.id === assignment.boat_id)?.code ?? null,
+                  assignmentId: assignment.id,
+                }));
+
+        subjects.forEach(({ subject, assignmentId }) => {
+          const event = db.operations_events.find(
+            (row) =>
+              row.event_code === checkpoint.event_code &&
+              row.service_date === p_service_date &&
+              (assignmentId === null || row.reference_id === assignmentId),
+          );
+          const due = new Date(`${p_service_date}T${checkpoint.due_time}`);
+          rows.push({
+            checkpoint_code: checkpoint.code,
+            checkpoint_name: checkpoint.name,
+            department_code: checkpoint.department_code,
+            subject,
+            assignment_id: assignmentId,
+            due_time: checkpoint.due_time,
+            done: Boolean(event),
+            done_at: event?.occurred_at ?? null,
+            overdue: !event && now > due,
+            detail: event?.detail ?? null,
+          });
+        });
+      });
+    return rows;
+  },
+
+  raise_overdue_alerts: ({ p_service_date }: any) => {
+    requirePermission('ops.log.view');
+    const late = (rpcHandlers.operations_day_status({ p_service_date }) as Row[]).filter((row) => row.overdue);
+    let raised = 0;
+    late.forEach((row) => {
+      const label = `${row.checkpoint_name}${row.subject ? ` - ${row.subject}` : ''}`;
+      if (db.operations_events.some((e) => e.event_code === 'ops.overdue' && e.subject === label && e.service_date === p_service_date)) return;
+      db.operations_events.push({
+        id: uid(), service_date: p_service_date, department_code: row.department_code,
+        event_code: 'ops.overdue', subject: label,
+        detail: `Not done by ${row.due_time}`, severity: 'alert',
+        reference_type: 'operations_checkpoint', reference_id: row.assignment_id,
+        occurred_at: new Date().toISOString(), actor_id: currentUserIdRef.value,
+      });
+      queueMessage('ops.checkpoint_overdue', `Running late: ${label}`,
+        `*RUNNING LATE*\n${p_service_date}\n\n${label}\nExpected by ${row.due_time}, still not done.`,
+        p_service_date, 'operations_checkpoint', row.assignment_id);
+      raised += 1;
+    });
+    return raised;
+  },
+
+  set_operations_checkpoint: ({ p_code, p_due_time, p_enabled }: any) => {
+    requirePermission('ops.log.manage');
+    const checkpoint = db.operations_checkpoints.find((row) => row.code === p_code);
+    if (!checkpoint) throw new Error(`Unknown checkpoint "${p_code}".`);
+    if (p_due_time) checkpoint.due_time = p_due_time;
+    if (p_enabled !== null && p_enabled !== undefined) checkpoint.enabled = p_enabled;
+    return checkpoint;
+  },
+
+  // ---- trips and fuel --------------------------------------------------
+  sync_boat_trips: ({ p_service_date }: any) => {
+    requirePermission('maintenance.view');
+    let added = 0;
+    db.boat_assignments
+      .filter(
+        (assignment) =>
+          assignment.service_date === p_service_date &&
+          assignment.status !== 'cancelled' &&
+          db.trip_passengers.some((tp) => tp.assignment_id === assignment.id),
+      )
+      .forEach((assignment) => {
+        const boarded = db.trip_passengers.filter(
+          (tp) => tp.assignment_id === assignment.id && tp.boarding_status === 'arrived',
+        ).length;
+        const existing = db.boat_trips.find((trip) => trip.assignment_id === assignment.id);
+        if (existing) {
+          existing.pax_count = boarded;
+          return;
+        }
+        db.boat_trips.push({
+          id: uid(), service_date: assignment.service_date, boat_id: assignment.boat_id,
+          trip_type: 'island_run', assignment_id: assignment.id,
+          departure_time: assignment.departure_time, return_time: assignment.return_time,
+          pax_count: boarded, purpose: 'Scheduled island run', notes: null,
+          auto_generated: true, recorded_by: currentUserIdRef.value, created_at: new Date().toISOString(),
+        });
+        added += 1;
+      });
+    return added;
+  },
+
+  save_boat_trip: (args: any) => {
+    requirePermission('maintenance.fuel.record');
+    let trip = args.p_id ? db.boat_trips.find((row) => row.id === args.p_id) : null;
+    if (!trip) {
+      trip = { id: uid(), auto_generated: false, assignment_id: null, recorded_by: currentUserIdRef.value, created_at: new Date().toISOString() };
+      db.boat_trips.push(trip);
+    }
+    Object.assign(trip, {
+      service_date: args.p_service_date,
+      boat_id: args.p_boat_id,
+      trip_type: args.p_trip_type,
+      departure_time: args.p_departure_time || null,
+      return_time: args.p_return_time || null,
+      pax_count: Number(args.p_pax_count) || 0,
+      purpose: args.p_purpose || null,
+      notes: args.p_notes || null,
+    });
+    return trip;
+  },
+
+  delete_boat_trip: ({ p_id }: any) => {
+    requirePermission('maintenance.manage');
+    db.boat_trips = db.boat_trips.filter((row) => row.id !== p_id);
+    return null;
+  },
+
+  fuel_reconciliation: ({ p_from, p_to }: any) => {
+    requirePermission('maintenance.view');
+    const inRange = (date: string) => date >= p_from && date <= p_to;
+    const purchases = db.fuel_purchases.filter((row) => inRange(row.purchase_date));
+    const litres = purchases.reduce((sum, row) => sum + Number(row.litres), 0);
+    const cost = purchases.reduce((sum, row) => sum + Number(row.total_cost), 0);
+    const price = litres > 0 ? cost / litres : 0;
+
+    const perBoat = db.boats.map((boat) => {
+      const trips = db.boat_trips.filter((row) => row.boat_id === boat.id && inRange(row.service_date));
+      const baseline = Number(boat.expected_litres_per_trip ?? 0);
+      return {
+        boat_id: boat.id,
+        boat_code: boat.code,
+        trips: trips.length,
+        emergency_trips: trips.filter((row) => row.trip_type === 'emergency').length,
+        pax_carried: trips.reduce((sum, row) => sum + Number(row.pax_count ?? 0), 0),
+        litres_per_trip: baseline,
+        estimated_litres: Number((trips.length * baseline).toFixed(1)),
+      };
+    });
+    const fleet = perBoat.reduce((sum, row) => sum + row.estimated_litres, 0);
+    return perBoat.map((row) => ({
+      ...row,
+      estimated_share_pct: fleet > 0 ? Number(((row.estimated_litres / fleet) * 100).toFixed(1)) : 0,
+      estimated_cost: Number((row.estimated_litres * price).toFixed(2)),
+    }));
+  },
+
+  fuel_period_totals: ({ p_from, p_to }: any) => {
+    requirePermission('maintenance.view');
+    const inRange = (date: string) => date >= p_from && date <= p_to;
+    const purchases = db.fuel_purchases.filter((row) => inRange(row.purchase_date));
+    const bought = purchases.reduce((sum, row) => sum + Number(row.litres), 0);
+    const cost = purchases.reduce((sum, row) => sum + Number(row.total_cost), 0);
+    const trips = db.boat_trips.filter((row) => inRange(row.service_date));
+    const estimated = trips.reduce((sum, row) => {
+      const boat = db.boats.find((b) => b.id === row.boat_id);
+      return sum + Number(boat?.expected_litres_per_trip ?? 0);
+    }, 0);
+    return [{
+      litres_bought: bought,
+      cost_bought: cost,
+      litres_estimated: Number(estimated.toFixed(1)),
+      variance_litres: Number((bought - estimated).toFixed(1)),
+      variance_pct: estimated > 0 ? Number((((bought - estimated) / estimated) * 100).toFixed(1)) : null,
+      trips: trips.length,
+    }];
+  },
+
+  // ---- missing items ---------------------------------------------------
+  save_missing_item: (args: any) => {
+    if (!args.p_item_name?.trim()) throw new Error('Say which item is missing.');
+    let item = args.p_id ? db.missing_items.find((row) => row.id === args.p_id) : null;
+    if (!item) {
+      requirePermission('items.report');
+      item = {
+        id: uid(), status: 'missing', found_on: null, found_remarks: null,
+        reported_by: currentUserIdRef.value, resolved_by: null, created_at: new Date().toISOString(),
+      };
+      db.missing_items.push(item);
+    } else if (!can('items.manage') && item.reported_by !== currentUserIdRef.value) {
+      throw new Error('You can only edit items you reported.');
+    }
+    Object.assign(item, {
+      item_name: args.p_item_name.trim(),
+      category: args.p_category || 'equipment',
+      quantity: Math.max(Number(args.p_quantity) || 1, 1),
+      missing_on: args.p_missing_on,
+      noticed_location: args.p_noticed_location || null,
+      boat_id: args.p_boat_id || null,
+      remarks: args.p_remarks || null,
+      estimated_value: args.p_estimated_value ?? null,
+    });
+    return item;
+  },
+
+  resolve_missing_item: ({ p_id, p_status, p_found_on, p_remarks }: any) => {
+    requirePermission('items.manage');
+    if (p_status === 'written_off' && !p_remarks?.trim()) {
+      throw new Error('Say why this item is being written off.');
+    }
+    const item = db.missing_items.find((row) => row.id === p_id);
+    if (!item) throw new Error('Item not found.');
+    item.status = p_status;
+    item.found_on = p_status === 'found' ? p_found_on ?? TODAY : null;
+    item.found_remarks = p_remarks || null;
+    item.resolved_by = p_status === 'missing' ? null : currentUserIdRef.value;
+    return item;
+  },
+
+  // ---- badges and summary ---------------------------------------------
+  department_badges: ({ p_service_date }: any) => {
+    const out: Row[] = [];
+    const push = (department_code: string, count: number, label: string) => {
+      if (count > 0) out.push({ department_code, count, label });
+    };
+    if (can('purchasing.view')) {
+      push('purchasing', db.purchase_requests.filter((r) => ['submitted', 'buying'].includes(r.status)).length,
+        'request(s) waiting to be bought');
+    }
+    if (can('kitchen.request.view')) {
+      push('kitchen', db.purchase_requests.filter(
+        (r) => r.status === 'draft' && (r.requested_by === currentUserIdRef.value || can('kitchen.manage')),
+      ).length, 'draft request(s) not sent yet');
+    }
+    if (can('fleet.assign')) {
+      push('fleet', db.bookings.filter(
+        (b) => b.service_date === p_service_date && b.status !== 'cancelled'
+          && !db.trip_bookings.some((tb) => tb.booking_id === b.id),
+      ).length, 'booking(s) with no boat');
+    }
+    const dayPassengers = db.trip_passengers.filter((tp) => {
+      const assignment = db.boat_assignments.find((a) => a.id === tp.assignment_id);
+      return assignment?.service_date === p_service_date && canSeeAssignment(tp.assignment_id);
+    });
+    push('boarding', dayPassengers.filter((tp) => tp.boarding_status === 'pending').length, 'guest(s) not checked in');
+    push('activities', dayPassengers.filter((tp) => tp.boarding_status === 'arrived' && !tp.activity_code).length,
+      'guest(s) with no activity chosen');
+    if (can('maintenance.view')) {
+      push('maintenance', db.boat_repairs.filter((r) => ['reported', 'in_progress'].includes(r.status)).length,
+        'repair job(s) still open');
+    }
+    if (can('items.view')) {
+      push('items', db.missing_items.filter((r) => r.status === 'missing').length, 'item(s) still missing');
+    }
+    if (can('ops.messages.send')) {
+      push('ops', db.outbound_messages.filter((m) => m.status === 'queued').length, 'message(s) waiting to be sent');
+    }
+    if (can('platform.users.manage')) {
+      push('platform', db.profiles.filter((p) => p.status === 'pending').length, 'account(s) waiting for approval');
+    }
+    return out;
+  },
+
+  operations_summary: ({ p_service_date }: any) => {
+    requirePermission('ops.log.view');
+    const bookings = db.bookings.filter((b) => b.service_date === p_service_date && b.status !== 'cancelled');
+    const assignments = db.boat_assignments.filter(
+      (a) => a.service_date === p_service_date && a.status !== 'cancelled'
+        && db.trip_passengers.some((tp) => tp.assignment_id === a.id),
+    );
+    const passengers = db.trip_passengers.filter((tp) =>
+      db.boat_assignments.some((a) => a.id === tp.assignment_id && a.service_date === p_service_date));
+
+    const bySource: Record<string, number> = {};
+    bookings.forEach((b) => { bySource[b.source_type] = (bySource[b.source_type] ?? 0) + b.pax_total; });
+
+    const summary: Row = {
+      guests: {
+        bookings: bookings.length,
+        pax: bookings.reduce((s, b) => s + b.pax_total, 0),
+        adults: bookings.reduce((s, b) => s + (b.pax_adults ?? 0), 0),
+        children: bookings.reduce((s, b) => s + (b.pax_children ?? 0), 0),
+        elderly: bookings.reduce((s, b) => s + (b.pax_elderly ?? 0), 0),
+        by_source: bySource,
+      },
+      boats: assignments.map((a) => {
+        const boat = db.boats.find((b) => b.id === a.boat_id);
+        const list = db.trip_passengers.filter((tp) => tp.assignment_id === a.id);
+        return {
+          code: boat?.code, name: boat?.name, capacity: boat?.capacity_pax,
+          captain: db.employees.find((e) => e.id === a.captain_employee_id)?.full_name ?? null,
+          guide: db.employees.find((e) => e.id === a.guide_employee_id)?.full_name ?? null,
+          departure: a.departure_time,
+          assigned: list.length,
+          boarded: list.filter((tp) => tp.boarding_status === 'arrived').length,
+          no_show: list.filter((tp) => tp.boarding_status === 'no_show').length,
+          returned: list.filter((tp) => tp.returned).length,
+        };
+      }),
+      activities: db.activity_types.filter((a) => a.active).map((type) => ({
+        code: type.code, name: type.name,
+        chosen: passengers.filter((tp) => tp.activity_code === type.code).length,
+        joined: passengers.filter((tp) => tp.activity_code === type.code && tp.activity_status === 'joined').length,
+        back: passengers.filter((tp) => tp.activity_code === type.code && tp.returned).length,
+      })),
+      headcount: {
+        assigned: passengers.length,
+        boarded: passengers.filter((tp) => tp.boarding_status === 'arrived').length,
+        no_show: passengers.filter((tp) => tp.boarding_status === 'no_show').length,
+        not_checked: passengers.filter((tp) => tp.boarding_status === 'pending').length,
+        activity_chosen: passengers.filter((tp) => tp.activity_code).length,
+        back_on_boat: passengers.filter((tp) => tp.returned).length,
+      },
+      trips: db.boat_trips.filter((t) => t.service_date === p_service_date).map((t) => ({
+        boat: db.boats.find((b) => b.id === t.boat_id)?.code, type: t.trip_type,
+        pax: t.pax_count, departure: t.departure_time, purpose: t.purpose,
+      })),
+      incidents: db.operations_events
+        .filter((e) => e.service_date === p_service_date && e.severity !== 'info')
+        .map((e) => ({ event: e.event_code, subject: e.subject, detail: e.detail, at: String(e.occurred_at).slice(11, 16) })),
+    };
+
+    if (can('maintenance.view')) {
+      const purchases = db.fuel_purchases.filter((f) => f.purchase_date === p_service_date);
+      summary.fuel = {
+        litres_bought: purchases.reduce((s, f) => s + Number(f.litres), 0),
+        cost: can('maintenance.cost.view') ? purchases.reduce((s, f) => s + Number(f.total_cost), 0) : null,
+      };
+    }
+    if (can('kitchen.request.view') || can('purchasing.view')) {
+      const requests = db.purchase_requests.filter((r) => r.needed_for_date === p_service_date && r.status !== 'cancelled');
+      const items = db.purchase_request_items.filter((i) => requests.some((r) => r.id === i.request_id));
+      summary.supplies = {
+        requests: requests.length,
+        items: items.length,
+        items_bought: items.filter((i) => i.purchase_status === 'bought').length,
+        pax_catered: requests.reduce((max, r) => Math.max(max, r.pax_count ?? 0), 0),
+        spend: can('purchasing.cost.view') ? items.reduce((s, i) => s + Number(i.actual_cost ?? 0), 0) : null,
+      };
+    }
+    if (can('items.view')) {
+      summary.missing_items = db.missing_items
+        .filter((i) => i.missing_on === p_service_date)
+        .map((i) => ({ item: i.item_name, quantity: i.quantity, status: i.status, remarks: i.remarks }));
+    }
+    if (can('bar.reports.view')) {
+      summary.bar = { sales: 0, total: 0, cash: 0, qr: 0, complimentary: 0 };
+    }
+    return summary;
+  },
+
+  booking_history: ({ p_booking_id }: any) => {
+    if (!canViewBooking(p_booking_id)) return [];
+    return db.audit_logs
+      .filter((row) => row.entity_id === p_booking_id)
+      .map((row) => ({
+        id: row.id, action: row.action, entity_type: row.entity_type,
+        actor_name: row.actor_name ?? 'unknown', reason: row.reason ?? null,
+        created_at: row.created_at, summary: row.summary ?? null,
+      }));
   },
 
   save_booking: ({ p_booking, p_tourists }: any) => {
@@ -402,9 +1066,23 @@ const rpcHandlers: Record<string, (args: any) => any> = {
     return booking!.id;
   },
 
-  delete_booking: ({ p_booking_id }: any) => {
+  delete_booking: ({ p_booking_id, p_reason }: any) => {
     requirePermission('guests.booking.delete');
+    if (!p_reason || String(p_reason).trim().length < 5) {
+      throw new Error('Say why this booking is being deleted.');
+    }
     if (!canViewBooking(p_booking_id)) throw new Error('Booking not found.');
+    const booking = db.bookings.find((row) => row.id === p_booking_id);
+    if (!can('guests.booking.edit_all') && booking?.created_by !== currentUserIdRef.value) {
+      throw new Error('You can only delete bookings you entered.');
+    }
+    db.audit_logs.push({
+      id: uid(), actor_id: currentUserIdRef.value,
+      actor_name: db.profiles.find((row) => row.id === currentUserIdRef.value)?.full_name ?? 'unknown',
+      action: 'delete_booking', entity_type: 'booking', entity_id: p_booking_id,
+      reason: String(p_reason).trim(), summary: booking?.lead_name ?? null,
+      created_at: new Date().toISOString(),
+    });
     db.bookings = db.bookings.filter((row) => row.id !== p_booking_id);
     db.tourists = db.tourists.filter((row) => row.booking_id !== p_booking_id);
     db.trip_bookings = db.trip_bookings.filter((row) => row.booking_id !== p_booking_id);
@@ -498,6 +1176,10 @@ const rpcHandlers: Record<string, (args: any) => any> = {
     db.boat_assignments
       .filter((row) => row.service_date === p_service_date)
       .forEach((row) => { row.locked = p_locked; });
+    if (p_locked) {
+      queueMessage('fleet.assignment_completed', `Boat assignment ${p_service_date}`,
+        boatAssignmentMessage(p_service_date), p_service_date, 'boat_assignment_day', null);
+    }
     return null;
   },
 
@@ -600,8 +1282,12 @@ const rpcHandlers: Record<string, (args: any) => any> = {
       .forEach((row) => {
         row.boarding_status = p_status;
         row.boarded_at = p_status === 'pending' ? null : new Date().toISOString();
+        row.boarded_by = p_status === 'pending' ? null : currentUserIdRef.value;
         count += 1;
       });
+    const touched = db.trip_passengers.filter((row) => p_passenger_ids.includes(row.id));
+    logAttendance(touched.map((row) => row.id), 'boarding', p_status);
+    new Set(touched.map((row) => row.assignment_id)).forEach((id) => refreshMilestones(id as string));
     return count;
   },
 
@@ -614,8 +1300,13 @@ const rpcHandlers: Record<string, (args: any) => any> = {
         row.activity_code = p_activity_code;
         row.activity_status = 'pending';
         row.returned = false;
+        row.returned_at = null;
+        row.returned_by = null;
         count += 1;
       });
+    const touched = db.trip_passengers.filter((row) => p_passenger_ids.includes(row.id));
+    logAttendance(touched.map((row) => row.id), 'activity_choice', p_activity_code ?? 'cleared');
+    new Set(touched.map((row) => row.assignment_id)).forEach((id) => refreshMilestones(id as string));
     return count;
   },
 
@@ -632,9 +1323,18 @@ const rpcHandlers: Record<string, (args: any) => any> = {
         if (p_returned !== null && p_returned !== undefined) {
           row.returned = p_returned;
           row.returned_at = p_returned ? new Date().toISOString() : null;
+          row.returned_by = p_returned ? currentUserIdRef.value : null;
         }
         count += 1;
       });
+    const touched = db.trip_passengers.filter((row) => p_passenger_ids.includes(row.id));
+    if (p_status !== null && p_status !== undefined) {
+      logAttendance(touched.map((row) => row.id), 'activity_roll_call', p_status);
+    }
+    if (p_returned !== null && p_returned !== undefined) {
+      logAttendance(touched.map((row) => row.id), 'back_on_boat', p_returned ? 'yes' : 'no');
+    }
+    new Set(touched.map((row) => row.assignment_id)).forEach((id) => refreshMilestones(id as string));
     return count;
   },
 

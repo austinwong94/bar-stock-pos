@@ -22,6 +22,8 @@ export const demoUsers = [
   { id: 'u-guide', full_name: 'Mei — Tour Guide', login_email: 'mei@lovelyparadise.demo', access_role_code: 'guide', agency_id: null, is_anonymous: false },
   { id: 'u-tablet', full_name: 'Bar Tablet', login_email: null, access_role_code: 'bar_staff', agency_id: null, is_anonymous: true },
   { id: 'u-account', full_name: 'Wendy — Accountant', login_email: 'wendy@lovelyparadise.demo', access_role_code: 'accountant', agency_id: null, is_anonymous: false },
+  { id: 'u-cook', full_name: 'Lina — Kitchen', login_email: 'lina@lovelyparadise.demo', access_role_code: 'kitchen_staff', agency_id: null, is_anonymous: false },
+  { id: 'u-buyer', full_name: 'Sam — Purchaser', login_email: 'sam@lovelyparadise.demo', access_role_code: 'purchaser', agency_id: null, is_anonymous: false },
   { id: 'u-new', full_name: 'Hakim (just signed up)', login_email: 'hakim@lovelyparadise.demo', access_role_code: 'pending', agency_id: null, is_anonymous: false },
 ];
 
@@ -53,6 +55,8 @@ export const demoPickupLocations = [
   { id: 'pl-town', name: 'Town Backpackers', area: 'Old Town', address: 'Lebuh Chulia 40', latitude: 5.42, longitude: 100.34, active: true },
 ];
 
+type AgeBandSeed = 'adult' | 'child' | 'infant' | 'elderly';
+
 type SeedBooking = {
   id: string;
   ref: string;
@@ -64,7 +68,7 @@ type SeedBooking = {
   location: string;
   time: string;
   date: string;
-  people: Array<[string, string, 'adult' | 'child' | 'infant', string?]>;
+  people: Array<[string, string, AgeBandSeed, string?]>;
 };
 
 const seedBookings: SeedBooking[] = [
@@ -92,6 +96,7 @@ const seedBookings: SeedBooking[] = [
       ['Anna Schmidt', '', 'adult', 'C99887767'],
       ['Lukas Schmidt', '', 'adult', 'C99887768'],
       ['Marie Schmidt', '', 'child'],
+      ['Opa Schmidt', '', 'elderly'],
     ],
   },
   {
@@ -135,6 +140,7 @@ export function buildBookings() {
   seedBookings.forEach((seed) => {
     const location = demoPickupLocations.find((item) => item.id === seed.location)!;
     const adults = seed.people.filter(([, , band]) => band === 'adult').length;
+    const elderly = seed.people.filter(([, , band]) => band === 'elderly').length;
     bookings.push({
       id: seed.id,
       booking_ref: seed.ref,
@@ -148,7 +154,8 @@ export function buildBookings() {
       nationality: null,
       pax_total: seed.people.length,
       pax_adults: adults,
-      pax_children: seed.people.length - adults,
+      pax_children: seed.people.length - adults - elderly,
+      pax_elderly: elderly,
       pickup_location_id: location.id,
       pickup_hotel_name: location.name,
       pickup_area: location.area,
@@ -194,13 +201,15 @@ export function buildBookings() {
   return { bookings, tourists, privates };
 }
 
-export const demoFuelLogs = [
-  { id: 'fl-1', boat_id: 'bt-1', log_date: TODAY,     entry_type: 'trip_usage', trip_label: 'Morning run', entered_island: true,  litres: 21, price_per_litre: 2.5, total_cost: 52.5, tank_level_after_pct: 60, engine_hours: null, handled_by_employee_id: 'em-ali',   receipt_image_path: null, notes: null, recorded_by: 'u-master', created_at: new Date().toISOString() },
-  { id: 'fl-2', boat_id: 'bt-2', log_date: TODAY,     entry_type: 'trip_usage', trip_label: 'Morning run', entered_island: true,  litres: 27, price_per_litre: 2.5, total_cost: 67.5, tank_level_after_pct: 45, engine_hours: null, handled_by_employee_id: 'em-rosli', receipt_image_path: null, notes: 'Ran heavy today', recorded_by: 'u-master', created_at: new Date().toISOString() },
-  { id: 'fl-3', boat_id: 'bt-2', log_date: YESTERDAY, entry_type: 'trip_usage', trip_label: 'Morning run', entered_island: true,  litres: 26, price_per_litre: 2.5, total_cost: 65,   tank_level_after_pct: 30, engine_hours: null, handled_by_employee_id: 'em-rosli', receipt_image_path: null, notes: null, recorded_by: 'u-master', created_at: new Date().toISOString() },
-  { id: 'fl-4', boat_id: 'bt-2', log_date: YESTERDAY, entry_type: 'refuel',     trip_label: null,          entered_island: false, litres: 80, price_per_litre: 2.5, total_cost: 200,  tank_level_after_pct: 100, engine_hours: null, handled_by_employee_id: 'em-rosli', receipt_image_path: null, notes: 'Filled at jetty', recorded_by: 'u-master', created_at: new Date().toISOString() },
-  { id: 'fl-5', boat_id: 'bt-1', log_date: YESTERDAY, entry_type: 'trip_usage', trip_label: 'Morning run', entered_island: true,  litres: 19, price_per_litre: 2.5, total_cost: 47.5, tank_level_after_pct: 55, engine_hours: null, handled_by_employee_id: 'em-ali',   receipt_image_path: null, notes: null, recorded_by: 'u-master', created_at: new Date().toISOString() },
-  { id: 'fl-6', boat_id: 'bt-3', log_date: TODAY,     entry_type: 'trip_usage', trip_label: 'Morning run', entered_island: true,  litres: 34, price_per_litre: 2.5, total_cost: 85,   tank_level_after_pct: 70, engine_hours: null, handled_by_employee_id: null,       receipt_image_path: null, notes: null, recorded_by: 'u-master', created_at: new Date().toISOString() },
+export const demoFuelPurchases = [
+  { id: 'fp-1', purchase_date: TODAY, litres: 180, price_per_litre: 2.5, total_cost: 450, supplier: 'Jetty station', fuel_type: 'petrol', collected_by_employee_id: 'em-rosli', notes: 'Morning fill for the fleet', created_at: new Date().toISOString() },
+  { id: 'fp-2', purchase_date: YESTERDAY, litres: 120, price_per_litre: 2.48, total_cost: 297.6, supplier: 'Jetty station', fuel_type: 'petrol', collected_by_employee_id: 'em-ali', notes: null, created_at: new Date().toISOString() },
+];
+
+export const demoBoatTrips = [
+  { id: 'bt-t1', service_date: YESTERDAY, boat_id: 'bt-1', trip_type: 'island_run', assignment_id: null, departure_time: '09:00', return_time: '16:30', pax_count: 11, purpose: 'Scheduled island run', notes: null, auto_generated: false, created_at: new Date().toISOString() },
+  { id: 'bt-t2', service_date: YESTERDAY, boat_id: 'bt-2', trip_type: 'island_run', assignment_id: null, departure_time: '09:00', return_time: '16:30', pax_count: 8, purpose: 'Scheduled island run', notes: null, auto_generated: false, created_at: new Date().toISOString() },
+  { id: 'bt-t3', service_date: YESTERDAY, boat_id: 'bt-1', trip_type: 'emergency', assignment_id: null, departure_time: '14:10', return_time: '15:05', pax_count: 3, purpose: 'Took a guest with heat stroke back to the mainland', notes: 'Guide Mei escorted', auto_generated: false, created_at: new Date().toISOString() },
 ];
 
 function daysAgo(count: number) {

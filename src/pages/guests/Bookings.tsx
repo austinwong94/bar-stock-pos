@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, Download, Plus, Search, Trash2, Users } from 'lucide-react';
+import { ChevronDown, ChevronRight, Download, History, Plus, Search, Trash2, Users } from 'lucide-react';
 import { PageHeader, Stat } from '../../components/Page';
 import { Field, buttonClass, inputClass, secondaryButtonClass, dangerButtonClass } from '../../components/Form';
 import { Modal } from '../../components/Modal';
@@ -15,7 +15,7 @@ import {
   todayIso,
 } from '../../lib/opsData';
 import { csvEscape } from '../../lib/format';
-import type { AgeBand, Agency, Booking, PickupLocation, Tourist } from '../../lib/platformTypes';
+import type { AgeBand, Agency, Booking, BookingHistoryRow, PickupLocation, Tourist } from '../../lib/platformTypes';
 
 type PersonRow = {
   id?: string;
@@ -47,6 +47,8 @@ export default function Bookings() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<Booking | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [deleting, setDeleting] = useState<Booking | null>(null);
+  const [history, setHistory] = useState<Booking | null>(null);
   const [loading, setLoading] = useState(true);
 
   const canSeeAll = can('guests.booking.view_all');
@@ -121,11 +123,17 @@ export default function Bookings() {
     });
   }
 
-  async function remove(booking: Booking) {
-    if (!window.confirm(`Delete booking ${booking.booking_ref} and its ${booking.pax_total} guest record(s)?`)) return;
-    const { error } = await supabase.rpc('delete_booking', { p_booking_id: booking.id });
+  // Deleting a customer record always asks why, and the reason is stored on
+  // the audit row. This is the control against an outside agent quietly
+  // clearing out company data.
+  async function remove(booking: Booking, reason: string) {
+    const { error } = await supabase.rpc('delete_booking', {
+      p_booking_id: booking.id,
+      p_reason: reason,
+    });
     if (error) { toast.error(error.message); return; }
-    toast.success('Booking deleted.');
+    toast.success('Booking deleted. The reason has been recorded.');
+    setDeleting(null);
     void refresh();
   }
 
@@ -247,7 +255,8 @@ export default function Bookings() {
                 open={expanded.has(booking.id)}
                 onToggle={() => toggle(booking.id)}
                 onEdit={() => { setEditing(booking); setFormOpen(true); }}
-                onDelete={canDelete ? () => remove(booking) : undefined}
+                onDelete={canDelete ? () => setDeleting(booking) : undefined}
+                onHistory={() => setHistory(booking)}
                 showPassport={canSeePrivate}
               />
             ))}
@@ -261,6 +270,16 @@ export default function Bookings() {
           </tbody>
         </table>
       </div>
+
+      {deleting ? (
+        <DeleteBookingDialog
+          booking={deleting}
+          onClose={() => setDeleting(null)}
+          onConfirm={(reason) => remove(deleting, reason)}
+        />
+      ) : null}
+
+      {history ? <HistoryDialog booking={history} onClose={() => setHistory(null)} /> : null}
 
       {formOpen ? (
         <BookingForm
@@ -284,6 +303,7 @@ function BookingRow({
   onToggle,
   onEdit,
   onDelete,
+  onHistory,
   showPassport,
 }: {
   booking: Booking;
@@ -291,6 +311,7 @@ function BookingRow({
   onToggle: () => void;
   onEdit: () => void;
   onDelete?: () => void;
+  onHistory: () => void;
   showPassport: boolean;
 }) {
   const people = [...(booking.tourists ?? [])].sort((a, b) => a.sort_order - b.sort_order);
@@ -331,6 +352,9 @@ function BookingRow({
         <td className="p-3">
           <div className="flex gap-2">
             <button type="button" className={secondaryButtonClass} onClick={onEdit}>Open</button>
+            <button type="button" className={secondaryButtonClass} onClick={onHistory} aria-label="Change history">
+              <History className="h-4 w-4" />
+            </button>
             {onDelete ? (
               <button type="button" className={dangerButtonClass} onClick={onDelete} aria-label="Delete booking">
                 <Trash2 className="h-4 w-4" />
@@ -641,6 +665,7 @@ function BookingForm({
                       >
                         <option value="adult">Adult</option>
                         <option value="child">Child</option>
+                        <option value="elderly">Elderly</option>
                         <option value="infant">Infant</option>
                       </select>
                     </td>
@@ -686,8 +711,108 @@ function initialPeople(booking: Booking | null): PersonRow[] {
 function normalizeAgeBand(value: string | undefined): AgeBand | null {
   if (!value) return null;
   const text = value.trim().toLowerCase();
-  if (text.startsWith('c')) return 'child';
+  if (text.startsWith('c') || text.startsWith('k')) return 'child';
   if (text.startsWith('i') || text.startsWith('b')) return 'infant';
+  if (text.startsWith('e') || text.startsWith('s') || text.startsWith('o')) return 'elderly';
   if (text.startsWith('a')) return 'adult';
   return null;
+}
+
+function DeleteBookingDialog({
+  booking,
+  onClose,
+  onConfirm,
+}: {
+  booking: Booking;
+  onClose: () => void;
+  onConfirm: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState('');
+  const tooShort = reason.trim().length < 5;
+
+  return (
+    <Modal
+      title={`Delete ${booking.booking_ref}?`}
+      onClose={onClose}
+      footer={
+        <div className="flex gap-2">
+          <button type="button" className={`${secondaryButtonClass} flex-1`} onClick={onClose}>
+            Keep it
+          </button>
+          <button
+            type="button"
+            className={`${dangerButtonClass} flex-1`}
+            disabled={tooShort}
+            onClick={() => onConfirm(reason.trim())}
+          >
+            Delete booking
+          </button>
+        </div>
+      }
+    >
+      <p className="mb-3 text-sm font-medium text-ink">
+        This removes {booking.lead_name} and {booking.pax_total} guest record(s). It cannot be undone.
+      </p>
+      <Field
+        label="Why is this being deleted?"
+        hint="Recorded against your name in the change log, so every deletion can be traced."
+      >
+        <textarea
+          className={inputClass}
+          rows={3}
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+          placeholder="Guest cancelled the trip by phone"
+          autoFocus
+        />
+      </Field>
+      {tooShort && reason.length > 0 ? (
+        <p className="mt-2 text-xs font-medium text-danger">Give a real reason, not a single character.</p>
+      ) : null}
+    </Modal>
+  );
+}
+
+function HistoryDialog({ booking, onClose }: { booking: Booking; onClose: () => void }) {
+  const [rows, setRows] = useState<BookingHistoryRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    void (async () => {
+      const { data } = await supabase.rpc('booking_history', { p_booking_id: booking.id });
+      setRows((data ?? []) as BookingHistoryRow[]);
+      setLoading(false);
+    })();
+  }, [booking.id]);
+
+  const labels: Record<string, string> = {
+    insert: 'Entered',
+    update: 'Edited',
+    delete: 'Deleted',
+    delete_booking: 'Booking deleted',
+  };
+
+  return (
+    <Modal title={`Change history — ${booking.booking_ref}`} onClose={onClose}>
+      {loading ? <p className="py-4 text-sm font-medium text-muted">Loading…</p> : null}
+      {!loading && rows.length === 0 ? (
+        <p className="py-4 text-sm font-medium text-muted">Nothing recorded for this booking yet.</p>
+      ) : null}
+      <ol className="divide-y divide-line">
+        {rows.map((row) => (
+          <li key={row.id} className="flex flex-wrap items-baseline gap-2 py-2.5 text-sm">
+            <span className="w-32 shrink-0 tabular text-xs text-muted">
+              {new Date(row.created_at).toLocaleString('en-GB', { timeZone: 'Asia/Kuala_Lumpur' })}
+            </span>
+            <span className="font-semibold text-ink">{labels[row.action] ?? row.action}</span>
+            <span className="text-muted">{row.summary ?? ''}</span>
+            <span className="ml-auto font-medium">{row.actor_name}</span>
+            {row.reason ? (
+              <span className="w-full rounded bg-shell px-2 py-1 text-xs text-muted">Reason: {row.reason}</span>
+            ) : null}
+          </li>
+        ))}
+      </ol>
+    </Modal>
+  );
 }

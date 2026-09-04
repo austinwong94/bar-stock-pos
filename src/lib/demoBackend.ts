@@ -8,11 +8,14 @@
  */
 import {
   TODAY,
+  TOMORROW,
+  YESTERDAY,
   buildBookings,
   demoAgencies,
   demoBoats,
   demoEmployees,
-  demoFuelLogs,
+  demoBoatTrips,
+  demoFuelPurchases,
   demoPickupLocations,
   demoRepairs,
   demoUsers,
@@ -28,6 +31,10 @@ const DEPARTMENTS = [
   { code: 'boarding', name: 'Boarding Attendance', description: 'Captain and guide passenger check-in before departure.', icon: 'ClipboardCheck', sort_order: 5, active: true },
   { code: 'activities', name: 'Island Activities', description: 'Activity choice and headcount so nobody is left on the island.', icon: 'Waves', sort_order: 6, active: true },
   { code: 'platform', name: 'Admin & Access', description: 'Master admin panel: users, roles, permissions and directories.', icon: 'ShieldCheck', sort_order: 7, active: true },
+  { code: 'kitchen', name: 'Kitchen', description: 'Ingredients and materials the kitchen needs, by date and pax.', icon: 'ChefHat', sort_order: 8, active: true },
+  { code: 'purchasing', name: 'Things to Purchase', description: 'The buying queue: what was asked for, what has been bought.', icon: 'ShoppingBasket', sort_order: 9, active: true },
+  { code: 'ops', name: 'Daily Operations', description: 'Live progress log of the day and what is running late.', icon: 'Activity', sort_order: 10, active: true },
+  { code: 'items', name: 'Island Items', description: 'Equipment that has gone missing, and whether it turned up again.', icon: 'PackageSearch', sort_order: 11, active: true },
 ];
 
 const PERMISSIONS: Row[] = [
@@ -71,6 +78,23 @@ const PERMISSIONS: Row[] = [
   ['platform.directory.manage', 'platform', 'Manage directory', 'Maintain employees, agencies and pickup locations.', true],
   ['platform.settings.manage', 'platform', 'Platform settings', 'Change platform-wide settings.', true],
   ['platform.audit.view', 'platform', 'View audit log', 'Read the security and change audit trail.', true],
+  ['kitchen.request.view', 'kitchen', 'View kitchen requests', 'See what the kitchen has asked for.', false],
+  ['kitchen.request.create', 'kitchen', 'Raise a request', 'Create an ingredient or material request.', false],
+  ['kitchen.request.submit', 'kitchen', 'Confirm and send', 'Send a request to Things to Purchase. This triggers the WhatsApp message.', false],
+  ['kitchen.manage', 'kitchen', 'Correct requests', "Edit or cancel any kitchen request, including other people's.", true],
+  ['purchasing.view', 'purchasing', 'View the buying list', 'See every request waiting to be bought.', false],
+  ['purchasing.fulfil', 'purchasing', 'Mark as bought', 'Record what was bought, the cost and the supplier.', false],
+  ['purchasing.manage', 'purchasing', 'Manage the queue', 'Change quantities, close or cancel requests.', true],
+  ['purchasing.cost.view', 'purchasing', 'See purchase costs', 'View the money figures on the buying list.', true],
+  ['ops.log.view', 'ops', 'View the operations log', "See today's progress and anything running late.", false],
+  ['ops.log.manage', 'ops', 'Manage checkpoints', 'Change the times each step is expected to be done by.', true],
+  ['ops.messages.send', 'ops', 'Send queued messages', 'Send the queued WhatsApp messages and mark them as sent.', false],
+  ['ops.messages.manage', 'ops', 'Switch messages on and off', 'Choose which sections send a WhatsApp message.', true],
+  ['items.view', 'items', 'View missing items', 'See the register of missing equipment.', false],
+  ['items.report', 'items', 'Report an item', 'Record an item that has gone missing.', false],
+  ['items.manage', 'items', 'Close and correct', 'Mark items found or written off, and edit entries.', true],
+  ['items.cost.view', 'items', 'See item values', 'View the money value put on missing items.', true],
+  ['guests.booking.edit_agency', 'guests', "Edit the whole agency's bookings", 'Edit any booking from the same agency, not only your own entries.', true],
 ].map(([code, department_code, name, description, sensitive], index) => ({
   code, department_code, name, description, sensitive, sort_order: index,
 }));
@@ -87,10 +111,14 @@ const ROLES = [
   { code: 'pending', name: 'Pending Approval', description: 'Signed up but not approved. No access to anything.', is_master: false, is_system: true, sort_order: 9 },
   { code: 'bar_manager', name: 'Bar Manager', description: 'Bar POS, stock in, closing and reports. Cannot change products or prices.', is_master: false, is_system: true, sort_order: 10 },
   { code: 'bar_cashier', name: 'Bar Cashier', description: 'Takes orders on the POS and can look up stock.', is_master: false, is_system: true, sort_order: 11 },
+  { code: 'kitchen_staff', name: 'Kitchen Staff', description: 'Raises ingredient requests and sends them to purchasing.', is_master: false, is_system: true, sort_order: 12 },
+  { code: 'purchaser', name: 'Purchaser', description: 'Works the buying list and records what was bought.', is_master: false, is_system: true, sort_order: 13 },
 ];
 
 const ROLE_GRANTS: Record<string, string[]> = {
   operations_manager: PERMISSIONS.filter((p) => p.department_code !== 'platform').map((p) => p.code),
+  kitchen_staff: ['kitchen.request.view', 'kitchen.request.create', 'kitchen.request.submit'],
+  purchaser: ['purchasing.view', 'purchasing.fulfil', 'purchasing.cost.view', 'kitchen.request.view'],
   coordinator: [
     'guests.booking.create', 'guests.booking.view_own', 'guests.booking.edit_own',
     'guests.booking.view_all', 'guests.booking.edit_all', 'guests.booking.delete',
@@ -98,12 +126,15 @@ const ROLE_GRANTS: Record<string, string[]> = {
     'fleet.view', 'fleet.assign', 'fleet.crew.assign', 'fleet.finalize',
     'boarding.view', 'boarding.view_all', 'boarding.mark',
     'activities.view', 'activities.select', 'activities.mark',
+    'kitchen.request.view', 'purchasing.view', 'ops.log.view', 'ops.messages.send',
+    'items.view', 'items.report',
   ],
   bar_staff: PERMISSIONS.filter((p) => p.department_code === 'bar').map((p) => p.code),
-  captain: ['boarding.view', 'boarding.mark', 'activities.view'],
-  guide: ['boarding.view', 'boarding.mark', 'activities.view', 'activities.select', 'activities.mark'],
+  captain: ['boarding.view', 'boarding.mark', 'activities.view', 'items.view', 'items.report'],
+  guide: ['boarding.view', 'boarding.mark', 'activities.view', 'activities.select', 'activities.mark', 'items.view', 'items.report'],
   agent: ['guests.booking.create', 'guests.booking.view_own', 'guests.booking.edit_own'],
-  accountant: ['bar.reports.view', 'bar.stock.view', 'maintenance.view', 'maintenance.cost.view'],
+  accountant: ['bar.reports.view', 'bar.stock.view', 'maintenance.view', 'maintenance.cost.view',
+               'purchasing.view', 'purchasing.cost.view', 'kitchen.request.view', 'items.view', 'items.cost.view'],
   bar_manager: ['bar.pos.use', 'bar.pos.void', 'bar.stock.view', 'bar.stock.manage', 'bar.closing.manage', 'bar.reports.view'],
   bar_cashier: ['bar.pos.use', 'bar.stock.view'],
   pending: [],
@@ -133,7 +164,8 @@ const seededDb: Record<string, Row[]> = {
   agencies: demoAgencies.map((row) => ({ ...row })),
   employees: demoEmployees.map((row) => ({ ...row })),
   boats: demoBoats.map((row) => ({ ...row })),
-  boat_fuel_logs: demoFuelLogs.map((row) => ({ ...row })),
+  fuel_purchases: demoFuelPurchases.map((row) => ({ ...row })),
+  boat_trips: demoBoatTrips.map((row) => ({ ...row })),
   boat_repairs: demoRepairs.map((row) => ({ ...row })),
   pickup_locations: demoPickupLocations.map((row) => ({ ...row })),
   pickup_groups: [],
@@ -149,6 +181,49 @@ const seededDb: Record<string, Row[]> = {
   trip_bookings: [],
   trip_passengers: [],
   audit_logs: [],
+  purchase_requests: [
+    {
+      id: 'pr-1', request_no: 'PR-DEMO-001', origin: 'kitchen', needed_for_date: TODAY,
+      pax_count: 24, purpose: 'Island lunch', status: 'submitted', notes: 'Halal only please',
+      requested_by: 'u-cook', submitted_at: new Date().toISOString(), completed_at: null,
+      cancelled_reason: null, created_at: new Date().toISOString(),
+    },
+    {
+      id: 'pr-2', request_no: 'PR-DEMO-002', origin: 'kitchen', needed_for_date: TOMORROW,
+      pax_count: 30, purpose: 'BBQ dinner', status: 'draft', notes: null,
+      requested_by: 'u-cook', submitted_at: null, completed_at: null,
+      cancelled_reason: null, created_at: new Date().toISOString(),
+    },
+  ],
+  purchase_request_items: [
+    { id: 'pri-1', request_id: 'pr-1', item_name: 'Chicken breast', quantity: 8, unit: 'kg', note: null, purchase_status: 'bought', purchased_quantity: 8, actual_cost: 96, supplier: 'Pasar Besar', purchased_by: 'u-buyer', purchased_at: new Date().toISOString(), purchase_note: null, sort_order: 1 },
+    { id: 'pri-2', request_id: 'pr-1', item_name: 'Jasmine rice', quantity: 10, unit: 'kg', note: null, purchase_status: 'pending', purchased_quantity: null, actual_cost: null, supplier: null, purchased_by: null, purchased_at: null, purchase_note: null, sort_order: 2 },
+    { id: 'pri-3', request_id: 'pr-1', item_name: 'Cooking oil', quantity: 4, unit: 'L', note: 'Any brand', purchase_status: 'pending', purchased_quantity: null, actual_cost: null, supplier: null, purchased_by: null, purchased_at: null, purchase_note: null, sort_order: 3 },
+    { id: 'pri-4', request_id: 'pr-1', item_name: 'Mixed vegetables', quantity: 6, unit: 'kg', note: null, purchase_status: 'pending', purchased_quantity: null, actual_cost: null, supplier: null, purchased_by: null, purchased_at: null, purchase_note: null, sort_order: 4 },
+    { id: 'pri-5', request_id: 'pr-2', item_name: 'Prawns', quantity: 5, unit: 'kg', note: 'Large', purchase_status: 'pending', purchased_quantity: null, actual_cost: null, supplier: null, purchased_by: null, purchased_at: null, purchase_note: null, sort_order: 1 },
+    { id: 'pri-6', request_id: 'pr-2', item_name: 'Charcoal', quantity: 4, unit: 'bag', note: null, purchase_status: 'pending', purchased_quantity: null, actual_cost: null, supplier: null, purchased_by: null, purchased_at: null, purchase_note: null, sort_order: 2 },
+  ],
+  notification_rules: [
+    { code: 'kitchen.request_submitted', name: 'Kitchen request confirmed', description: 'Sends the full ingredient list, date and pax when the kitchen confirms a request.', department_code: 'kitchen', channel: 'whatsapp', enabled: true, target_label: 'Purchasing group', sort_order: 1 },
+    { code: 'purchasing.completed', name: 'Purchase run completed', description: 'Sends a summary when everything on a request has been bought or marked unavailable.', department_code: 'purchasing', channel: 'whatsapp', enabled: false, target_label: 'Purchasing group', sort_order: 2 },
+    { code: 'fleet.assignment_completed', name: 'Boat assignment completed', description: 'Sends the full boat manifest with guest names, captain and guide when the day is locked.', department_code: 'fleet', channel: 'whatsapp', enabled: true, target_label: 'Operations group', sort_order: 3 },
+    { code: 'ops.checkpoint_overdue', name: 'Step running late', description: 'Sends an alert when a step such as boarding is not finished by its expected time.', department_code: 'ops', channel: 'whatsapp', enabled: true, target_label: 'Operations group', sort_order: 4 },
+  ],
+  outbound_messages: [],
+  operations_events: [],
+  operations_checkpoints: [
+    { code: 'assignment_locked', name: 'Boat assignment finished', department_code: 'fleet', event_code: 'fleet.assignment_completed', scope: 'per_day', due_time: '08:00', enabled: true, sort_order: 1 },
+    { code: 'boarding_done', name: 'Boarding attendance done', department_code: 'boarding', event_code: 'boarding.completed', scope: 'per_boat', due_time: '09:00', enabled: true, sort_order: 2 },
+    { code: 'activity_chosen', name: 'Activities chosen', department_code: 'activities', event_code: 'activities.selected', scope: 'per_boat', due_time: '11:00', enabled: true, sort_order: 3 },
+    { code: 'activity_roll_call', name: 'Activity roll call done', department_code: 'activities', event_code: 'activities.completed', scope: 'per_boat', due_time: '15:00', enabled: true, sort_order: 4 },
+    { code: 'everyone_back', name: 'Everyone back on the boat', department_code: 'activities', event_code: 'activities.all_returned', scope: 'per_boat', due_time: '16:00', enabled: true, sort_order: 5 },
+  ],
+  missing_items: [
+    { id: 'mi-1', item_name: 'Snorkel goggles', category: 'snorkel_gear', quantity: 3, missing_on: YESTERDAY, noticed_location: 'Island jetty', boat_id: null, remarks: 'Not returned after the afternoon session', estimated_value: 45, status: 'missing', found_on: null, found_remarks: null, reported_by: 'u-guide', resolved_by: null, created_at: new Date().toISOString() },
+    { id: 'mi-2', item_name: 'Life jacket (child)', category: 'safety_gear', quantity: 1, missing_on: YESTERDAY, noticed_location: 'Boat 2', boat_id: 'bt-2', remarks: null, estimated_value: 80, status: 'found', found_on: TODAY, found_remarks: 'Was under the bench seat', reported_by: 'u-captain', resolved_by: 'u-coord', created_at: new Date().toISOString() },
+    { id: 'mi-3', item_name: 'Staff polo shirt', category: 'clothing', quantity: 2, missing_on: TODAY, noticed_location: 'Staff room', boat_id: null, remarks: 'Taken from the drying line', estimated_value: 30, status: 'missing', found_on: null, found_remarks: null, reported_by: 'u-coord', resolved_by: null, created_at: new Date().toISOString() },
+  ],
+  attendance_log: [],
 };
 
 // The demo reloads on a persona switch, so what one person set up has to
@@ -311,8 +386,31 @@ function visibleRows(table: string): Row[] {
         : rows.filter((row) => row.profile_id === currentUserId);
     case 'boats':
       return can('fleet.view') || can('maintenance.view') || can('boarding.view') || can('activities.view') ? rows : [];
-    case 'boat_fuel_logs':
+    case 'fuel_purchases':
       return can('maintenance.view') ? rows : [];
+    case 'boat_trips':
+      return can('maintenance.view') || can('fleet.view') ? rows : [];
+    case 'purchase_requests':
+      return can('kitchen.request.view') || can('purchasing.view')
+        ? rows
+        : rows.filter((row) => row.requested_by === currentUserId);
+    case 'purchase_request_items':
+      return can('kitchen.request.view') || can('purchasing.view')
+        ? rows
+        : rows.filter((row) =>
+            db.purchase_requests.some((r) => r.id === row.request_id && r.requested_by === currentUserId),
+          );
+    case 'notification_rules':
+      return can('ops.log.view') || can('ops.messages.manage') ? rows : [];
+    case 'outbound_messages':
+      return can('ops.messages.send') || can('ops.messages.manage') ? rows : [];
+    case 'operations_events':
+    case 'operations_checkpoints':
+      return can('ops.log.view') || can('ops.log.manage') ? rows : [];
+    case 'missing_items':
+      return can('items.view') ? rows : rows.filter((row) => row.reported_by === currentUserId);
+    case 'attendance_log':
+      return can('ops.log.view') ? rows : rows.filter((row) => canSeeAssignment(row.assignment_id));
     case 'boat_repairs':
       return can('maintenance.view') || can('fleet.view') ? rows : [];
     case 'pickup_locations':

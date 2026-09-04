@@ -12,6 +12,8 @@ const blurb: Record<string, string> = {
   'u-guide': 'Boarding plus the island activity roll call.',
   'u-tablet': 'The shared bar code. Bar department only.',
   'u-account': 'Read-only money view across bar and boat costs.',
+  'u-cook': 'Raises ingredient requests and sends them to purchasing.',
+  'u-buyer': 'Works the buying list and records what was bought.',
   'u-new': 'Signed up, not approved. Sees nothing at all.',
 };
 
