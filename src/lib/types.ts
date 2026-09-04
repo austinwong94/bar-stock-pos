@@ -128,7 +128,12 @@ export type AppSettingKey =
   | 'beer_bundle_name'
   | 'beer_bundle_units_per_set'
   | 'beer_bundle_price'
-  | 'receipt_footer_text';
+  | 'receipt_footer_text'
+  | 'platform_name'
+  | 'allow_access_code_login'
+  | 'access_code_role'
+  | 'pickup_group_radius_km'
+  | 'default_departure_time';
 
 export type SettingsMap = Record<AppSettingKey, string | number | boolean>;
 

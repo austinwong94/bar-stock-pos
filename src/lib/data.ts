@@ -37,6 +37,11 @@ export const defaultSettings: SettingsMap = {
   beer_bundle_units_per_set: 4,
   beer_bundle_price: 40,
   receipt_footer_text: '',
+  platform_name: 'Lovely Paradise Operations',
+  allow_access_code_login: true,
+  access_code_role: 'bar_staff',
+  pickup_group_radius_km: 1.5,
+  default_departure_time: '09:00',
 };
 
 export async function loadSettings(): Promise<SettingsMap> {
@@ -65,14 +70,6 @@ export async function loadProducts(includeInactive = false): Promise<ProductWith
   const { data, error } = await query;
   if (error) throw error;
   return (data ?? []) as ProductWithStock[];
-}
-
-export function roleAtLeast(
-  role: string | null | undefined,
-  minimum: 'cashier' | 'manager' | 'admin',
-) {
-  const ranks = { cashier: 1, manager: 2, admin: 3 };
-  return Boolean(role && ranks[role as keyof typeof ranks] >= ranks[minimum]);
 }
 
 export function groupByCategory(products: ProductWithStock[]) {

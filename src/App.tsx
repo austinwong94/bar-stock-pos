@@ -2,13 +2,18 @@ import { useEffect, useMemo, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
 import { AlertTriangle } from 'lucide-react';
-import { AccessGate } from './components/AccessGate';
+import { SignIn } from './components/SignIn';
 import { Layout } from './components/Layout';
 import { ToastProvider } from './components/Toast';
 import { defaultSettings, loadSettings } from './lib/data';
-import { demoProfile } from './lib/demo';
 import { hasSupabaseCredentials, setPublicPreviewMode, supabase } from './lib/supabase';
-import type { Profile, SettingsMap } from './lib/types';
+import { AccessProvider, useAccess } from './lib/access';
+import { departmentNav } from './lib/navigation';
+import type { SettingsMap } from './lib/types';
+import { LanguageProvider } from './lib/language';
+
+import Home from './pages/Home';
+import PendingApproval from './pages/PendingApproval';
 import Dashboard from './pages/Dashboard';
 import POS from './pages/POS';
 import Inventory from './pages/Inventory';
@@ -19,51 +24,41 @@ import SalesHistory from './pages/SalesHistory';
 import StockMovements from './pages/StockMovements';
 import StockOutReport from './pages/StockOutReport';
 import Settings from './pages/Settings';
-import Users from './pages/Users';
-import { LanguageProvider } from './lib/language';
+import BoatMaintenance from './pages/ops/BoatMaintenance';
+import Boarding from './pages/ops/Boarding';
+import Activities from './pages/ops/Activities';
+import Bookings from './pages/guests/Bookings';
+import PickupCoordination from './pages/guests/PickupCoordination';
+import BoatBoard from './pages/fleet/BoatBoard';
+import BoatRegister from './pages/fleet/BoatRegister';
+import AccessControl from './pages/admin/AccessControl';
+import Directory from './pages/admin/Directory';
+import PlatformSettings from './pages/admin/PlatformSettings';
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
   const [settings, setSettings] = useState<SettingsMap>(defaultSettings);
   const [loading, setLoading] = useState(true);
   const [cloudError, setCloudError] = useState('');
-  const [siteUnlocked, setSiteUnlocked] = useState(() => sessionStorage.getItem('lovely_paradise_access') === 'ok');
-  const previewProfile = useMemo<Profile>(() => ({ ...demoProfile, full_name: 'Access Verified', role: 'admin' }), []);
 
   useEffect(() => {
     if (!hasSupabaseCredentials) {
       setPublicPreviewMode(true);
-      loadSettings().then(setSettings).catch(() => setSettings(defaultSettings));
       setLoading(false);
       return;
     }
 
     supabase.auth
       .getSession()
-      .then(async ({ data }: { data: { session: Session | null } }) => {
-        if (data.session) {
-          setSession(data.session);
-          return;
-        }
-        if (sessionStorage.getItem('lovely_paradise_access') === 'ok') {
-          const { data: authData, error } = await supabase.auth.signInAnonymously({
-            options: { data: { full_name: 'Lovely Paradise Staff', role: 'admin' } },
-          });
-          if (error) {
-            setCloudError('Cloud login is not enabled yet. In Supabase, turn on Anonymous sign-ins.');
-            setLoading(false);
-            return;
-          }
-          setSession(authData.session);
-        } else {
-          setLoading(false);
-        }
+      .then(({ data }: { data: { session: Session | null } }) => {
+        setSession(data.session);
+        setLoading(false);
       })
       .catch(() => {
         setCloudError('The cloud database could not be reached. Check the Supabase URL and public anon key.');
         setLoading(false);
       });
+
     const { data: listener } = supabase.auth.onAuthStateChange((_event: string, nextSession: Session | null) => {
       setSession(nextSession);
     });
@@ -71,36 +66,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    async function loadUserContext() {
-      if (!session?.user) {
-        if (hasSupabaseCredentials) return;
-        setPublicPreviewMode(false);
-        setProfile(previewProfile);
-        setSettings(await loadSettings().catch(() => defaultSettings));
-        setLoading(false);
-        return;
-      }
-      setLoading(true);
-      setPublicPreviewMode(false);
-      const [{ data: profileData, error: profileError }, nextSettings] = await Promise.all([
-        supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle(),
-        loadSettings().catch(() => defaultSettings),
-      ]);
-      if (profileError) {
-        console.error(profileError);
-      }
-      setProfile((profileData as Profile | null) ?? previewProfile);
-      setSettings(nextSettings);
-      setLoading(false);
-    }
-    void loadUserContext();
-  }, [previewProfile, session]);
-
-  const context = useMemo(() => ({ profile, settings }), [profile, settings]);
-
-  if (!siteUnlocked) {
-    return <AccessGate onUnlock={() => setSiteUnlocked(true)} />;
-  }
+    if (!session?.user) return;
+    setPublicPreviewMode(false);
+    loadSettings()
+      .then(setSettings)
+      .catch(() => setSettings(defaultSettings));
+  }, [session]);
 
   if (!hasSupabaseCredentials) {
     return <CloudRequired message="Cloud database is not connected in this build. Add the Supabase URL and public anon key, rebuild, and reload the site." />;
@@ -111,45 +82,133 @@ export default function App() {
   }
 
   if (loading) {
-    return <div className="grid min-h-screen place-items-center bg-paper font-bold">Loading bar app...</div>;
+    return <div className="grid min-h-screen place-items-center bg-paper font-bold">Loading Lovely Paradise...</div>;
   }
 
   if (!session) {
-    return <CloudRequired message="Cloud session is not ready. Lock the app, enter the access code again, and make sure Supabase Anonymous sign-ins are enabled." />;
+    return <SignIn />;
   }
 
   return (
     <LanguageProvider>
-    <ToastProvider>
-      <Routes>
-        <Route path="/login" element={<Navigate to="/" replace />} />
-        <Route
-          element={
-            context.profile ? (
-              <Layout profile={context.profile} settings={context.settings} />
-            ) : (
-              <Navigate to="/" replace />
-            )
-          }
-        >
-          <Route index element={<Dashboard settings={settings} />} />
-          <Route path="/pos" element={<POS settings={settings} />} />
-          <Route path="/stock-in" element={<StockOutReport settings={settings} />} />
-          <Route path="/inventory" element={<Inventory settings={settings} />} />
-          <Route path="/products" element={<Products settings={settings} onSettingsSaved={setSettings} />} />
-          <Route path="/daily-closing" element={<DailyClosing settings={settings} />} />
-          <Route path="/daily-report" element={<DailyReport settings={settings} />} />
-          <Route path="/stock-out-report" element={<StockOutReport settings={settings} />} />
-          <Route path="/sales" element={<SalesHistory settings={settings} />} />
-          <Route path="/movements" element={<StockMovements />} />
-          <Route path="/settings" element={<Settings settings={settings} onSaved={setSettings} />} />
-          <Route path="/users" element={<Users />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
-      </Routes>
-    </ToastProvider>
+      <ToastProvider>
+        <AccessProvider userId={session.user.id}>
+          <PlatformRoutes settings={settings} onSettingsSaved={setSettings} />
+        </AccessProvider>
+      </ToastProvider>
     </LanguageProvider>
   );
+}
+
+function PlatformRoutes({
+  settings,
+  onSettingsSaved,
+}: {
+  settings: SettingsMap;
+  onSettingsSaved: (next: SettingsMap) => void;
+}) {
+  const { profile, loading, visibleDepartments, canAny } = useAccess();
+
+  // A single-department account (a bar tablet, a captain) skips the hub and
+  // lands straight on its own screen.
+  const soleDepartmentPath = useMemo(() => {
+    if (visibleDepartments.length !== 1) return null;
+    const group = departmentNav.find((item) => item.code === visibleDepartments[0].code);
+    return group?.links.find((link) => canAny(...link.permissions))?.to ?? null;
+  }, [canAny, visibleDepartments]);
+
+  if (loading) {
+    return <div className="grid min-h-screen place-items-center bg-paper font-bold">Checking your access...</div>;
+  }
+
+  if (!profile || profile.status !== 'active') {
+    return <PendingApproval name={profile?.full_name ?? 'there'} status={profile?.status ?? 'pending'} />;
+  }
+
+  return (
+    <Routes>
+      <Route path="/login" element={<Navigate to="/" replace />} />
+      <Route element={<Layout settings={settings} />}>
+        <Route
+          index
+          element={soleDepartmentPath ? <Navigate to={soleDepartmentPath} replace /> : <Home settings={settings} />}
+        />
+
+        {/* Bar POS department - the original app, now one department */}
+        <Route path="/bar" element={<Guard need={['bar.pos.use', 'bar.stock.view']}><Dashboard settings={settings} /></Guard>} />
+        <Route path="/pos" element={<Guard need={['bar.pos.use']}><POS settings={settings} /></Guard>} />
+        <Route path="/stock-in" element={<Guard need={['bar.stock.view', 'bar.stock.manage']}><StockOutReport settings={settings} /></Guard>} />
+        <Route path="/stock-out-report" element={<Guard need={['bar.stock.view', 'bar.stock.manage']}><StockOutReport settings={settings} /></Guard>} />
+        <Route path="/inventory" element={<Guard need={['bar.stock.view']}><Inventory settings={settings} /></Guard>} />
+        <Route path="/products" element={<Guard need={['bar.products.manage']}><Products settings={settings} onSettingsSaved={onSettingsSaved} /></Guard>} />
+        <Route path="/daily-closing" element={<Guard need={['bar.closing.manage']}><DailyClosing settings={settings} /></Guard>} />
+        <Route path="/daily-report" element={<Guard need={['bar.reports.view']}><DailyReport settings={settings} /></Guard>} />
+        <Route path="/sales" element={<Guard need={['bar.reports.view']}><SalesHistory settings={settings} /></Guard>} />
+        <Route path="/movements" element={<Guard need={['bar.stock.view']}><StockMovements /></Guard>} />
+        <Route path="/settings" element={<Guard need={['bar.settings.manage']}><Settings settings={settings} onSaved={onSettingsSaved} /></Guard>} />
+        <Route path="/users" element={<Navigate to="/admin/access" replace />} />
+
+        {/* Boat maintenance */}
+        <Route
+          path="/maintenance"
+          element={
+            <Guard need={['maintenance.view', 'maintenance.fuel.record', 'maintenance.repair.record']}>
+              <BoatMaintenance settings={settings} />
+            </Guard>
+          }
+        />
+
+        {/* Tourist bookings */}
+        <Route
+          path="/guests"
+          element={
+            <Guard need={['guests.booking.create', 'guests.booking.view_own', 'guests.booking.view_all']}>
+              <Bookings />
+            </Guard>
+          }
+        />
+        <Route
+          path="/guests/pickup"
+          element={<Guard need={['guests.pickup.manage']}><PickupCoordination settings={settings} /></Guard>}
+        />
+
+        {/* Boat assignment */}
+        <Route path="/fleet" element={<Guard need={['fleet.view', 'fleet.assign']}><BoatBoard /></Guard>} />
+        <Route path="/fleet/boats" element={<Guard need={['fleet.view', 'fleet.boats.manage']}><BoatRegister /></Guard>} />
+
+        {/* Boarding and activities */}
+        <Route path="/boarding" element={<Guard need={['boarding.view', 'boarding.view_all', 'boarding.mark']}><Boarding /></Guard>} />
+        <Route path="/activities" element={<Guard need={['activities.view', 'activities.select', 'activities.mark']}><Activities /></Guard>} />
+
+        {/* Master admin */}
+        <Route path="/admin/access" element={<Guard need={['platform.users.manage', 'platform.roles.manage']}><AccessControl /></Guard>} />
+        <Route path="/admin/directory" element={<Guard need={['platform.directory.manage']}><Directory /></Guard>} />
+        <Route
+          path="/admin/settings"
+          element={<Guard need={['platform.settings.manage']}><PlatformSettings settings={settings} onSaved={onSettingsSaved} /></Guard>}
+        />
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
+    </Routes>
+  );
+}
+
+// Belt and braces on top of RLS: a page never renders for someone whose
+// permissions do not cover it, even if they type the URL.
+function Guard({ need, children }: { need: string[]; children: React.ReactNode }) {
+  const { canAny } = useAccess();
+  if (!canAny(...need)) {
+    return (
+      <div className="rounded-2xl border border-line bg-white/85 p-6 text-center shadow-soft">
+        <p className="text-lg font-black">This section is not part of your access.</p>
+        <p className="mt-2 text-sm font-semibold text-neutral-600">
+          Ask a master admin if you need it opened for your account.
+        </p>
+      </div>
+    );
+  }
+  return <>{children}</>;
 }
 
 function CloudRequired({ message }: { message: string }) {
@@ -171,7 +230,7 @@ function CloudRequired({ message }: { message: string }) {
           </div>
         </div>
         <button type="button" className="mt-5 h-11 w-full rounded-xl bg-accent px-4 text-sm font-black text-white" onClick={lockApp}>
-          Lock app and retry
+          Reload
         </button>
       </section>
     </main>

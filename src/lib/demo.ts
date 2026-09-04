@@ -9,6 +9,11 @@ export const demoProfile: Profile = {
 };
 
 export const demoSettings: SettingsMap = {
+  platform_name: 'Lovely Paradise Operations',
+  allow_access_code_login: true,
+  access_code_role: 'bar_staff',
+  pickup_group_radius_km: 1.5,
+  default_departure_time: '09:00',
   business_name: 'Lovely Paradise Bar',
   currency_symbol: 'MYR',
   secondary_currency_symbol: 'RMB',
