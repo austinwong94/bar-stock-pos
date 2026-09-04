@@ -1,7 +1,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter, HashRouter } from 'react-router-dom';
 import App from './App';
+import { isDemoMode } from './lib/supabase';
 import './styles.css';
 
 const basename = import.meta.env.BASE_URL === '/' ? undefined : import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -12,10 +13,14 @@ if (redirectedPath) {
   window.history.replaceState(null, '', redirectedPath);
 }
 
+const Router = isDemoMode
+  ? ({ children }: { children: React.ReactNode }) => <HashRouter>{children}</HashRouter>
+  : ({ children }: { children: React.ReactNode }) => <BrowserRouter basename={basename}>{children}</BrowserRouter>;
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter basename={basename}>
+    <Router>
       <App />
-    </BrowserRouter>
+    </Router>
   </React.StrictMode>,
 );

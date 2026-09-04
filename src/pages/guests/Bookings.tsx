@@ -4,7 +4,7 @@ import { PageHeader, Stat } from '../../components/Page';
 import { Field, buttonClass, inputClass, secondaryButtonClass, dangerButtonClass } from '../../components/Form';
 import { Modal } from '../../components/Modal';
 import { useToast } from '../../components/Toast';
-import { supabase } from '../../lib/supabase';
+import { isDemoMode, supabase } from '../../lib/supabase';
 import { useAccess } from '../../lib/access';
 import {
   bookingStatusLabels,
@@ -130,6 +130,10 @@ export default function Bookings() {
   }
 
   function exportCsv() {
+    if (isDemoMode) {
+      toast.error('Downloads are blocked inside the demo preview. Export works in the real deployment.');
+      return;
+    }
     const header = ['Booking', 'Arrival', 'Source', 'Agency', 'Lead', 'Lead phone', 'Pickup', 'Pax', 'Guest', 'Guest phone', 'Type'];
     const lines = [header.map(csvEscape).join(',')];
     filtered.forEach((booking) => {

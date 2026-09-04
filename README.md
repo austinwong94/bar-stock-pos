@@ -221,3 +221,22 @@ per-user "never allow" beats the role.
 - Void sale adds stock back and reverses report impact by marking the original sale voided and creating reversal stock movements.
 - Daily report saves a JSON snapshot and does not change after later data changes unless reopened/admin corrected.
 - Inactive products do not show in POS but remain visible in historical records.
+
+## Offline demo build
+
+`npm run build:demo` produces `dist/lovely-paradise-demo.html`: the whole app in
+one file, backed by an in-memory dataset instead of Supabase. It is meant for
+showing the platform and for training staff, never for real data.
+
+The demo replays the same permission and visibility rules the database
+enforces, so switching person genuinely changes what is visible — a travel
+agent really cannot see another agency's bookings there. A bar at the bottom
+switches between an owner, a coordinator, two competing agents, a captain, a
+guide, the shared bar tablet, an accountant and an unapproved account.
+
+Sample data lives in this browser only and survives a persona switch, so you
+can seat a boat as the coordinator and then check those guests in as the
+captain. **Reset demo data** puts it back.
+
+Two things do not work in the demo, by design: file downloads (guest export)
+and photo upload, because both need a real backend.

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
 import { AlertTriangle } from 'lucide-react';
@@ -6,7 +6,7 @@ import { SignIn } from './components/SignIn';
 import { Layout } from './components/Layout';
 import { ToastProvider } from './components/Toast';
 import { defaultSettings, loadSettings } from './lib/data';
-import { hasSupabaseCredentials, setPublicPreviewMode, supabase } from './lib/supabase';
+import { hasSupabaseCredentials, isDemoMode, setPublicPreviewMode, supabase } from './lib/supabase';
 import { AccessProvider, useAccess } from './lib/access';
 import { departmentNav } from './lib/navigation';
 import type { SettingsMap } from './lib/types';
@@ -34,6 +34,19 @@ import BoatRegister from './pages/fleet/BoatRegister';
 import AccessControl from './pages/admin/AccessControl';
 import Directory from './pages/admin/Directory';
 import PlatformSettings from './pages/admin/PlatformSettings';
+
+const LazyDemoBar = lazy(() =>
+  import('./components/DemoBar').then((module) => ({ default: module.DemoBar })),
+);
+
+function DemoBar() {
+  if (!isDemoMode) return null;
+  return (
+    <Suspense fallback={null}>
+      <LazyDemoBar />
+    </Suspense>
+  );
+}
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -86,7 +99,12 @@ export default function App() {
   }
 
   if (!session) {
-    return <SignIn />;
+    return (
+      <>
+        <SignIn />
+        <DemoBar />
+      </>
+    );
   }
 
   return (
@@ -94,6 +112,7 @@ export default function App() {
       <ToastProvider>
         <AccessProvider userId={session.user.id}>
           <PlatformRoutes settings={settings} onSettingsSaved={setSettings} />
+          <DemoBar />
         </AccessProvider>
       </ToastProvider>
     </LanguageProvider>

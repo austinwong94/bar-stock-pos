@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1200" viewBox="0 0 900 1200" role="img" aria-label="Demo QR payment receipt">
+  <rect width="900" height="1200" fill="#fff7fb"/>
+  <rect x="90" y="70" width="720" height="1060" rx="42" fill="#ffffff" stroke="#f2bdd1" stroke-width="4"/>
+  <text x="450" y="155" text-anchor="middle" font-family="Arial, sans-serif" font-size="42" font-weight="800" fill="#2a1d2a">Lovely Paradise Bar</text>
+  <text x="450" y="215" text-anchor="middle" font-family="Arial, sans-serif" font-size="30" font-weight="700" fill="#0f766e">QR Payment Receipt</text>
+  <rect x="190" y="285" width="520" height="520" rx="20" fill="#f8fafc" stroke="#d7c5ce" stroke-width="3"/>
+  <g fill="#17121a">
+    <rect x="235" y="330" width="120" height="120"/><rect x="265" y="360" width="60" height="60" fill="#fff"/>
+    <rect x="545" y="330" width="120" height="120"/><rect x="575" y="360" width="60" height="60" fill="#fff"/>
+    <rect x="235" y="640" width="120" height="120"/><rect x="265" y="670" width="60" height="60" fill="#fff"/>
+    <rect x="405" y="330" width="40" height="40"/><rect x="465" y="330" width="40" height="80"/>
+    <rect x="385" y="410" width="80" height="40"/><rect x="505" y="450" width="40" height="80"/>
+    <rect x="385" y="510" width="40" height="80"/><rect x="465" y="530" width="120" height="40"/>
+    <rect x="605" y="510" width="40" height="40"/><rect x="385" y="640" width="60" height="40"/>
+    <rect x="465" y="650" width="40" height="90"/><rect x="525" y="630" width="120" height="50"/>
+    <rect x="585" y="710" width="60" height="50"/><rect x="385" y="730" width="40" height="30"/>
+  </g>
+  <text x="170" y="890" font-family="Arial, sans-serif" font-size="34" font-weight="800" fill="#2a1d2a">Amount</text>
+  <text x="730" y="890" text-anchor="end" font-family="Arial, sans-serif" font-size="34" font-weight="800" fill="#2a1d2a">MYR 28.00</text>
+  <text x="170" y="950" font-family="Arial, sans-serif" font-size="28" font-weight="700" fill="#6b5b68">Reference</text>
+  <text x="730" y="950" text-anchor="end" font-family="Arial, sans-serif" font-size="28" font-weight="700" fill="#6b5b68">QR-8842</text>
+  <text x="170" y="1010" font-family="Arial, sans-serif" font-size="28" font-weight="700" fill="#6b5b68">Status</text>
+  <text x="730" y="1010" text-anchor="end" font-family="Arial, sans-serif" font-size="28" font-weight="700" fill="#0f766e">Pending verification</text>
+</svg>
