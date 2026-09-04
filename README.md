@@ -13,12 +13,16 @@ every stock, money and guest-data change.
 | Department | What it does | Who normally uses it |
 | --- | --- | --- |
 | **Bar POS & Stock** | The original bar app: POS, stock in, daily closing, reports, products | Bar staff, bar manager |
-| **Boat Maintenance** | Daily petrol used per island trip, refuelling, and every repair job with cost, dates and repeat detection | Boat crew, manager, accountant |
+| **Boat Maintenance** | Fleet fuel purchases, the boat trip log with per-boat estimates, and every repair with cost, dates and repeat detection | Boat crew, manager, accountant |
 | **Tourist Bookings** | Booking and guest records from agents, OTAs, in-house and walk-ins, plus pickup-run grouping | Agents (own bookings only), coordinators |
 | **Boat Assignment** | Boat register and the daily drag-and-drop manifest, with captain and guide dropdowns | Coordinator, operations manager |
 | **Boarding Attendance** | Crew check every guest onto the boat, grouped by who booked together | Captains, guides |
 | **Island Activities** | Snorkel / volcanic mud / other choice, roll call, and the back-on-board headcount | Guides |
-| **Admin & Access** | Approve accounts, set roles, tune permissions per person, maintain directories | Master admin |
+| **Kitchen** | Ingredient and material requests by date and pax; confirming one puts it on the buying list | Kitchen staff |
+| **Things to Purchase** | The buying queue with cost, supplier and what is still outstanding | Purchaser, accountant |
+| **Daily Operations** | Live progress log with late-step alerts, the daily summary, and the WhatsApp outbox | Admin, coordinator |
+| **Island Items** | Equipment that has gone missing and whether it turned up again | Everyone on the island |
+| **Admin & Access** | Approve accounts, set roles, tune permissions per person, maintain directories and the boat register | Master admin |
 
 ## How access works
 
@@ -166,13 +170,72 @@ whole group, or the whole boat.
 roll call. The header keeps a live count per activity and a **back on the boat**
 figure so nobody is left behind.
 
-**Boat maintenance.** Fuel entries are either *used going to island* or
-*reloaded*, both with litres and price. Give each boat a normal litres-per-trip
-figure in the boat register and the page flags any boat burning more than 15%
-above it. Repairs record the issue, cost, workshop, when it broke and when it
-was fixed; a new job in the same category on the same boat within a year is
-flagged as a repeat and linked to the previous one, and a job marked *cannot
-sail* parks the boat until it is closed.
+**Boat maintenance.** Nobody meters a single boat, so fuel is recorded as
+**fleet purchases** — what was bought, when, at what price. Consumption is
+*estimated* instead: every trip is logged (pulled from the boat board with one
+button, with emergency runs such as taking a sick guest off the island entered
+by hand) and multiplied by each boat's normal litres per trip, which you set in
+the boat register. The page compares the fuel bought against the trips logged
+and flags a gap, which is the honest version of "is someone overspending" —
+either trips are missing from the log, or more fuel went out than the boats
+used.
+
+Repairs record the issue, cost, workshop, when it broke and when it was fixed;
+a new job in the same category on the same boat within a year is flagged as a
+repeat and linked to the previous one, and a job marked *cannot sail* parks the
+boat until it is closed.
+
+**Kitchen and purchasing.** The kitchen enters what it needs for a date and a
+pax count, saves it as a draft, then confirms it. Confirming is what moves it
+onto the buying list and writes the WhatsApp message. The purchaser ticks items
+off with cost and supplier; the request closes itself when nothing is left
+pending.
+
+**Daily Operations.** *Today* shows each step of the day, the time it was
+finished, and anything past its expected time in red — the times are editable.
+*Daily Summary* is the one-page record: pax and their age mix, boats with
+captain and guide, activity headcounts, trips and fuel, food and spend, bar
+takings, incidents, and a line-by-line log of who ticked what and when.
+
+**Missing items.** Anyone on the island can report equipment that has gone
+missing with a date and remarks. Items can later be marked found, or written
+off — which requires a reason.
+
+**Who did what.** Boarding, activity choice and back-on-boat each record the
+person who did it and when. Deleting a customer record asks why and stores the
+reason against your name, and every booking has a change history.
+
+## Sending to WhatsApp
+
+The app never calls WhatsApp directly. Every announcement — a confirmed
+kitchen request, a completed boat assignment, a step running late — is written
+as a finished message into an **outbox**, and each one has its own on/off
+switch in Daily Operations → Message Outbox. Switching a rule off stops the
+message being created at all, so nothing piles up while it is off.
+
+How the message leaves the building is a separate decision, and the outbox is
+deliberately designed so that decision can change without touching any
+department:
+
+| Route | Automatic? | Effort | Risk |
+| --- | --- | --- | --- |
+| **Outbox → Open in WhatsApp** (shipped) | One tap by a person | None, works today | None |
+| **Unofficial bridge** (whatsapp-web.js / Baileys on a small server) | Yes | ~1–2 days plus babysitting | Against WhatsApp's terms; the number can be banned |
+| **Paid unofficial provider** | Yes | Hours to wire up | Same terms risk, run by someone else |
+| **Meta's official Groups API** | Yes | Weeks, if approved | Cannot post into your existing group |
+
+Meta does now have a Groups API on the WhatsApp Cloud Platform, but it does
+not do what an island operation needs: it requires an Official Business
+Account (the green tick), caps a group at **8 participants**, and has no
+endpoint to add someone — people join a group the API itself created, via an
+invite link. There is no way to post into the staff group that already exists
+on somebody's phone. Check the current limits with Meta before committing,
+since this is exactly the sort of thing that changes.
+
+The shipped route is the pragmatic one: the message is written for you, the
+PIC taps **Open in WhatsApp**, picks the group and sends. When you want it
+fully hands-off, point a worker at `outbound_messages` where `status =
+'queued'` and call `mark_outbound_sent`; nothing else changes.
 
 ## Testing the security model
 
