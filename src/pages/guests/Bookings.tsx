@@ -324,7 +324,7 @@ function BookingRow({
           </span>
         </td>
         <td className="p-3">
-          <span className="rounded-xl bg-teal-50 px-2 py-1 text-xs font-black text-accent">
+          <span className="rounded-xl bg-shell px-2 py-1 text-xs font-black text-accent">
             {bookingStatusLabels[booking.status] ?? booking.status}
           </span>
         </td>

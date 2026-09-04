@@ -258,7 +258,7 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
         <Stat label={text('Total Revenue', 'Jumlah hasil')} value={money(report?.total_sales ?? totals.paidRevenue, String(settings.currency_symbol))} />
         <Stat label={text('Transactions', 'Transaksi')} value={totals.tx} />
       </div>
-      <section className="island-panel grid gap-4 rounded-2xl p-3 sm:rounded-[2rem] sm:p-5">
+      <section className="island-panel grid gap-4 rounded-2xl p-3 sm:rounded-2xl sm:p-5">
         <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1.4fr]">
           <Field label={text('Business date', 'Tarikh bisnes')}>
             <input className={inputClass} type="date" value={businessDate} onChange={(event) => setBusinessDate(event.target.value)} />
@@ -289,11 +289,11 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
           </div>
         ) : null}
       </section>
-      <section className="island-panel mt-4 rounded-2xl p-3 sm:mt-5 sm:rounded-[2rem] sm:p-5">
+      <section className="island-panel mt-4 rounded-2xl p-3 sm:mt-5 sm:rounded-2xl sm:p-5">
         <h2 className="text-lg font-black sm:text-xl">Sales of all items · {businessDate}</h2>
         <div className="hidden">
           {itemSales.map((item) => (
-            <article key={item.product} className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4">
+            <article key={item.product} className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-xl sm:p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="font-black">{item.product}</p>
@@ -304,7 +304,7 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
               <div className="mt-2 grid grid-cols-3 gap-1.5 text-xs font-bold sm:mt-3 sm:gap-2 sm:text-sm">
                 <div className="rounded-2xl bg-emerald-50 p-2"><p className="text-emerald-700">Cash Payment</p><p>{money(item.cash, String(settings.currency_symbol))}</p></div>
                 <div className="rounded-2xl bg-sky-50 p-2"><p className="text-sky-700">QR Payment</p><p>{money(item.qr, String(settings.currency_symbol))}</p></div>
-                <div className="rounded-2xl bg-pink-50 p-2"><p className="text-pink-700">FOC</p><p className="text-coral">- {money(item.focCost, String(settings.currency_symbol))}</p></div>
+                <div className="rounded-2xl bg-shell p-2"><p className="text-coral">FOC</p><p className="text-coral">- {money(item.focCost, String(settings.currency_symbol))}</p></div>
               </div>
             </article>
           ))}
@@ -344,7 +344,7 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
           </table>
         </div>
       </section>
-      <section className="island-panel mt-4 rounded-2xl p-3 sm:mt-5 sm:rounded-[2rem] sm:p-5">
+      <section className="island-panel mt-4 rounded-2xl p-3 sm:mt-5 sm:rounded-2xl sm:p-5">
         <h2 className="flex items-center gap-2 text-lg font-black sm:text-xl"><Smartphone className="h-5 w-5 text-accent" /> {text('QR Payment verification', 'Pengesahan Bayaran QR')}</h2>
         <p className="mt-2 rounded-xl bg-sky-50 p-2.5 text-sm font-bold text-sky-900 sm:rounded-2xl sm:p-3">
           {text('Mismatch means the QR Payment amount is recorded separately and is not counted as verified QR Payment until a manager follows up.', 'Tidak padan bermaksud amaun Bayaran QR direkod berasingan dan tidak dikira sebagai Bayaran QR disahkan sehingga pengurus semak.')}

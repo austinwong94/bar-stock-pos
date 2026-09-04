@@ -105,7 +105,7 @@ export default function Boarding() {
                   {boat.name ? <span className="text-sm font-semibold text-neutral-600">{boat.name}</span> : null}
                 </p>
                 <div className="flex items-center gap-2">
-                  <span className={`rounded-xl px-3 py-1.5 text-sm font-black ${boatArrived === boat.rows.length ? 'bg-teal-50 text-accent' : 'bg-amber-50 text-amber-800'}`}>
+                  <span className={`rounded-xl px-3 py-1.5 text-sm font-black ${boatArrived === boat.rows.length ? 'bg-shell text-accent' : 'bg-amber-50 text-amber-800'}`}>
                     {boatArrived} / {boat.rows.length} on board
                   </span>
                   {canMark ? (
@@ -149,7 +149,7 @@ export default function Boarding() {
                           key={row.passenger_id}
                           className={`flex items-center justify-between gap-2 rounded-lg border px-2.5 py-2 ${
                             row.boarding_status === 'arrived'
-                              ? 'border-accent bg-teal-50'
+                              ? 'border-accent bg-shell'
                               : row.boarding_status === 'no_show'
                                 ? 'border-danger bg-red-50'
                                 : 'border-line bg-white'

@@ -1,6 +1,6 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Home, LogOut, Waves } from 'lucide-react';
+import { LayoutGrid, LogOut, Menu, Waves, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { SettingsMap } from '../lib/types';
 import { useLanguage } from '../lib/language';
@@ -11,12 +11,15 @@ export function Layout({ settings }: { settings: SettingsMap }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { language, setLanguage, text } = useLanguage();
-  const { profile, canAny, visibleDepartments } = useAccess();
+  const { profile, canAny, visibleDepartments, badges } = useAccess();
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const activeDepartment = departmentForPath(location.pathname);
   const departmentMeta = visibleDepartments.find((item) => item.code === activeDepartment);
 
+  // Only a real department gets a sub-menu. On the hub there is none.
   const links = useMemo(() => {
+    if (!activeDepartment) return [];
     const group = departmentNav.find((item) => item.code === activeDepartment);
     if (!group) return [];
     return group.links.filter((link) => canAny(...link.permissions));
@@ -29,6 +32,7 @@ export function Layout({ settings }: { settings: SettingsMap }) {
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0 });
+    setMenuOpen(false);
   }, [location.pathname]);
 
   async function exitApp() {
@@ -39,135 +43,200 @@ export function Layout({ settings }: { settings: SettingsMap }) {
   }
 
   const showHub = visibleDepartments.length > 1;
+  const totalBadges = Object.values(badges).reduce((sum, badge) => sum + badge.count, 0);
+
+  const departmentList = (
+    <nav className="grid gap-0.5">
+      {showHub ? (
+        <NavLink
+          to="/"
+          end
+          className={({ isActive }) =>
+            `flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-semibold transition ${
+              isActive ? 'bg-accent text-white' : 'text-ink hover:bg-shell'
+            }`
+          }
+        >
+          <LayoutGrid className="h-4 w-4 shrink-0" />
+          <span className="min-w-0 flex-1 truncate">{text('All departments', 'Semua jabatan')}</span>
+          {totalBadges > 0 ? <BadgeDot count={totalBadges} /> : null}
+        </NavLink>
+      ) : null}
+
+      {visibleDepartments.map((department) => {
+        const group = departmentNav.find((item) => item.code === department.code);
+        const Icon = group?.icon ?? LayoutGrid;
+        const target = group?.links.find((link) => canAny(...link.permissions))?.to ?? '/';
+        const active = department.code === activeDepartment;
+        const badge = badges[department.code];
+        return (
+          <button
+            key={department.code}
+            type="button"
+            onClick={() => navigate(target)}
+            className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-semibold transition ${
+              active ? 'bg-accent text-white' : 'text-ink hover:bg-shell'
+            }`}
+          >
+            <Icon className="h-4 w-4 shrink-0" />
+            <span className="min-w-0 flex-1 truncate">{department.name}</span>
+            {badge?.count ? <BadgeDot count={badge.count} inverted={active} /> : null}
+          </button>
+        );
+      })}
+    </nav>
+  );
+
+  const pageList =
+    links.length > 1 ? (
+      <nav className="mt-4 grid gap-0.5 border-t border-line pt-4">
+        <p className="eyebrow mb-1 px-2.5">{departmentMeta?.name}</p>
+        {links.map((link) => (
+          <NavLink
+            key={link.to}
+            to={link.to}
+            end={link.exact}
+            className={({ isActive }) =>
+              `flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition ${
+                isActive ? 'bg-shell font-semibold text-accent' : 'text-muted hover:bg-shell hover:text-ink'
+              }`
+            }
+          >
+            <link.icon className="h-4 w-4 shrink-0" />
+            <span className="min-w-0 truncate">{text(link.label, link.ms ?? link.label)}</span>
+          </NavLink>
+        ))}
+      </nav>
+    ) : null;
 
   return (
     <div className="min-h-screen">
-      <aside className="no-print fixed inset-y-0 left-0 z-30 hidden w-72 overflow-y-auto p-5 xl:block">
-        <div className="island-panel mb-4 rounded-[2rem] p-5">
-          <div className="mb-4 grid h-14 w-14 place-items-center rounded-3xl bg-coral text-white shadow-soft">
-            <Waves className="h-7 w-7" />
-          </div>
-          <p className="text-xs font-black uppercase tracking-widest text-accent">
-            {String(settings.platform_name ?? 'Lovely Paradise Operations')}
-          </p>
-          <h1 className="mt-1 text-2xl font-black leading-tight">{departmentMeta?.name ?? String(settings.business_name)}</h1>
-          <p className="mt-2 text-sm font-bold text-neutral-600">{profile?.full_name ?? 'Signed in'}</p>
-          <div className="mt-3 grid grid-cols-2 rounded-2xl bg-white/80 p-1 text-xs font-black">
-            <button onClick={() => setLanguage('en')} className={`rounded-xl px-3 py-2 ${language === 'en' ? 'bg-accent text-white' : ''}`}>EN</button>
-            <button onClick={() => setLanguage('ms')} className={`rounded-xl px-3 py-2 ${language === 'ms' ? 'bg-accent text-white' : ''}`}>BM</button>
+      {/* Desktop rail */}
+      <aside className="no-print fixed inset-y-0 left-0 z-30 hidden w-64 flex-col overflow-y-auto border-r border-line bg-surface px-3 py-4 xl:flex">
+        <div className="mb-4 flex items-center gap-2.5 px-2.5">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent text-white">
+            <Waves className="h-4.5 w-4.5" />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-bold leading-tight text-ink">
+              {String(settings.platform_name ?? 'Lovely Paradise')}
+            </p>
+            <p className="truncate text-xs font-medium text-muted">{profile?.full_name ?? 'Signed in'}</p>
           </div>
         </div>
 
-        {showHub ? (
-          <nav className="island-panel mb-4 grid gap-1 rounded-[2rem] p-3">
-            <NavLink
-              to="/"
-              end
-              className={({ isActive }) =>
-                `flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-black ${isActive ? 'bg-accent text-white' : 'text-ink hover:bg-shell'}`
-              }
-            >
-              <Home className="h-4 w-4" />
-              {text('All departments', 'Semua jabatan')}
-            </NavLink>
-            {visibleDepartments.map((department) => {
-              const group = departmentNav.find((item) => item.code === department.code);
-              const Icon = group?.icon ?? Home;
-              const target = group?.links.find((link) => canAny(...link.permissions))?.to ?? '/';
-              return (
-                <button
-                  key={department.code}
-                  type="button"
-                  onClick={() => navigate(target)}
-                  className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-sm font-black transition ${
-                    department.code === activeDepartment ? 'bg-shell text-accent' : 'text-ink hover:bg-shell'
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                  <span className="min-w-0 truncate">{department.name}</span>
-                </button>
-              );
-            })}
-          </nav>
-        ) : null}
+        {departmentList}
+        {pageList}
 
-        {links.length > 1 ? (
-          <nav className="island-panel grid gap-2 rounded-[2rem] p-3">
-            {links.map((link) => (
-              <NavLink
-                key={link.to}
-                to={link.to}
-                end={link.exact}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 rounded-2xl px-4 py-3.5 text-sm font-black transition ${
-                    isActive ? 'bg-accent text-white shadow-glow' : 'text-ink hover:bg-shell'
-                  }`
-                }
-              >
-                <link.icon className="h-5 w-5" />
-                <span>{text(link.label, link.ms ?? link.label)}</span>
-              </NavLink>
-            ))}
-          </nav>
-        ) : null}
-
-        <button
-          type="button"
-          onClick={exitApp}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-line bg-white/80 px-3 py-3 font-bold shadow-soft"
-        >
-          <LogOut className="h-5 w-5" />
-          {text('Sign out', 'Log keluar')}
-        </button>
+        <div className="mt-auto grid gap-2 border-t border-line pt-4">
+          <div className="grid grid-cols-2 gap-0.5 rounded-lg bg-shell p-0.5 text-xs font-semibold">
+            <button onClick={() => setLanguage('en')} className={`rounded px-2 py-1.5 transition ${language === 'en' ? 'bg-surface text-ink' : 'text-muted'}`}>EN</button>
+            <button onClick={() => setLanguage('ms')} className={`rounded px-2 py-1.5 transition ${language === 'ms' ? 'bg-surface text-ink' : 'text-muted'}`}>BM</button>
+          </div>
+          <button
+            type="button"
+            onClick={exitApp}
+            className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-semibold text-muted transition hover:bg-shell hover:text-ink"
+          >
+            <LogOut className="h-4 w-4" />
+            {text('Sign out', 'Log keluar')}
+          </button>
+        </div>
       </aside>
 
-      <div className="xl:pl-72">
-        <header className="no-print sticky top-0 z-20 border-b border-line bg-white/90 px-2.5 py-2 backdrop-blur sm:px-4 xl:hidden">
-          <div className="mx-auto max-w-[1500px]">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-2">
+      <div className="xl:pl-64">
+        {/* Mobile bar */}
+        <header className="no-print sticky top-0 z-20 border-b border-line bg-surface/95 backdrop-blur xl:hidden">
+          <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+            <button
+              type="button"
+              onClick={() => setMenuOpen(true)}
+              className="relative grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-line text-ink"
+              aria-label="Open menu"
+            >
+              <Menu className="h-4.5 w-4.5" />
+              {totalBadges > 0 ? (
+                <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-coral px-1 text-[0.625rem] font-bold text-white">
+                  {totalBadges > 9 ? '9+' : totalBadges}
+                </span>
+              ) : null}
+            </button>
+            <p className="min-w-0 flex-1 truncate text-sm font-bold text-ink">
+              {departmentMeta?.name ?? String(settings.platform_name ?? 'Lovely Paradise')}
+            </p>
+            <button
+              type="button"
+              onClick={exitApp}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-line text-muted"
+              aria-label="Sign out"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+
+          {links.length > 1 ? (
+            <div className="table-scroll flex gap-1 border-t border-line px-3 py-1.5">
+              {links.map((link) => (
+                <NavLink
+                  key={link.to}
+                  to={link.to}
+                  end={link.exact}
+                  className={({ isActive }) =>
+                    `shrink-0 rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
+                      isActive ? 'bg-accent text-white' : 'bg-shell text-muted'
+                    }`
+                  }
+                >
+                  {text(link.label, link.ms ?? link.label)}
+                </NavLink>
+              ))}
+            </div>
+          ) : null}
+        </header>
+
+        {menuOpen ? (
+          <div className="no-print fixed inset-0 z-40 bg-ink/35 xl:hidden" onClick={() => setMenuOpen(false)}>
+            <div
+              className="h-full w-[17rem] overflow-y-auto border-r border-line bg-surface px-3 py-4"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="mb-4 flex items-center justify-between gap-2 px-2.5">
+                <p className="truncate text-sm font-bold text-ink">{profile?.full_name ?? 'Signed in'}</p>
                 <button
                   type="button"
-                  onClick={() => navigate('/')}
-                  className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-accent bg-accent text-white shadow-soft"
-                  aria-label="All departments"
+                  onClick={() => setMenuOpen(false)}
+                  className="grid h-8 w-8 place-items-center rounded-lg border border-line text-muted"
+                  aria-label="Close menu"
                 >
-                  <Waves className="h-5 w-5" />
+                  <X className="h-4 w-4" />
                 </button>
-                <strong className="min-w-0 truncate text-sm font-black sm:text-lg">
-                  {departmentMeta?.name ?? String(settings.business_name)}
-                </strong>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <div className="grid grid-cols-2 rounded-2xl bg-white/80 p-1 text-xs font-black">
-                  <button onClick={() => setLanguage('en')} className={`rounded-xl px-2 py-2 ${language === 'en' ? 'bg-accent text-white' : ''}`}>EN</button>
-                  <button onClick={() => setLanguage('ms')} className={`rounded-xl px-2 py-2 ${language === 'ms' ? 'bg-accent text-white' : ''}`}>BM</button>
-                </div>
-                <button type="button" onClick={exitApp} className="rounded-2xl border border-line px-2 py-2 text-xs font-black sm:px-3 sm:text-sm">
-                  {text('Sign out', 'Keluar')}
-                </button>
+              {departmentList}
+              {pageList}
+              <div className="mt-4 grid grid-cols-2 gap-0.5 rounded-lg bg-shell p-0.5 text-xs font-semibold">
+                <button onClick={() => setLanguage('en')} className={`rounded px-2 py-1.5 ${language === 'en' ? 'bg-surface text-ink' : 'text-muted'}`}>EN</button>
+                <button onClick={() => setLanguage('ms')} className={`rounded px-2 py-1.5 ${language === 'ms' ? 'bg-surface text-ink' : 'text-muted'}`}>BM</button>
               </div>
             </div>
-            {links.length > 1 ? (
-              <select
-                className="mt-2 h-9 w-full rounded-xl border border-line bg-white px-3 text-sm font-black text-ink outline-none focus:border-accent focus:ring-4 focus:ring-teal-100 sm:h-10 sm:rounded-2xl"
-                value={activePath}
-                onChange={(event) => navigate(event.target.value)}
-                aria-label="Current page"
-              >
-                {links.map((link) => (
-                  <option key={link.to} value={link.to}>
-                    {link.label}
-                  </option>
-                ))}
-              </select>
-            ) : null}
           </div>
-        </header>
-        <main className="mx-auto w-full max-w-[1320px] min-w-0 px-2.5 py-3 sm:px-4 sm:py-4 lg:px-5 xl:mx-0 xl:px-6">
+        ) : null}
+
+        <main className="mx-auto w-full max-w-[1240px] min-w-0 px-3 py-4 sm:px-5 sm:py-6 xl:mx-0 xl:px-8">
           <Outlet />
         </main>
       </div>
     </div>
+  );
+}
+
+function BadgeDot({ count, inverted = false }: { count: number; inverted?: boolean }) {
+  return (
+    <span
+      className={`grid h-5 min-w-5 shrink-0 place-items-center rounded-full px-1.5 text-[0.6875rem] font-bold tabular ${
+        inverted ? 'bg-white/25 text-white' : 'bg-coral text-white'
+      }`}
+    >
+      {count > 99 ? '99+' : count}
+    </span>
   );
 }

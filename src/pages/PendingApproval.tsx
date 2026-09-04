@@ -13,9 +13,9 @@ export default function PendingApproval({ name, status }: { name: string; status
 
   return (
     <main className="grid min-h-screen place-items-center bg-paper px-4 py-8">
-      <section className="w-full max-w-lg rounded-[2rem] border border-line bg-white/95 p-6 shadow-soft">
+      <section className="w-full max-w-lg rounded-2xl border border-line bg-white/95 p-6 shadow-soft">
         <div className="flex items-start gap-3">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-pink-50 text-coral">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-shell text-coral">
             <Hourglass className="h-6 w-6" />
           </span>
           <div>

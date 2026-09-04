@@ -142,14 +142,14 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
       />
       <section className="mb-4 grid grid-cols-2 gap-2">
         <button
-          className={`rounded-2xl border p-3 text-left shadow-soft transition sm:p-4 ${mode === 'in' ? 'border-accent bg-teal-50 ring-2 ring-teal-100' : 'border-line bg-white/85 hover:border-accent'}`}
+          className={`rounded-2xl border p-3 text-left shadow-soft transition sm:p-4 ${mode === 'in' ? 'border-accent bg-shell ring-2 ring-accent/20' : 'border-line bg-white/85 hover:border-accent'}`}
           onClick={() => setMode('in')}
         >
           <p className="text-xs font-black uppercase tracking-widest text-accent">{text('Record', 'Rekod')}</p>
           <h2 className="mt-1.5 text-lg font-black sm:text-xl">{text('Stock In', 'Stok Masuk')}</h2>
         </button>
         <button
-          className={`rounded-2xl border p-3 text-left shadow-soft transition sm:p-4 ${mode === 'out' ? 'border-accent bg-teal-50 ring-2 ring-teal-100' : 'border-line bg-white/85 hover:border-accent'}`}
+          className={`rounded-2xl border p-3 text-left shadow-soft transition sm:p-4 ${mode === 'out' ? 'border-accent bg-shell ring-2 ring-accent/20' : 'border-line bg-white/85 hover:border-accent'}`}
           onClick={() => setMode('out')}
         >
           <p className="text-xs font-black uppercase tracking-widest text-coral">{text('History', 'Sejarah')}</p>
@@ -160,22 +160,22 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
       {mode === 'in' ? <div className="mb-5 sm:mb-8"><StockIn settings={settings} embedded /></div> : null}
       {mode === 'out' ? (
         <section className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-4">
-          <div className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-5">
+          <div className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-xl sm:p-5">
             <p className="text-xs font-black text-neutral-600 sm:text-sm">Quantity Out</p>
             <p className="mt-1.5 text-lg font-black sm:text-2xl">{filteredOutRows.reduce((sum, row) => sum + row.qty, 0)}</p>
           </div>
-          <div className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-5">
+          <div className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-xl sm:p-5">
             <p className="text-xs font-black text-neutral-600 sm:text-sm">Total Revenue</p>
             <p className="mt-1.5 text-lg font-black sm:text-2xl">{money(filteredOutRows.filter((row) => row.method !== 'complimentary').reduce((sum, row) => sum + row.total, 0), String(settings.currency_symbol))}</p>
           </div>
-          <div className="rounded-2xl border border-pink-200 bg-pink-50 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-5">
-            <p className="text-xs font-black text-pink-700 sm:text-sm">FOC Cost</p>
+          <div className="rounded-2xl border border-line bg-shell p-3 shadow-soft sm:rounded-xl sm:p-5">
+            <p className="text-xs font-black text-coral sm:text-sm">FOC Cost</p>
             <p className="mt-1.5 text-lg font-black text-coral sm:text-2xl">- {money(filteredOutRows.filter((row) => row.method === 'complimentary').reduce((sum, row) => sum + row.total, 0), String(settings.currency_symbol))}</p>
           </div>
         </section>
       ) : null}
 
-      <section className="island-panel mb-4 rounded-2xl p-2.5 sm:mb-5 sm:rounded-[2rem] sm:p-4">
+      <section className="island-panel mb-4 rounded-2xl p-2.5 sm:mb-5 sm:rounded-2xl sm:p-4">
         <h2 className="text-lg font-black sm:text-xl">{mode === 'in' ? text('What was added', 'Apa yang ditambah') : text('What was stocked out', 'Apa yang keluar')}</h2>
         <div className="mt-2 flex min-w-0 flex-col gap-2 xl:flex-row xl:items-center">
           <div className="grid w-full min-w-0 grid-cols-4 gap-1 rounded-2xl bg-white/80 p-1 text-xs font-black sm:text-sm xl:w-[430px] xl:shrink-0">
@@ -226,26 +226,26 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
       {mode === 'in' ? (
         <>
           <section className="mb-4 grid grid-cols-2 gap-2 sm:gap-4">
-            <div className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-5">
+            <div className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-xl sm:p-5">
               <p className="text-xs font-black text-neutral-600 sm:text-sm">Stock-in quantity</p>
               <p className="mt-1.5 text-lg font-black sm:text-2xl">{filteredInRows.reduce((sum, row) => sum + row.qty, 0)} unit(s)</p>
             </div>
-            <div className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-5">
+            <div className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-xl sm:p-5">
               <p className="text-xs font-black text-neutral-600 sm:text-sm">Entries</p>
               <p className="mt-1.5 text-lg font-black sm:text-2xl">{filteredInRows.length}</p>
             </div>
           </section>
-          <section className="island-panel mt-4 rounded-2xl p-3 sm:mt-5 sm:rounded-[2rem] sm:p-5">
+          <section className="island-panel mt-4 rounded-2xl p-3 sm:mt-5 sm:rounded-2xl sm:p-5">
             <h2 className="text-lg font-black sm:text-xl">Stock In History</h2>
             <div className="hidden">
               {filteredInRows.map((row, index) => (
-                <article key={`${row.date}-${row.item}-card-${index}`} className={`rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4 ${index === 0 ? 'ring-2 ring-pink-100' : ''}`}>
+                <article key={`${row.date}-${row.item}-card-${index}`} className={`rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-xl sm:p-4 ${index === 0 ? 'ring-1 ring-accent/30' : ''}`}>
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
                       <p className="font-black">{row.item}</p>
                       <p className="text-sm font-bold text-neutral-600">{row.date} · {row.worker}</p>
                     </div>
-                    <span className="rounded-xl bg-teal-50 px-3 py-1 text-sm font-black text-accent">+{row.qty}</span>
+                    <span className="rounded-xl bg-shell px-3 py-1 text-sm font-black text-accent">+{row.qty}</span>
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-1.5 text-xs font-bold sm:mt-3 sm:gap-2 sm:text-sm">
                     <div className="rounded-2xl bg-shell p-3"><p className="text-neutral-500">Input</p><p>{row.unit}</p></div>
@@ -270,7 +270,7 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
                 </thead>
                 <tbody>
                   {filteredInRows.map((row, index) => (
-                    <tr key={`${row.date}-${row.item}-${index}`} className={`border-t border-line hover:bg-shell ${index === 0 ? 'bg-pink-50' : ''}`}>
+                    <tr key={`${row.date}-${row.item}-${index}`} className={`border-t border-line hover:bg-shell ${index === 0 ? 'bg-shell' : ''}`}>
                       <td className="p-3 font-black whitespace-nowrap">{row.date}</td>
                       <td className="p-3 font-black whitespace-nowrap">{row.item}</td>
                       <td className="p-3 whitespace-nowrap">{row.worker}</td>
@@ -287,16 +287,16 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
         </>
       ) : (
         <>
-          <section className="island-panel rounded-2xl p-3 sm:rounded-[2rem] sm:p-5">
+          <section className="island-panel rounded-2xl p-3 sm:rounded-2xl sm:p-5">
             <div className="hidden">
               {filteredOutRows.map((row, index) => (
-                <article key={`${row.sale}-${row.item}-card-${index}`} className={`rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4 ${index === 0 ? 'ring-2 ring-pink-100' : ''}`}>
+                <article key={`${row.sale}-${row.item}-card-${index}`} className={`rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-xl sm:p-4 ${index === 0 ? 'ring-1 ring-accent/30' : ''}`}>
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
                       <p className="font-black">{row.item}</p>
                       <p className="text-sm font-bold text-neutral-600">{row.date} · {row.worker}</p>
                     </div>
-                    <span className={`rounded-xl px-3 py-1 text-sm font-black ${row.method === 'complimentary' ? 'bg-pink-50 text-coral' : 'bg-teal-50 text-accent'}`}>
+                    <span className={`rounded-xl px-3 py-1 text-sm font-black ${row.method === 'complimentary' ? 'bg-shell text-coral' : 'bg-shell text-accent'}`}>
                       {methodLabel(row.method)}
                     </span>
                   </div>
@@ -323,7 +323,7 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
                 </thead>
                 <tbody>
                   {filteredOutRows.map((row, index) => (
-                    <tr key={`${row.sale}-${row.item}-${index}`} className={`border-t border-line hover:bg-shell ${index === 0 ? 'bg-pink-50' : ''}`}>
+                    <tr key={`${row.sale}-${row.item}-${index}`} className={`border-t border-line hover:bg-shell ${index === 0 ? 'bg-shell' : ''}`}>
                       <td className="p-3 font-black whitespace-nowrap">{row.date}</td>
                       <td className="p-3 whitespace-nowrap">{row.sale}</td>
                       <td className="p-3 whitespace-nowrap">{row.worker}</td>

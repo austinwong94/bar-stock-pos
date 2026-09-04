@@ -100,7 +100,7 @@ export default function BoatRegister() {
                   <span
                     className={`rounded-xl px-2 py-1 text-xs font-black ${
                       boat.status === 'active'
-                        ? 'bg-teal-50 text-accent'
+                        ? 'bg-shell text-accent'
                         : boat.status === 'maintenance'
                           ? 'bg-amber-50 text-amber-800'
                           : 'bg-neutral-100 text-neutral-600'

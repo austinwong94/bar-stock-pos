@@ -1,14 +1,18 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { supabase } from './supabase';
-import type { Department, DepartmentCode, PlatformProfile } from './platformTypes';
+import type { Department, DepartmentBadge, DepartmentCode, PlatformProfile } from './platformTypes';
 
 export const DEPARTMENT_ORDER: DepartmentCode[] = [
+  'ops',
   'bar',
   'guests',
   'fleet',
   'boarding',
   'activities',
+  'kitchen',
+  'purchasing',
   'maintenance',
+  'items',
   'platform',
 ];
 
@@ -26,6 +30,10 @@ export const DEPARTMENT_ENTRY: Record<DepartmentCode, string[]> = {
   boarding: ['boarding.view', 'boarding.view_all', 'boarding.mark'],
   activities: ['activities.view', 'activities.select', 'activities.mark'],
   maintenance: ['maintenance.view', 'maintenance.fuel.record', 'maintenance.repair.record'],
+  kitchen: ['kitchen.request.view', 'kitchen.request.create', 'kitchen.manage'],
+  purchasing: ['purchasing.view', 'purchasing.fulfil', 'purchasing.manage'],
+  ops: ['ops.log.view', 'ops.messages.send', 'ops.messages.manage', 'ops.log.manage'],
+  items: ['items.view', 'items.report', 'items.manage'],
   platform: [
     'platform.users.manage',
     'platform.roles.manage',
@@ -43,8 +51,10 @@ type AccessValue = {
   canAny: (...codes: string[]) => boolean;
   canDepartment: (code: DepartmentCode) => boolean;
   visibleDepartments: Department[];
+  badges: Record<string, DepartmentBadge>;
   loading: boolean;
   reload: () => Promise<void>;
+  reloadBadges: () => Promise<void>;
 };
 
 const AccessContext = createContext<AccessValue | null>(null);
@@ -59,7 +69,21 @@ export function AccessProvider({
   const [profile, setProfile] = useState<PlatformProfile | null>(null);
   const [permissions, setPermissions] = useState<Set<string>>(new Set());
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [badges, setBadges] = useState<Record<string, DepartmentBadge>>({});
   const [loading, setLoading] = useState(true);
+
+  const reloadBadges = useCallback(async () => {
+    if (!userId) return;
+    const today = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kuala_Lumpur',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+    const { data } = await supabase.rpc('department_badges', { p_service_date: today });
+    const rows = (data ?? []) as DepartmentBadge[];
+    setBadges(Object.fromEntries(rows.map((row) => [row.department_code, row])));
+  }, [userId]);
 
   const reload = useCallback(async () => {
     if (!userId) {
@@ -79,7 +103,8 @@ export function AccessProvider({
     setPermissions(new Set(readPermissionCodes(permissionResult.data)));
     setDepartments((departmentResult.data ?? []) as Department[]);
     setLoading(false);
-  }, [userId]);
+    void reloadBadges();
+  }, [reloadBadges, userId]);
 
   useEffect(() => {
     void reload();
@@ -92,8 +117,11 @@ export function AccessProvider({
     const visibleDepartments = [...departments]
       .filter((department) => canDepartment(department.code))
       .sort((a, b) => DEPARTMENT_ORDER.indexOf(a.code) - DEPARTMENT_ORDER.indexOf(b.code));
-    return { profile, permissions, departments, can, canAny, canDepartment, visibleDepartments, loading, reload };
-  }, [departments, loading, permissions, profile, reload]);
+    return {
+      profile, permissions, departments, can, canAny, canDepartment,
+      visibleDepartments, badges, loading, reload, reloadBadges,
+    };
+  }, [badges, departments, loading, permissions, profile, reload, reloadBadges]);
 
   return <AccessContext.Provider value={value}>{children}</AccessContext.Provider>;
 }

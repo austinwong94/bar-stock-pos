@@ -189,7 +189,7 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
   return (
     <>
       {embedded ? null : <PageHeader title={text('Stock In', 'Stok Masuk')} />}
-      <form onSubmit={addLine} className="island-panel grid gap-4 rounded-2xl p-3 shadow-soft sm:rounded-[2rem] sm:p-5">
+      <form onSubmit={addLine} className="island-panel grid gap-4 rounded-2xl p-3 shadow-soft sm:rounded-2xl sm:p-5">
         <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-2xl border border-line bg-white/75 p-2">
           <p className="text-xs font-black leading-tight sm:text-sm">{text('Entered by', 'Diisi oleh')}</p>
           <div className="grid min-w-0 grid-cols-4 gap-1.5">
@@ -229,7 +229,7 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
                   type="button"
                   onClick={() => setUnit(nextUnit)}
                   className={`flex h-11 flex-col items-center justify-center rounded-xl border px-3 py-0 text-sm font-black leading-tight shadow-soft transition sm:h-[52px] sm:rounded-2xl sm:px-4 sm:text-base ${
-                    unit === nextUnit ? 'border-accent bg-teal-50 text-accent ring-2 ring-teal-100' : 'border-line bg-white text-ink'
+                    unit === nextUnit ? 'border-accent bg-shell text-accent ring-2 ring-accent/20' : 'border-line bg-white text-ink'
                   }`}
                 >
                   <span className="block">{nextUnit === 'can' ? 'UNIT(S)' : 'CARTON(S)'}</span>
@@ -264,13 +264,13 @@ export default function StockIn({ settings, embedded = false }: { settings: Sett
           </button>
         </div>
       </form>
-      <section className="island-panel mt-4 rounded-2xl p-3 shadow-soft sm:rounded-[2rem] sm:p-5">
+      <section className="island-panel mt-4 rounded-2xl p-3 shadow-soft sm:rounded-2xl sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-lg font-black">{text('Stock-in list', 'Senarai stok masuk')}</h2>
           </div>
           <div className="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] gap-2 sm:flex sm:items-center">
-            <p className="flex min-h-10 items-center justify-center rounded-xl bg-teal-50 px-3 py-2 text-sm font-black text-accent">
+            <p className="flex min-h-10 items-center justify-center rounded-xl bg-shell px-3 py-2 text-sm font-black text-accent">
               {totalBatchUnits} unit(s)
             </p>
             <button type="button" className={`${buttonClass} min-w-0 justify-center`} disabled={lines.length === 0} onClick={openStockInConfirmation}>

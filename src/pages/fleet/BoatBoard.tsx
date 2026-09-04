@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Lock, LockOpen, RefreshCw, Ship, Users } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Lock, LockOpen, RefreshCw, Ship, Users } from 'lucide-react';
 import { PageHeader, Stat } from '../../components/Page';
 import { Field, buttonClass, inputClass, secondaryButtonClass } from '../../components/Form';
 import { useToast } from '../../components/Toast';
@@ -7,7 +7,7 @@ import { supabase } from '../../lib/supabase';
 import { useAccess } from '../../lib/access';
 import { useCardMover } from '../../lib/dragdrop';
 import { loadBoats, loadEmployees, readErrorMessage, sourceLabels, todayIso } from '../../lib/opsData';
-import type { Boat, BoatAssignment, Booking, Employee, TripBooking } from '../../lib/platformTypes';
+import type { Boat, BoatAssignment, Booking, Employee, Tourist, TripBooking } from '../../lib/platformTypes';
 
 const UNASSIGNED = 'unassigned';
 
@@ -21,7 +21,17 @@ export default function BoatBoard() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [captains, setCaptains] = useState<Employee[]>([]);
   const [guides, setGuides] = useState<Employee[]>([]);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+
+  function toggleGroup(bookingId: string) {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(bookingId)) next.delete(bookingId);
+      else next.add(bookingId);
+      return next;
+    });
+  }
 
   const canAssign = can('fleet.assign');
   const canCrew = can('fleet.crew.assign');
@@ -44,7 +54,7 @@ export default function BoatBoard() {
           : Promise.resolve({ data: [], error: null }),
         supabase
           .from('bookings')
-          .select('*, agencies(id,name,source_type)')
+          .select('*, agencies(id,name,source_type), tourists(id,full_name,age_band,sort_order)')
           .eq('service_date', date)
           .neq('status', 'cancelled')
           .order('lead_name'),
@@ -200,10 +210,17 @@ export default function BoatBoard() {
           </h2>
           <div className="grid gap-2">
             {unassigned.map((booking) => (
-              <GroupCard key={booking.id} booking={booking} held={held === booking.id} dragProps={dragProps} />
+              <GroupCard
+                key={booking.id}
+                booking={booking}
+                held={held === booking.id}
+                dragProps={dragProps}
+                open={expanded.has(booking.id)}
+                onToggle={() => toggleGroup(booking.id)}
+              />
             ))}
             {unassigned.length === 0 ? (
-              <p className="rounded-xl bg-teal-50 px-3 py-4 text-center text-sm font-bold text-accent">
+              <p className="rounded-xl bg-shell px-3 py-4 text-center text-sm font-bold text-accent">
                 Everyone has a boat.
               </p>
             ) : null}
@@ -297,6 +314,8 @@ export default function BoatBoard() {
                       booking={booking}
                       held={held === booking.id}
                       dragProps={dragProps}
+                      open={expanded.has(booking.id)}
+                      onToggle={() => toggleGroup(booking.id)}
                       onboard
                     />
                   ))}
@@ -324,31 +343,94 @@ function GroupCard({
   booking,
   held,
   dragProps,
+  open,
+  onToggle,
   onboard = false,
 }: {
   booking: Booking;
   held: boolean;
   dragProps: (id: string) => Record<string, unknown>;
+  open: boolean;
+  onToggle: () => void;
   onboard?: boolean;
 }) {
+  const people = [...((booking.tourists ?? []) as Tourist[])].sort((a, b) => a.sort_order - b.sort_order);
+
   return (
     <article
-      {...dragProps(booking.id)}
-      className={`cursor-grab rounded-xl border p-2.5 shadow-sm transition active:cursor-grabbing ${
-        held ? 'border-accent bg-teal-50 ring-2 ring-accent' : onboard ? 'border-line bg-shell/70' : 'border-line bg-white'
+      className={`rounded-lg border text-left transition ${
+        held ? 'border-accent bg-accent/8 ring-1 ring-accent' : onboard ? 'border-line bg-shell/50' : 'border-line bg-surface'
       }`}
     >
-      <p className="flex items-center justify-between gap-2 text-sm font-black">
-        <span className="min-w-0 truncate">{booking.lead_name}</span>
-        <span className="shrink-0 rounded-lg bg-accent px-2 py-0.5 text-xs text-white">{booking.pax_total} pax</span>
-      </p>
-      <p className="mt-0.5 truncate text-xs font-semibold text-neutral-600">
-        {booking.booking_ref} · {sourceLabels[booking.source_type] ?? booking.source_type}
-        {booking.pax_children > 0 ? ` · ${booking.pax_children} child` : ''}
-      </p>
-      {booking.pickup_hotel_name ? (
-        <p className="truncate text-[11px] font-semibold text-neutral-500">{booking.pickup_hotel_name}</p>
+      <div {...dragProps(booking.id)} className="cursor-grab p-2.5 active:cursor-grabbing">
+        <p className="flex items-center justify-between gap-2 text-sm font-semibold text-ink">
+          <span className="min-w-0 truncate">{booking.lead_name}</span>
+          <span className="shrink-0 rounded bg-accent px-1.5 py-0.5 text-xs font-bold tabular text-white">
+            {booking.pax_total} pax
+          </span>
+        </p>
+
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          <PaxChip label="adult" count={booking.pax_adults} />
+          <PaxChip label="child" count={booking.pax_children} tone="warn" />
+          <PaxChip label="elderly" count={booking.pax_elderly} tone="alert" />
+        </div>
+
+        <p className="mt-1.5 truncate text-xs font-medium text-muted">
+          {booking.booking_ref} · {sourceLabels[booking.source_type] ?? booking.source_type}
+          {booking.pickup_hotel_name ? ` · ${booking.pickup_hotel_name}` : ''}
+        </p>
+      </div>
+
+      {people.length > 0 ? (
+        <>
+          <button
+            type="button"
+            onClick={onToggle}
+            className="flex w-full items-center gap-1 border-t border-line px-2.5 py-1.5 text-xs font-semibold text-muted transition hover:bg-shell hover:text-ink"
+          >
+            {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+            {open ? 'Hide names' : `Show ${people.length} name${people.length === 1 ? '' : 's'}`}
+          </button>
+          {open ? (
+            <ol className="border-t border-line px-2.5 py-1.5">
+              {people.map((person, index) => (
+                <li key={person.id} className="flex items-center gap-2 py-0.5 text-xs">
+                  <span className="w-4 shrink-0 tabular text-muted">{index + 1}</span>
+                  <span className="min-w-0 flex-1 truncate font-medium text-ink">{person.full_name}</span>
+                  {person.age_band !== 'adult' ? (
+                    <span className="shrink-0 text-[0.6875rem] font-semibold capitalize text-muted">
+                      {person.age_band}
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ol>
+          ) : null}
+        </>
       ) : null}
     </article>
+  );
+}
+
+function PaxChip({
+  label,
+  count,
+  tone = 'default',
+}: {
+  label: string;
+  count: number;
+  tone?: 'default' | 'warn' | 'alert';
+}) {
+  if (!count) return null;
+  const tones = {
+    default: 'bg-shell text-muted',
+    warn: 'bg-warning/12 text-warning',
+    alert: 'bg-coral/12 text-coral',
+  };
+  return (
+    <span className={`rounded px-1.5 py-0.5 text-[0.6875rem] font-semibold tabular ${tones[tone]}`}>
+      {count} {label}
+    </span>
   );
 }

@@ -411,7 +411,7 @@ function UserPermissionModal({
                         <p className="text-sm font-black">
                           {permission.name}
                           {state?.allowed ? (
-                            <span className="ml-2 rounded bg-teal-50 px-1.5 py-0.5 text-[10px] font-black text-accent">ALLOWED</span>
+                            <span className="ml-2 rounded bg-shell px-1.5 py-0.5 text-[10px] font-black text-accent">ALLOWED</span>
                           ) : (
                             <span className="ml-2 rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-black text-neutral-500">BLOCKED</span>
                           )}

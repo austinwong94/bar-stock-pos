@@ -249,7 +249,7 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
         }
       />
       {!demoAdminUnlocked ? (
-        <div className="island-panel mb-4 max-w-xl rounded-2xl p-3 sm:mb-5 sm:rounded-[2rem] sm:p-5">
+        <div className="island-panel mb-4 max-w-xl rounded-2xl p-3 sm:mb-5 sm:rounded-2xl sm:p-5">
           <h2 className="text-xl font-black sm:text-2xl">{text('Admin Access', 'Akses Pentadbir')}</h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
             <input className={inputClass} type="password" value={adminPin} onChange={(e) => setAdminPin(e.target.value)} placeholder="Admin password" />
@@ -259,7 +259,7 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
       ) : null}
       {!demoAdminUnlocked ? null : (
       <>
-      <section className="island-panel mb-4 rounded-2xl p-1.5 sm:mb-5 sm:rounded-[2rem] sm:p-2">
+      <section className="island-panel mb-4 rounded-2xl p-1.5 sm:mb-5 sm:rounded-2xl sm:p-2">
         <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
@@ -279,7 +279,7 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
       </section>
       {adminSection === 'products' ? (
       <>
-      <section className="island-panel mb-4 rounded-2xl p-3 sm:mb-5 sm:rounded-[2rem] sm:p-5">
+      <section className="island-panel mb-4 rounded-2xl p-3 sm:mb-5 sm:rounded-2xl sm:p-5">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h2 className="text-lg font-black sm:text-xl">{text('Product Categories', 'Kategori Produk')}</h2>
@@ -297,7 +297,7 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
           ))}
         </div>
       </section>
-      <form onSubmit={saveBundle} className="island-panel mb-4 rounded-2xl p-3 sm:mb-5 sm:rounded-[2rem] sm:p-5">
+      <form onSubmit={saveBundle} className="island-panel mb-4 rounded-2xl p-3 sm:mb-5 sm:rounded-2xl sm:p-5">
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
           <div className="grid gap-3 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
             <span className="grid h-12 w-12 place-items-center rounded-2xl bg-accent text-white shadow-glow">
@@ -355,7 +355,7 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
       </form>
       <div className="hidden">
         {sortedProducts.map((product) => (
-          <article key={product.id} className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4">
+          <article key={product.id} className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-xl sm:p-4">
             <div className="grid grid-cols-[72px_1fr] gap-3 sm:grid-cols-[88px_1fr]">
               <img
                 src={product.image_url ?? assetPath('assets/custom-order.svg')}
@@ -399,7 +399,7 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
           </article>
         ))}
       </div>
-      <div className="overflow-x-auto rounded-2xl border border-line bg-white/80 shadow-soft sm:rounded-[2rem]">
+      <div className="overflow-x-auto rounded-2xl border border-line bg-white/80 shadow-soft sm:rounded-2xl">
         <table className="w-full min-w-[820px] text-left">
           <thead className="bg-paper text-sm">
             <tr>
@@ -463,7 +463,7 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
       </div>
       </>
       ) : (
-        <section className="island-panel rounded-2xl p-3 sm:rounded-[2rem] sm:p-5">
+        <section className="island-panel rounded-2xl p-3 sm:rounded-2xl sm:p-5">
           <h2 className="text-lg font-black sm:text-xl">Price History</h2>
           <div className="mt-3 overflow-x-auto rounded-2xl border border-line bg-white/75">
             <table className="w-full min-w-[980px] text-left text-sm">

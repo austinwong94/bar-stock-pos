@@ -442,7 +442,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
             </div>
           ))}
         </div>
-        <div className="mt-4 rounded-2xl bg-shell p-3 sm:mt-5 sm:rounded-[1.5rem] sm:p-4">
+        <div className="mt-4 rounded-2xl bg-shell p-3 sm:mt-5 sm:rounded-xl sm:p-4">
           <Field label={text('Discount', 'Diskaun')}>
             <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
               <button type="button" className={`${secondaryButtonClass} px-2`} onClick={() => { setCustomDiscount(''); setDiscount(0); }}>
@@ -531,7 +531,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
                     <button className={`${secondaryButtonClass} h-9 min-h-9 w-9 px-0`} onClick={() => change(item.product.id, -1)} aria-label="Decrease">
                       <Minus className="h-4 w-4" />
                     </button>
-                    <span className="grid h-9 min-w-9 place-items-center rounded-xl bg-teal-50 px-2 text-sm font-black text-accent">{item.quantity}</span>
+                    <span className="grid h-9 min-w-9 place-items-center rounded-xl bg-shell px-2 text-sm font-black text-accent">{item.quantity}</span>
                     <button className={`${secondaryButtonClass} h-9 min-h-9 w-9 px-0`} onClick={() => change(item.product.id, 1)} aria-label="Increase">
                       <Plus className="h-4 w-4" />
                     </button>
@@ -554,7 +554,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
       <PageHeader
         title={text('POS', 'Jualan')}
       />
-      <section className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-pink-200 bg-gradient-to-r from-pink-50 via-white to-teal-50 p-2.5 shadow-soft sm:mb-5 sm:rounded-[1.75rem] sm:p-4">
+      <section className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-line bg-surface p-2.5 shadow-soft sm:mb-5 sm:rounded-2xl sm:p-4">
         <p className="text-xs font-black uppercase tracking-widest text-accent">{text('Today', 'Hari ini')}</p>
         <p className="text-base font-black text-ink sm:text-xl lg:text-2xl">{todayLabel}</p>
       </section>
@@ -594,7 +594,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
               {category === 'Beer' && bundleEnabled ? (
                 <button
                   type="button"
-                  className="mb-3 grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border border-accent bg-gradient-to-r from-teal-50 via-white to-pink-50 p-3 text-left shadow-soft transition hover:-translate-y-0.5"
+                  className="mb-3 grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border border-accent bg-shell p-3 text-left shadow-soft transition hover:bg-surface"
                   onClick={openBundleModal}
                 >
                   <span className="grid h-11 w-11 place-items-center rounded-2xl bg-accent text-white">
@@ -621,9 +621,9 @@ export default function POS({ settings }: { settings: SettingsMap }) {
                       type="button"
                       disabled={disabled}
                       onClick={() => add(product)}
-                      className={`relative min-h-28 overflow-hidden rounded-2xl border p-0 text-left shadow-soft transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-32 sm:rounded-[1.25rem] lg:min-h-36 ${
+                      className={`relative min-h-28 overflow-hidden rounded-2xl border p-0 text-left shadow-soft transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-32 sm:rounded-xl lg:min-h-36 ${
                         selectedQuantity > 0
-                          ? 'border-accent bg-teal-50 ring-4 ring-teal-100'
+                          ? 'border-accent bg-shell ring-4 ring-accent/20'
                           : low
                             ? 'border-warning bg-amber-50'
                             : 'border-line bg-white/90'
@@ -657,7 +657,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
           ))}
           <div>
             <h2 className="mb-2 text-lg font-black sm:mb-3 sm:text-xl">{text('Custom Order', 'Pesanan Khas')}</h2>
-            <div className="island-card grid min-w-0 gap-3 rounded-2xl p-3 sm:grid-cols-[120px_1fr] sm:items-end sm:rounded-[1.75rem] sm:p-4 lg:grid-cols-[130px_minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <div className="island-card grid min-w-0 gap-3 rounded-2xl p-3 sm:grid-cols-[120px_1fr] sm:items-end sm:rounded-2xl sm:p-4 lg:grid-cols-[130px_minmax(0,1fr)_minmax(0,1fr)_auto]">
               <img src={assetPath('assets/custom-order.svg')} alt="" className="h-20 w-full rounded-2xl object-cover sm:h-full sm:rounded-3xl" />
               <Field label={text('Product name', 'Nama produk')}>
                 <input className={inputClass} value={customName} onChange={(e) => setCustomName(e.target.value)} />
@@ -672,7 +672,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
             </div>
           </div>
         </section>
-        <aside className="island-panel hidden min-w-0 rounded-[1.5rem] p-3 2xl:sticky 2xl:top-4 2xl:block 2xl:self-start">
+        <aside className="island-panel hidden min-w-0 rounded-xl p-3 2xl:sticky 2xl:top-4 2xl:block 2xl:self-start">
           {renderCartPanel()}
         </aside>
       </div>
@@ -681,7 +681,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
           <button
             type="button"
             onClick={() => setCartDrawerOpen(true)}
-            className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-xl border border-accent bg-teal-50 px-3 py-2 text-left shadow-soft sm:gap-3 sm:rounded-2xl sm:px-4 sm:py-3"
+            className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-xl border border-accent bg-shell px-3 py-2 text-left shadow-soft sm:gap-3 sm:rounded-2xl sm:px-4 sm:py-3"
           >
             <span className="grid h-9 w-9 place-items-center rounded-xl bg-accent text-white sm:h-11 sm:w-11 sm:rounded-2xl">
               <ShoppingCart className="h-5 w-5" />
@@ -741,7 +741,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
                 </button>
               </div>
             </div>
-            <div className="rounded-2xl border border-pink-200 bg-pink-50 p-3">
+            <div className="rounded-2xl border border-line bg-shell p-3">
               <div className="flex items-center justify-between gap-3">
                 <p className="font-black">Choose beer types</p>
                 <p className={`font-black ${bundleSelectedUnits === bundleRequiredUnits ? 'text-accent' : 'text-coral'}`}>
@@ -764,7 +764,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
                       <button className={`${secondaryButtonClass} h-10 min-h-10 w-10 px-0`} onClick={() => changeBundleSelection(product, -1)}>
                         <Minus className="h-4 w-4" />
                       </button>
-                      <span className="grid h-10 min-w-10 place-items-center rounded-xl bg-teal-50 px-3 font-black text-accent">{selected}</span>
+                      <span className="grid h-10 min-w-10 place-items-center rounded-xl bg-shell px-3 font-black text-accent">{selected}</span>
                       <button className={`${secondaryButtonClass} h-10 min-h-10 w-10 px-0`} onClick={() => changeBundleSelection(product, 1)}>
                         <Plus className="h-4 w-4" />
                       </button>
@@ -819,7 +819,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
               <span>{money(total, String(settings.currency_symbol))}</span>
             </div>
             {method === 'complimentary' ? (
-              <p className="rounded-2xl bg-pink-50 p-3 text-sm font-black text-coral">Paid amount: {money(0, String(settings.currency_symbol))}. FOC is recorded as cost, not sales.</p>
+              <p className="rounded-2xl bg-shell p-3 text-sm font-black text-coral">Paid amount: {money(0, String(settings.currency_symbol))}. FOC is recorded as cost, not sales.</p>
             ) : null}
             <p className="text-sm font-bold text-accent">{dualMoney(total, String(settings.currency_symbol))}</p>
             <p className="rounded-2xl bg-shell p-3 text-sm font-bold">{text('Order accepted by', 'Diterima oleh')}: {orderTakenBy}</p>

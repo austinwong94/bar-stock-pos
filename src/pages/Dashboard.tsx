@@ -112,7 +112,7 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
           </>
         }
       />
-      <section className="island-panel mb-4 rounded-[1.5rem] p-2 sm:p-3">
+      <section className="island-panel mb-4 rounded-xl p-2 sm:p-3">
         <div className="grid min-w-0 grid-cols-[minmax(132px,0.82fr)_minmax(0,1fr)] items-center gap-2 sm:grid-cols-[minmax(220px,360px)_minmax(0,1fr)]">
           <div className="grid grid-cols-3 gap-1 rounded-2xl bg-white/80 p-1 font-black">
             {(['day', 'week', 'month'] as const).map((item) => (
@@ -134,7 +134,7 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
           </div>
         </div>
       </section>
-      <section className="mb-4 rounded-2xl border border-line bg-gradient-to-br from-pink-100 via-rose-200 to-teal-100 p-3 text-ink shadow-glow sm:rounded-[1.5rem] sm:p-4">
+      <section className="mb-4 rounded-2xl border border-line bg-surface p-3 text-ink shadow-soft sm:rounded-xl sm:p-4">
         <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(260px,380px)] lg:items-end">
           <div className="min-w-0">
             <p className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-accent sm:text-sm"><Sparkles className="h-4 w-4" /> {period.toUpperCase()}</p>
@@ -158,11 +158,11 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-3 min-[1450px]:grid-cols-5">
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 shadow-soft sm:p-4"><p className="text-xs font-black text-emerald-700 sm:text-sm">{text('Cash Payment', 'Bayaran tunai')} 💵</p><p className="mt-1.5 text-lg font-black sm:text-xl">{money(totals.cash, String(settings.currency_symbol))}</p></div>
         <div className="rounded-2xl border border-sky-200 bg-sky-50 p-3 shadow-soft sm:p-4"><p className="text-xs font-black text-sky-700 sm:text-sm">{text('QR Payment', 'Bayaran QR')} 📱</p><p className="mt-1.5 text-lg font-black sm:text-xl">{money(totals.qr, String(settings.currency_symbol))}</p></div>
-        <div className="rounded-2xl border border-pink-200 bg-pink-50 p-3 shadow-soft sm:p-4"><p className="text-xs font-black text-pink-700 sm:text-sm">FOC Cost 🎁</p><p className="mt-1.5 text-lg font-black text-coral sm:text-xl">- {money(totals.focCost, String(settings.currency_symbol))}</p></div>
+        <div className="rounded-2xl border border-line bg-shell p-3 shadow-soft sm:p-4"><p className="text-xs font-black text-coral sm:text-sm">FOC Cost 🎁</p><p className="mt-1.5 text-lg font-black text-coral sm:text-xl">- {money(totals.focCost, String(settings.currency_symbol))}</p></div>
         <div className="rounded-2xl border border-violet-200 bg-violet-50 p-3 shadow-soft sm:p-4"><p className="text-xs font-black text-violet-700 sm:text-sm">Total Revenue</p><p className="mt-1.5 text-lg font-black sm:text-xl">{money(totals.paidRevenue, String(settings.currency_symbol))}</p></div>
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 shadow-soft sm:p-4"><p className="text-xs font-black text-amber-700 sm:text-sm">{text('Transactions', 'Transaksi')}</p><p className="mt-1.5 text-lg font-black sm:text-xl">{totals.tx}</p></div>
       </div>
-      <section className="island-panel mt-4 rounded-2xl p-3 sm:mt-5 sm:rounded-[2rem] sm:p-5">
+      <section className="island-panel mt-4 rounded-2xl p-3 sm:mt-5 sm:rounded-2xl sm:p-5">
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)] lg:items-end">
           <div className="min-w-0">
             <h2 className="flex items-center gap-2 text-xl font-black"><PackageCheck className="h-5 w-5 text-accent" /> {text('Stock Hub', 'Hab Stok')}</h2>
@@ -188,13 +188,13 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
             const low = stock <= product.low_stock_threshold;
             const soldToday = soldTodayByProduct[product.id] ?? 0;
             return (
-              <article key={product.id} className="rounded-[1.5rem] border border-line bg-white/85 p-4 shadow-soft">
+              <article key={product.id} className="rounded-xl border border-line bg-white/85 p-4 shadow-soft">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="font-black">{product.name}</p>
                     <p className="text-sm font-bold text-neutral-600">{product.categories?.name === 'Other' ? 'Others' : product.categories?.name ?? 'Others'}</p>
                   </div>
-                  <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-black ${low ? 'bg-amber-100 text-warning' : 'bg-teal-50 text-accent'}`}>
+                  <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-black ${low ? 'bg-amber-100 text-warning' : 'bg-shell text-accent'}`}>
                     {low ? 'Low' : 'OK'}
                   </span>
                 </div>
@@ -229,7 +229,7 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
                     <td className="p-3 font-bold">{soldToday} units</td>
                     <td className={`p-3 font-bold ${low ? 'text-warning' : ''}`}>{stock} units</td>
                     <td className="p-3">
-                      <span className={`rounded-full px-3 py-1 text-xs font-black ${low ? 'bg-amber-100 text-warning' : 'bg-teal-50 text-accent'}`}>
+                      <span className={`rounded-full px-3 py-1 text-xs font-black ${low ? 'bg-amber-100 text-warning' : 'bg-shell text-accent'}`}>
                         {low ? 'Low stock' : 'OK'}
                       </span>
                     </td>

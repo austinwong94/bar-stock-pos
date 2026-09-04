@@ -30,18 +30,20 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="fixed right-4 top-4 z-50 flex w-[min(92vw,380px)] flex-col gap-3">
+      <div className="no-print fixed inset-x-3 top-3 z-50 flex flex-col gap-2 sm:inset-x-auto sm:right-4 sm:top-4 sm:w-[min(92vw,380px)]">
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className="flex items-start gap-3 border border-line bg-white p-4 shadow-soft"
+            className={`flex items-start gap-2.5 rounded-lg border bg-surface px-3.5 py-3 shadow-pop ${
+              toast.type === 'success' ? 'border-accent/30' : 'border-danger/35'
+            }`}
           >
             {toast.type === 'success' ? (
-              <CheckCircle2 className="mt-0.5 h-5 w-5 text-accent" />
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
             ) : (
-              <XCircle className="mt-0.5 h-5 w-5 text-danger" />
+              <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
             )}
-            <p className="text-sm font-medium">{toast.message}</p>
+            <p className="text-sm font-medium leading-snug text-ink">{toast.message}</p>
           </div>
         ))}
       </div>

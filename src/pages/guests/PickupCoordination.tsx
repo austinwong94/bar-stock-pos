@@ -175,7 +175,7 @@ export default function PickupCoordination({ settings }: { settings: SettingsMap
               <BookingCard key={booking.id} booking={booking} held={held === booking.id} dragProps={dragProps} />
             ))}
             {ungrouped.length === 0 ? (
-              <p className="rounded-xl bg-teal-50 px-3 py-4 text-center text-sm font-bold text-accent">
+              <p className="rounded-xl bg-shell px-3 py-4 text-center text-sm font-bold text-accent">
                 Everyone is in a pickup run.
               </p>
             ) : null}
@@ -273,7 +273,7 @@ function BookingCard({
     <article
       {...dragProps(booking.id)}
       className={`cursor-grab rounded-xl border p-2.5 text-left shadow-sm transition active:cursor-grabbing ${
-        held ? 'border-accent bg-teal-50 ring-2 ring-accent' : 'border-line bg-white'
+        held ? 'border-accent bg-shell ring-2 ring-accent' : 'border-line bg-white'
       }`}
     >
       <p className="flex items-center justify-between gap-2 text-sm font-black">

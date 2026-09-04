@@ -3,11 +3,13 @@
 @tailwind utilities;
 
 :root {
-  color: #2b1b27;
-  background: #fff7fa;
-  font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
+  color-scheme: light;
+  color: #12211f;
+  background: #f5f7f6;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 *,
@@ -28,10 +30,8 @@ body {
   min-width: 320px;
   min-height: 100vh;
   overflow-x: hidden;
-  background:
-    radial-gradient(circle at 8% 12%, rgba(255, 111, 145, 0.18), transparent 28rem),
-    radial-gradient(circle at 92% 4%, rgba(0, 166, 163, 0.18), transparent 30rem),
-    linear-gradient(180deg, #fff7fa 0%, #fff0f5 52%, #f4fffb 100%);
+  /* Flat ground. The old radial gradients fought every panel on top. */
+  background: #f5f7f6;
 }
 
 img,
@@ -46,48 +46,92 @@ input,
 select,
 textarea {
   font: inherit;
+  color: inherit;
+}
+
+/* Figures line up in columns everywhere: capacities, pax, money, times. */
+table,
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+  letter-spacing: -0.011em;
+}
+
+/* One visible focus treatment for the whole app. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid #0d6e64;
+  outline-offset: 2px;
+  border-radius: 6px;
 }
 
 .island-panel {
-  border: 1px solid rgba(240, 201, 215, 0.95);
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: 0 18px 48px rgba(196, 70, 115, 0.13);
-  backdrop-filter: blur(14px);
+  border: 1px solid #dde3e2;
+  background: #ffffff;
+  border-radius: 10px;
 }
 
 .island-card {
-  border: 1px solid rgba(240, 201, 215, 0.95);
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.95), rgba(255, 240, 245, 0.92));
-  box-shadow: 0 14px 36px rgba(196, 70, 115, 0.12);
+  border: 1px solid #dde3e2;
+  background: #ffffff;
+  border-radius: 10px;
+}
+
+/* Small uppercase labels used for section eyebrows and stat captions. */
+.eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #616e6c;
+}
+
+/* Wide tables scroll inside their own container, never the page body. */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 @media (max-width: 640px) {
-  body {
-    background:
-      radial-gradient(circle at 6% 10%, rgba(255, 111, 145, 0.13), transparent 18rem),
-      radial-gradient(circle at 100% 4%, rgba(0, 166, 163, 0.13), transparent 18rem),
-      linear-gradient(180deg, #fff7fa 0%, #fff0f5 58%, #f4fffb 100%);
-  }
-
-  .island-panel {
-    box-shadow: 0 10px 26px rgba(196, 70, 115, 0.1);
-    backdrop-filter: blur(10px);
-  }
-
-  .island-card {
-    box-shadow: 0 10px 24px rgba(196, 70, 115, 0.1);
-  }
-
   main table th,
   main table td {
     padding: 0.5rem 0.625rem !important;
-    font-size: 0.78rem;
-    line-height: 1.2rem;
+    font-size: 0.8125rem;
+    line-height: 1.15rem;
     vertical-align: middle;
   }
 
   main table img {
-    max-height: 2.75rem;
+    max-height: 2.5rem;
+  }
+}
+
+/* Touch targets stay comfortable on the phones guides actually use. */
+@media (pointer: coarse) {
+  button,
+  [role='button'],
+  select,
+  input[type='checkbox'] {
+    min-height: 40px;
+  }
+
+  input[type='checkbox'] {
+    min-width: 20px;
+    width: 20px;
+    height: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

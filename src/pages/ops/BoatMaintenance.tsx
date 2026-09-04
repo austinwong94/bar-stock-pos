@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Droplets, Fuel, Repeat, Wrench } from 'lucide-react';
-import { PageHeader, Stat } from '../../components/Page';
+import { AlertTriangle, Fuel, Plus, RefreshCw, Repeat, Route, Wrench } from 'lucide-react';
+import { PageHeader, Stat, Panel, Badge, EmptyState } from '../../components/Page';
 import { Field, buttonClass, inputClass, secondaryButtonClass } from '../../components/Form';
 import { Modal } from '../../components/Modal';
 import { useToast } from '../../components/Toast';
@@ -8,7 +8,16 @@ import { supabase } from '../../lib/supabase';
 import { useAccess } from '../../lib/access';
 import { loadBoats, loadEmployees, readErrorMessage, todayIso } from '../../lib/opsData';
 import { money } from '../../lib/format';
-import type { Boat, Employee, FuelLog, FuelSummaryRow, Repair } from '../../lib/platformTypes';
+import type {
+  Boat,
+  BoatTrip,
+  Employee,
+  FuelPeriodTotals,
+  FuelPurchase,
+  FuelReconciliationRow,
+  Repair,
+  TripType,
+} from '../../lib/platformTypes';
 import type { SettingsMap } from '../../lib/types';
 
 const categories: Array<[Repair['issue_category'], string]> = [
@@ -23,9 +32,18 @@ const categories: Array<[Repair['issue_category'], string]> = [
   ['other', 'Other'],
 ];
 
+const tripTypes: Array<[TripType, string]> = [
+  ['island_run', 'Island run'],
+  ['extra_run', 'Extra run'],
+  ['emergency', 'Emergency run'],
+  ['maintenance_run', 'Maintenance / repositioning'],
+  ['other', 'Other'],
+];
+
+const tripLabel = (type: string) => tripTypes.find(([value]) => value === type)?.[1] ?? type;
+
 function firstOfMonth() {
-  const today = todayIso();
-  return `${today.slice(0, 8)}01`;
+  return `${todayIso().slice(0, 8)}01`;
 }
 
 export default function BoatMaintenance({ settings }: { settings: SettingsMap }) {
@@ -33,46 +51,56 @@ export default function BoatMaintenance({ settings }: { settings: SettingsMap })
   const { can } = useAccess();
   const currency = String(settings.currency_symbol ?? 'MYR');
 
-  const [tab, setTab] = useState<'fuel' | 'repairs'>('fuel');
+  const [tab, setTab] = useState<'trips' | 'fuel' | 'repairs'>('trips');
   const [from, setFrom] = useState(firstOfMonth);
   const [to, setTo] = useState(todayIso);
   const [boats, setBoats] = useState<Boat[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [fuelLogs, setFuelLogs] = useState<FuelLog[]>([]);
-  const [summary, setSummary] = useState<FuelSummaryRow[]>([]);
+  const [trips, setTrips] = useState<BoatTrip[]>([]);
+  const [purchases, setPurchases] = useState<FuelPurchase[]>([]);
+  const [reconciliation, setReconciliation] = useState<FuelReconciliationRow[]>([]);
+  const [totals, setTotals] = useState<FuelPeriodTotals | null>(null);
   const [repairs, setRepairs] = useState<Repair[]>([]);
+  const [tripOpen, setTripOpen] = useState(false);
+  const [editingTrip, setEditingTrip] = useState<BoatTrip | null>(null);
   const [fuelOpen, setFuelOpen] = useState(false);
   const [repairOpen, setRepairOpen] = useState(false);
   const [editingRepair, setEditingRepair] = useState<Repair | null>(null);
   const [loading, setLoading] = useState(true);
 
   const showCost = can('maintenance.cost.view');
+  const canRecord = can('maintenance.fuel.record');
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [boatRows, employeeRows, fuelRows, summaryRows, repairRows] = await Promise.all([
+      const [boatRows, employeeRows, tripResult, fuelResult, reconResult, totalResult, repairResult] = await Promise.all([
         loadBoats(true),
         loadEmployees(),
         supabase
-          .from('boat_fuel_logs')
+          .from('boat_trips')
           .select('*, boats(code,name)')
-          .gte('log_date', from)
-          .lte('log_date', to)
-          .order('log_date', { ascending: false })
-          .order('created_at', { ascending: false }),
-        supabase.rpc('boat_fuel_summary', { p_from: from, p_to: to }),
+          .gte('service_date', from)
+          .lte('service_date', to)
+          .order('service_date', { ascending: false }),
         supabase
-          .from('boat_repairs')
-          .select('*, boats(code,name)')
-          .order('reported_date', { ascending: false })
-          .limit(300),
+          .from('fuel_purchases')
+          .select('*')
+          .gte('purchase_date', from)
+          .lte('purchase_date', to)
+          .order('purchase_date', { ascending: false }),
+        supabase.rpc('fuel_reconciliation', { p_from: from, p_to: to }),
+        supabase.rpc('fuel_period_totals', { p_from: from, p_to: to }),
+        supabase.from('boat_repairs').select('*, boats(code,name)').order('reported_date', { ascending: false }).limit(300),
       ]);
       setBoats(boatRows);
       setEmployees(employeeRows);
-      setFuelLogs((fuelRows.data ?? []) as FuelLog[]);
-      setSummary((summaryRows.data ?? []) as FuelSummaryRow[]);
-      setRepairs((repairRows.data ?? []) as Repair[]);
+      setTrips((tripResult.data ?? []) as BoatTrip[]);
+      setPurchases((fuelResult.data ?? []) as FuelPurchase[]);
+      setReconciliation((reconResult.data ?? []) as FuelReconciliationRow[]);
+      const totalRows = (totalResult.data ?? []) as FuelPeriodTotals[];
+      setTotals(Array.isArray(totalRows) ? totalRows[0] ?? null : (totalRows as FuelPeriodTotals));
+      setRepairs((repairResult.data ?? []) as Repair[]);
     } catch (error) {
       toast.error(readErrorMessage(error, 'Could not load maintenance records.'));
     }
@@ -83,38 +111,37 @@ export default function BoatMaintenance({ settings }: { settings: SettingsMap })
     void refresh();
   }, [refresh]);
 
-  const totals = useMemo(() => {
-    const used = summary.reduce((sum, row) => sum + Number(row.litres_used ?? 0), 0);
-    const loaded = summary.reduce((sum, row) => sum + Number(row.litres_loaded ?? 0), 0);
-    const spend = summary.reduce((sum, row) => sum + Number(row.cost_loaded ?? 0) + Number(row.cost_used ?? 0), 0);
-    const openRepairs = repairs.filter((repair) => repair.status === 'reported' || repair.status === 'in_progress');
-    const repeatRepairs = repairs.filter((repair) => repair.is_recurring);
-    const repairSpend = repairs
-      .filter((repair) => repair.reported_date >= from && repair.reported_date <= to)
-      .reduce((sum, repair) => sum + Number(repair.cost ?? 0), 0);
-    return { used, loaded, spend, openRepairs, repeatRepairs, repairSpend };
-  }, [from, repairs, summary, to]);
+  async function syncTrips() {
+    const { data, error } = await supabase.rpc('sync_boat_trips', { p_service_date: to });
+    if (error) { toast.error(error.message); return; }
+    toast.success(data ? `${data} trip(s) added from the boat board.` : 'Trip log is already up to date.');
+    void refresh();
+  }
 
-  const overspending = summary.filter((row) => (row.variance_pct ?? 0) > 15);
+  const openRepairs = repairs.filter((repair) => repair.status === 'reported' || repair.status === 'in_progress');
+  const emergencyTrips = trips.filter((trip) => trip.trip_type === 'emergency');
+  const variance = totals?.variance_pct ?? null;
+  const varianceHigh = variance !== null && Math.abs(variance) > 20;
 
   return (
     <>
       <PageHeader
         title="Boat Maintenance"
-        subtitle="Daily petrol usage, refuelling and every repair job with its cost and history."
+        subtitle="Fuel is bought for the whole fleet, so consumption is estimated from the trips each boat actually made."
         actions={
           <>
-            {can('maintenance.fuel.record') ? (
-              <button type="button" className={buttonClass} onClick={() => setFuelOpen(true)}>
-                <Fuel className="h-4 w-4" /> Fuel entry
-              </button>
+            {canRecord ? (
+              <>
+                <button type="button" className={buttonClass} onClick={() => { setEditingTrip(null); setTripOpen(true); }}>
+                  <Route className="h-4 w-4" /> Log a trip
+                </button>
+                <button type="button" className={secondaryButtonClass} onClick={() => setFuelOpen(true)}>
+                  <Fuel className="h-4 w-4" /> Fuel bought
+                </button>
+              </>
             ) : null}
             {can('maintenance.repair.record') ? (
-              <button
-                type="button"
-                className={secondaryButtonClass}
-                onClick={() => { setEditingRepair(null); setRepairOpen(true); }}
-              >
+              <button type="button" className={secondaryButtonClass} onClick={() => { setEditingRepair(null); setRepairOpen(true); }}>
                 <Wrench className="h-4 w-4" /> Report damage
               </button>
             ) : null}
@@ -122,68 +149,214 @@ export default function BoatMaintenance({ settings }: { settings: SettingsMap })
         }
       />
 
-      <div className="mb-3 flex flex-wrap items-end gap-2 rounded-2xl border border-line bg-white/85 p-3 shadow-soft">
+      <div className="mb-4 flex flex-wrap items-end gap-2">
         <Field label="From">
           <input type="date" className={inputClass} value={from} onChange={(e) => setFrom(e.target.value)} />
         </Field>
         <Field label="To">
           <input type="date" className={inputClass} value={to} onChange={(e) => setTo(e.target.value)} />
         </Field>
-        <div className="ml-auto grid grid-cols-2 gap-1 rounded-2xl bg-shell p-1 text-xs font-black">
-          <button type="button" onClick={() => setTab('fuel')} className={`rounded-xl px-4 py-2 ${tab === 'fuel' ? 'bg-accent text-white' : ''}`}>
-            Fuel
-          </button>
-          <button type="button" onClick={() => setTab('repairs')} className={`rounded-xl px-4 py-2 ${tab === 'repairs' ? 'bg-accent text-white' : ''}`}>
-            Repairs
-          </button>
+        <div className="ml-auto flex gap-0.5 rounded-lg bg-shell p-0.5 text-sm font-semibold">
+          {(['trips', 'fuel', 'repairs'] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setTab(value)}
+              className={`rounded px-3.5 py-1.5 capitalize transition ${tab === value ? 'bg-surface text-ink' : 'text-muted'}`}
+            >
+              {value}
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="mb-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-        <Stat label="Petrol used in period" value={`${totals.used.toFixed(1)} L`} />
-        <Stat label="Petrol loaded in period" value={`${totals.loaded.toFixed(1)} L`} />
-        {showCost ? <Stat label="Fuel spend" value={money(totals.spend, currency)} /> : null}
+      <div className="mb-4 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+        <Stat label="Trips in period" value={String(totals?.trips ?? trips.length)} hint={`${emergencyTrips.length} emergency`} />
+        <Stat label="Fuel bought" value={`${Number(totals?.litres_bought ?? 0).toFixed(0)} L`} />
         <Stat
-          label="Open repair jobs"
-          value={String(totals.openRepairs.length)}
-          tone={totals.openRepairs.length > 0 ? 'warn' : 'good'}
+          label="Estimated use"
+          value={`${Number(totals?.litres_estimated ?? 0).toFixed(0)} L`}
+          hint={variance === null ? 'no baseline set' : `${variance > 0 ? '+' : ''}${variance}% vs bought`}
+          tone={varianceHigh ? 'warn' : 'default'}
         />
+        {showCost ? <Stat label="Fuel spend" value={money(totals?.cost_bought ?? 0, currency)} /> : null}
       </div>
 
-      {overspending.length > 0 ? (
-        <div className="mb-3 rounded-2xl border border-warning bg-amber-50 p-3 shadow-soft">
-          <p className="flex items-center gap-2 text-sm font-black text-amber-800">
-            <AlertTriangle className="h-4 w-4" /> Fuel above the normal rate
-          </p>
-          <ul className="mt-2 grid gap-1 text-sm font-semibold text-amber-900">
-            {overspending.map((row) => (
-              <li key={row.boat_id}>
-                {row.boat_code}: {Number(row.avg_litres_per_trip).toFixed(1)} L per trip against a{' '}
-                {Number(row.expected_litres_per_trip).toFixed(1)} L baseline (+{row.variance_pct}%)
-              </li>
-            ))}
-          </ul>
-        </div>
+      {varianceHigh ? (
+        <p className="mb-4 flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/[0.06] px-3 py-2.5 text-sm font-medium text-warning">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            {Number(totals?.litres_bought ?? 0).toFixed(0)} L was bought but the logged trips only account for about{' '}
+            {Number(totals?.litres_estimated ?? 0).toFixed(0)} L. Either trips are missing from the log, or more fuel
+            went out than the boats used.
+          </span>
+        </p>
       ) : null}
 
-      {loading ? <p className="p-4 font-bold">Loading...</p> : null}
+      {loading ? <p className="py-6 text-center text-sm font-medium text-muted">Loading…</p> : null}
+
+      {tab === 'trips' ? (
+        <>
+          <Panel
+            title="Trips by boat"
+            actions={
+              canRecord ? (
+                <button type="button" className={secondaryButtonClass} onClick={syncTrips}>
+                  <RefreshCw className="h-4 w-4" /> Pull from boat board
+                </button>
+              ) : null
+            }
+            className="mb-3"
+          >
+            <div className="table-scroll">
+              <table className="w-full min-w-[680px] text-left text-sm">
+                <thead className="bg-paper">
+                  <tr className="eyebrow">
+                    <th className="px-3.5 py-2">Boat</th>
+                    <th className="px-3.5 py-2">Trips</th>
+                    <th className="px-3.5 py-2">Emergency</th>
+                    <th className="px-3.5 py-2">Pax carried</th>
+                    <th className="px-3.5 py-2">L / trip</th>
+                    <th className="px-3.5 py-2">Estimated L</th>
+                    <th className="px-3.5 py-2">Share</th>
+                    {showCost ? <th className="px-3.5 py-2">Est. cost</th> : null}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {reconciliation.map((row) => (
+                    <tr key={row.boat_id}>
+                      <td className="px-3.5 py-2.5 font-semibold text-ink">{row.boat_code}</td>
+                      <td className="px-3.5 py-2.5 tabular">{row.trips}</td>
+                      <td className="px-3.5 py-2.5 tabular">
+                        {row.emergency_trips > 0 ? <Badge tone="warn">{row.emergency_trips}</Badge> : '—'}
+                      </td>
+                      <td className="px-3.5 py-2.5 tabular">{row.pax_carried}</td>
+                      <td className="px-3.5 py-2.5 tabular">
+                        {row.litres_per_trip > 0 ? Number(row.litres_per_trip).toFixed(1) : <span className="text-muted">not set</span>}
+                      </td>
+                      <td className="px-3.5 py-2.5 tabular font-semibold">{Number(row.estimated_litres).toFixed(1)}</td>
+                      <td className="px-3.5 py-2.5 tabular">{Number(row.estimated_share_pct).toFixed(0)}%</td>
+                      {showCost ? <td className="px-3.5 py-2.5 tabular">{money(row.estimated_cost, currency)}</td> : null}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+
+          <Panel title={`Trip log (${trips.length})`}>
+            <div className="table-scroll">
+              <table className="w-full min-w-[720px] text-left text-sm">
+                <thead className="bg-paper">
+                  <tr className="eyebrow">
+                    <th className="px-3.5 py-2">Date</th>
+                    <th className="px-3.5 py-2">Boat</th>
+                    <th className="px-3.5 py-2">Type</th>
+                    <th className="px-3.5 py-2">Out</th>
+                    <th className="px-3.5 py-2">Pax</th>
+                    <th className="px-3.5 py-2">Purpose</th>
+                    <th className="px-3.5 py-2">Source</th>
+                    {canRecord ? <th className="px-3.5 py-2"></th> : null}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {trips.map((trip) => (
+                    <tr key={trip.id} className={trip.trip_type === 'emergency' ? 'bg-coral/[0.04]' : ''}>
+                      <td className="px-3.5 py-2.5 tabular">{trip.service_date}</td>
+                      <td className="px-3.5 py-2.5 font-semibold text-ink">{trip.boats?.code ?? '—'}</td>
+                      <td className="px-3.5 py-2.5">
+                        <Badge tone={trip.trip_type === 'emergency' ? 'bad' : trip.trip_type === 'island_run' ? 'accent' : 'neutral'}>
+                          {tripLabel(trip.trip_type)}
+                        </Badge>
+                      </td>
+                      <td className="px-3.5 py-2.5 tabular">{trip.departure_time?.slice(0, 5) ?? '—'}</td>
+                      <td className="px-3.5 py-2.5 tabular">{trip.pax_count}</td>
+                      <td className="px-3.5 py-2.5 text-muted">{trip.purpose ?? '—'}</td>
+                      <td className="px-3.5 py-2.5 text-xs text-muted">{trip.auto_generated ? 'From boat board' : 'Entered by hand'}</td>
+                      {canRecord ? (
+                        <td className="px-3.5 py-2.5">
+                          <button
+                            type="button"
+                            className={secondaryButtonClass}
+                            onClick={() => { setEditingTrip(trip); setTripOpen(true); }}
+                          >
+                            Edit
+                          </button>
+                        </td>
+                      ) : null}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {trips.length === 0 && !loading ? (
+              <div className="p-4">
+                <EmptyState>No trips logged in this period. Use “Pull from boat board” to bring in the scheduled runs.</EmptyState>
+              </div>
+            ) : null}
+          </Panel>
+        </>
+      ) : null}
 
       {tab === 'fuel' ? (
-        <FuelTable logs={fuelLogs} summary={summary} showCost={showCost} currency={currency} />
-      ) : (
+        <Panel title={`Fuel bought (${purchases.length})`}>
+          <div className="table-scroll">
+            <table className="w-full min-w-[620px] text-left text-sm">
+              <thead className="bg-paper">
+                <tr className="eyebrow">
+                  <th className="px-3.5 py-2">Date</th>
+                  <th className="px-3.5 py-2">Litres</th>
+                  {showCost ? <th className="px-3.5 py-2">Price / L</th> : null}
+                  {showCost ? <th className="px-3.5 py-2">Total</th> : null}
+                  <th className="px-3.5 py-2">Supplier</th>
+                  <th className="px-3.5 py-2">Notes</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {purchases.map((purchase) => (
+                  <tr key={purchase.id}>
+                    <td className="px-3.5 py-2.5 tabular">{purchase.purchase_date}</td>
+                    <td className="px-3.5 py-2.5 tabular font-semibold">{Number(purchase.litres).toFixed(1)}</td>
+                    {showCost ? <td className="px-3.5 py-2.5 tabular">{money(purchase.price_per_litre, currency)}</td> : null}
+                    {showCost ? <td className="px-3.5 py-2.5 tabular font-semibold">{money(purchase.total_cost, currency)}</td> : null}
+                    <td className="px-3.5 py-2.5">{purchase.supplier ?? '—'}</td>
+                    <td className="px-3.5 py-2.5 text-muted">{purchase.notes ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {purchases.length === 0 && !loading ? (
+            <div className="p-4"><EmptyState>No fuel purchases recorded in this period.</EmptyState></div>
+          ) : null}
+        </Panel>
+      ) : null}
+
+      {tab === 'repairs' ? (
         <RepairTable
           repairs={repairs}
           currency={currency}
           showCost={showCost}
           canClose={can('maintenance.repair.close') || can('maintenance.manage')}
+          openCount={openRepairs.length}
           onEdit={(repair) => { setEditingRepair(repair); setRepairOpen(true); }}
         />
-      )}
+      ) : null}
+
+      {tripOpen ? (
+        <TripForm
+          boats={boats}
+          trip={editingTrip}
+          defaultDate={to}
+          onClose={() => setTripOpen(false)}
+          onSaved={() => { setTripOpen(false); void refresh(); }}
+        />
+      ) : null}
 
       {fuelOpen ? (
         <FuelForm
-          boats={boats}
           employees={employees}
+          defaultDate={to}
           onClose={() => setFuelOpen(false)}
           onSaved={() => { setFuelOpen(false); void refresh(); }}
         />
@@ -203,103 +376,193 @@ export default function BoatMaintenance({ settings }: { settings: SettingsMap })
   );
 }
 
-function FuelTable({
-  logs,
-  summary,
-  showCost,
-  currency,
+function TripForm({
+  boats,
+  trip,
+  defaultDate,
+  onClose,
+  onSaved,
 }: {
-  logs: FuelLog[];
-  summary: FuelSummaryRow[];
-  showCost: boolean;
-  currency: string;
+  boats: Boat[];
+  trip: BoatTrip | null;
+  defaultDate: string;
+  onClose: () => void;
+  onSaved: () => void;
 }) {
-  return (
-    <>
-      <div className="mb-3 overflow-x-auto rounded-2xl border border-line bg-white/85 shadow-soft">
-        <table className="w-full min-w-[720px] text-left">
-          <thead className="bg-paper text-sm">
-            <tr>
-              <th className="p-3">Boat</th>
-              <th className="p-3">Island trips</th>
-              <th className="p-3">Used (L)</th>
-              <th className="p-3">Loaded (L)</th>
-              <th className="p-3">Avg / trip</th>
-              <th className="p-3">Baseline</th>
-              <th className="p-3">Variance</th>
-              {showCost ? <th className="p-3">Spend</th> : null}
-            </tr>
-          </thead>
-          <tbody>
-            {summary.map((row) => (
-              <tr key={row.boat_id} className="border-t border-line text-sm font-semibold">
-                <td className="p-3 font-black">{row.boat_code}</td>
-                <td className="p-3">{row.trips}</td>
-                <td className="p-3">{Number(row.litres_used).toFixed(1)}</td>
-                <td className="p-3">{Number(row.litres_loaded).toFixed(1)}</td>
-                <td className="p-3">{Number(row.avg_litres_per_trip).toFixed(1)}</td>
-                <td className="p-3">{row.expected_litres_per_trip ? Number(row.expected_litres_per_trip).toFixed(1) : '—'}</td>
-                <td className={`p-3 font-black ${(row.variance_pct ?? 0) > 15 ? 'text-danger' : 'text-accent'}`}>
-                  {row.variance_pct === null ? '—' : `${row.variance_pct > 0 ? '+' : ''}${row.variance_pct}%`}
-                </td>
-                {showCost ? (
-                  <td className="p-3">{money(Number(row.cost_used) + Number(row.cost_loaded), currency)}</td>
-                ) : null}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+  const toast = useToast();
+  const [serviceDate, setServiceDate] = useState(trip?.service_date ?? defaultDate);
+  const [boatId, setBoatId] = useState(trip?.boat_id ?? boats[0]?.id ?? '');
+  const [type, setType] = useState<TripType>(trip?.trip_type ?? 'extra_run');
+  const [departure, setDeparture] = useState(trip?.departure_time?.slice(0, 5) ?? '');
+  const [returnTime, setReturnTime] = useState(trip?.return_time?.slice(0, 5) ?? '');
+  const [pax, setPax] = useState(String(trip?.pax_count ?? 0));
+  const [purpose, setPurpose] = useState(trip?.purpose ?? '');
+  const [notes, setNotes] = useState(trip?.notes ?? '');
+  const [busy, setBusy] = useState(false);
 
-      <div className="overflow-x-auto rounded-2xl border border-line bg-white/85 shadow-soft">
-        <table className="w-full min-w-[760px] text-left">
-          <thead className="bg-paper text-sm">
-            <tr>
-              <th className="p-3">Date</th>
-              <th className="p-3">Boat</th>
-              <th className="p-3">Type</th>
-              <th className="p-3">Trip</th>
-              <th className="p-3">Litres</th>
-              {showCost ? <th className="p-3">Price / L</th> : null}
-              {showCost ? <th className="p-3">Total</th> : null}
-              <th className="p-3">Tank after</th>
-              <th className="p-3">Notes</th>
-            </tr>
-          </thead>
-          <tbody>
-            {logs.map((log) => (
-              <tr key={log.id} className="border-t border-line text-sm font-semibold">
-                <td className="p-3">{log.log_date}</td>
-                <td className="p-3 font-black">{log.boats?.code ?? '—'}</td>
-                <td className="p-3">
-                  <span
-                    className={`inline-flex items-center gap-1 rounded-xl px-2 py-1 text-xs font-black ${
-                      log.entry_type === 'refuel' ? 'bg-teal-50 text-accent' : 'bg-pink-50 text-coral'
-                    }`}
-                  >
-                    <Droplets className="h-3 w-3" />
-                    {log.entry_type === 'refuel' ? 'Reloaded' : 'Island trip'}
-                  </span>
-                </td>
-                <td className="p-3">{log.trip_label ?? '—'}</td>
-                <td className="p-3">{Number(log.litres).toFixed(1)}</td>
-                {showCost ? <td className="p-3">{money(log.price_per_litre, currency)}</td> : null}
-                {showCost ? <td className="p-3 font-black">{money(log.total_cost, currency)}</td> : null}
-                <td className="p-3">{log.tank_level_after_pct === null ? '—' : `${log.tank_level_after_pct}%`}</td>
-                <td className="p-3 text-neutral-600">{log.notes ?? '—'}</td>
-              </tr>
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!boatId) { toast.error('Choose a boat.'); return; }
+    setBusy(true);
+    const { error } = await supabase.rpc('save_boat_trip', {
+      p_id: trip?.id ?? null,
+      p_service_date: serviceDate,
+      p_boat_id: boatId,
+      p_trip_type: type,
+      p_departure_time: departure,
+      p_return_time: returnTime,
+      p_pax_count: Number(pax) || 0,
+      p_purpose: purpose,
+      p_notes: notes,
+    });
+    setBusy(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success('Trip saved.');
+    onSaved();
+  }
+
+  return (
+    <Modal
+      title={trip ? 'Edit trip' : 'Log a boat trip'}
+      onClose={onClose}
+      footer={
+        <button type="submit" form="trip-form" className={`${buttonClass} w-full`} disabled={busy}>
+          {busy ? 'Saving…' : 'Save trip'}
+        </button>
+      }
+    >
+      <form id="trip-form" onSubmit={submit} className="grid gap-3 sm:grid-cols-2">
+        <Field label="Date">
+          <input type="date" className={inputClass} value={serviceDate} onChange={(e) => setServiceDate(e.target.value)} required />
+        </Field>
+        <Field label="Boat">
+          <select className={inputClass} value={boatId} onChange={(e) => setBoatId(e.target.value)} required>
+            <option value="">Choose boat</option>
+            {boats.map((boat) => (
+              <option key={boat.id} value={boat.id}>{boat.code}{boat.name ? ` · ${boat.name}` : ''}</option>
             ))}
-            {logs.length === 0 ? (
-              <tr>
-                <td className="p-4 font-bold text-neutral-500" colSpan={9}>
-                  No fuel entries in this period.
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
-    </>
+          </select>
+        </Field>
+        <Field label="What kind of trip" hint="Emergency runs are counted separately in the fuel estimate.">
+          <select className={inputClass} value={type} onChange={(e) => setType(e.target.value as TripType)}>
+            {tripTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </Field>
+        <Field label="How many people on board">
+          <input type="number" min="0" className={inputClass} value={pax} onChange={(e) => setPax(e.target.value)} />
+        </Field>
+        <Field label="Left at">
+          <input type="time" className={inputClass} value={departure} onChange={(e) => setDeparture(e.target.value)} />
+        </Field>
+        <Field label="Back at">
+          <input type="time" className={inputClass} value={returnTime} onChange={(e) => setReturnTime(e.target.value)} />
+        </Field>
+        <div className="sm:col-span-2">
+          <Field label="Why the boat went out">
+            <input className={inputClass} value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Took a sick guest back to the mainland" />
+          </Field>
+        </div>
+        <div className="sm:col-span-2">
+          <Field label="Notes">
+            <input className={inputClass} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </Field>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function FuelForm({
+  employees,
+  defaultDate,
+  onClose,
+  onSaved,
+}: {
+  employees: Employee[];
+  defaultDate: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const toast = useToast();
+  const [purchaseDate, setPurchaseDate] = useState(defaultDate);
+  const [litres, setLitres] = useState('');
+  const [price, setPrice] = useState('');
+  const [supplier, setSupplier] = useState('');
+  const [fuelType, setFuelType] = useState<'petrol' | 'diesel'>('petrol');
+  const [collectedBy, setCollectedBy] = useState('');
+  const [notes, setNotes] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const total = (Number(litres) || 0) * (Number(price) || 0);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    const { error } = await supabase.from('fuel_purchases').insert({
+      purchase_date: purchaseDate,
+      litres: Number(litres) || 0,
+      price_per_litre: Number(price) || 0,
+      total_cost: Number(total.toFixed(2)),
+      supplier: supplier || null,
+      fuel_type: fuelType,
+      collected_by_employee_id: collectedBy || null,
+      notes: notes || null,
+    });
+    setBusy(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success('Fuel purchase recorded.');
+    onSaved();
+  }
+
+  return (
+    <Modal
+      title="Fuel bought for the fleet"
+      onClose={onClose}
+      footer={
+        <button type="submit" form="fuel-form" className={`${buttonClass} w-full`} disabled={busy}>
+          {busy ? 'Saving…' : 'Save purchase'}
+        </button>
+      }
+    >
+      <form id="fuel-form" onSubmit={submit} className="grid gap-3 sm:grid-cols-2">
+        <p className="sm:col-span-2 rounded-lg bg-shell px-3 py-2.5 text-xs font-medium text-muted">
+          Fuel is bought for the whole fleet, not per boat. Record what was bought here; the system works out each
+          boat&rsquo;s share from the trips it made.
+        </p>
+        <Field label="Date bought">
+          <input type="date" className={inputClass} value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} required />
+        </Field>
+        <Field label="Fuel">
+          <select className={inputClass} value={fuelType} onChange={(e) => setFuelType(e.target.value as 'petrol' | 'diesel')}>
+            <option value="petrol">Petrol</option>
+            <option value="diesel">Diesel</option>
+          </select>
+        </Field>
+        <Field label="Litres">
+          <input type="number" step="0.1" min="0" inputMode="decimal" className={inputClass} value={litres} onChange={(e) => setLitres(e.target.value)} required />
+        </Field>
+        <Field label="Price per litre">
+          <input type="number" step="0.01" min="0" inputMode="decimal" className={inputClass} value={price} onChange={(e) => setPrice(e.target.value)} required />
+        </Field>
+        <Field label="Bought from">
+          <input className={inputClass} value={supplier} onChange={(e) => setSupplier(e.target.value)} />
+        </Field>
+        <Field label="Collected by">
+          <select className={inputClass} value={collectedBy} onChange={(e) => setCollectedBy(e.target.value)}>
+            <option value="">Not recorded</option>
+            {employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.full_name}</option>)}
+          </select>
+        </Field>
+        <div className="sm:col-span-2">
+          <Field label="Notes">
+            <input className={inputClass} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </Field>
+        </div>
+        <p className="sm:col-span-2 rounded-lg border border-line px-3 py-2.5 text-sm font-semibold">
+          Total: {total.toFixed(2)}
+        </p>
+      </form>
+    </Modal>
   );
 }
 
@@ -308,221 +571,69 @@ function RepairTable({
   currency,
   showCost,
   canClose,
+  openCount,
   onEdit,
 }: {
   repairs: Repair[];
   currency: string;
   showCost: boolean;
   canClose: boolean;
+  openCount: number;
   onEdit: (repair: Repair) => void;
 }) {
   return (
-    <div className="overflow-x-auto rounded-2xl border border-line bg-white/85 shadow-soft">
-      <table className="w-full min-w-[860px] text-left">
-        <thead className="bg-paper text-sm">
-          <tr>
-            <th className="p-3">Reported</th>
-            <th className="p-3">Boat</th>
-            <th className="p-3">Issue</th>
-            <th className="p-3">Category</th>
-            <th className="p-3">Damaged on</th>
-            <th className="p-3">Fixed on</th>
-            <th className="p-3">Days down</th>
-            <th className="p-3">Status</th>
-            {showCost ? <th className="p-3">Cost</th> : null}
-            {canClose ? <th className="p-3"></th> : null}
-          </tr>
-        </thead>
-        <tbody>
-          {repairs.map((repair) => {
-            const down =
-              repair.fixed_date && repair.damaged_on
-                ? Math.max(
-                    0,
-                    Math.round(
-                      (new Date(repair.fixed_date).getTime() - new Date(repair.damaged_on).getTime()) / 86400000,
-                    ),
-                  )
-                : null;
-            return (
-              <tr key={repair.id} className="border-t border-line text-sm font-semibold">
-                <td className="p-3">{repair.reported_date}</td>
-                <td className="p-3 font-black">{repair.boats?.code ?? '—'}</td>
-                <td className="p-3">
-                  <span className="font-black">{repair.issue_title}</span>
+    <Panel title={`Repairs — ${openCount} still open`}>
+      <div className="table-scroll">
+        <table className="w-full min-w-[820px] text-left text-sm">
+          <thead className="bg-paper">
+            <tr className="eyebrow">
+              <th className="px-3.5 py-2">Reported</th>
+              <th className="px-3.5 py-2">Boat</th>
+              <th className="px-3.5 py-2">Issue</th>
+              <th className="px-3.5 py-2">Category</th>
+              <th className="px-3.5 py-2">Fixed</th>
+              <th className="px-3.5 py-2">Status</th>
+              {showCost ? <th className="px-3.5 py-2">Cost</th> : null}
+              {canClose ? <th className="px-3.5 py-2"></th> : null}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-line">
+            {repairs.map((repair) => (
+              <tr key={repair.id}>
+                <td className="px-3.5 py-2.5 tabular">{repair.reported_date}</td>
+                <td className="px-3.5 py-2.5 font-semibold text-ink">{repair.boats?.code ?? '—'}</td>
+                <td className="px-3.5 py-2.5">
+                  <span className="font-semibold text-ink">{repair.issue_title}</span>
                   {repair.is_recurring ? (
-                    <span className="ml-2 inline-flex items-center gap-1 rounded-xl bg-amber-50 px-2 py-0.5 text-xs font-black text-amber-800">
-                      <Repeat className="h-3 w-3" /> Same as before
-                    </span>
+                    <span className="ml-2 inline-flex"><Badge tone="warn"><Repeat className="h-3 w-3" /> repeat</Badge></span>
                   ) : null}
                   {repair.issue_details ? (
-                    <p className="mt-1 max-w-md text-xs font-medium text-neutral-600">{repair.issue_details}</p>
+                    <p className="mt-0.5 max-w-md text-xs text-muted">{repair.issue_details}</p>
                   ) : null}
                 </td>
-                <td className="p-3 capitalize">{repair.issue_category.replace('_', ' ')}</td>
-                <td className="p-3">{repair.damaged_on ?? '—'}</td>
-                <td className="p-3">{repair.fixed_date ?? '—'}</td>
-                <td className="p-3">{down === null ? '—' : down}</td>
-                <td className="p-3">
-                  <span
-                    className={`rounded-xl px-2 py-1 text-xs font-black ${
-                      repair.status === 'fixed'
-                        ? 'bg-teal-50 text-accent'
-                        : repair.status === 'cancelled'
-                          ? 'bg-neutral-100 text-neutral-600'
-                          : 'bg-amber-50 text-amber-800'
-                    }`}
-                  >
+                <td className="px-3.5 py-2.5 capitalize text-muted">{repair.issue_category.replace('_', ' ')}</td>
+                <td className="px-3.5 py-2.5 tabular">{repair.fixed_date ?? '—'}</td>
+                <td className="px-3.5 py-2.5">
+                  <Badge tone={repair.status === 'fixed' ? 'good' : repair.status === 'cancelled' ? 'neutral' : 'warn'}>
                     {repair.status.replace('_', ' ')}
-                  </span>
+                  </Badge>
                   {repair.out_of_service && repair.status !== 'fixed' ? (
-                    <span className="ml-1 rounded-xl bg-red-50 px-2 py-1 text-xs font-black text-danger">Boat parked</span>
+                    <span className="ml-1 inline-flex"><Badge tone="bad">boat parked</Badge></span>
                   ) : null}
                 </td>
-                {showCost ? <td className="p-3 font-black">{money(repair.cost, currency)}</td> : null}
+                {showCost ? <td className="px-3.5 py-2.5 tabular">{money(repair.cost, currency)}</td> : null}
                 {canClose ? (
-                  <td className="p-3">
-                    <button type="button" className={secondaryButtonClass} onClick={() => onEdit(repair)}>
-                      Update
-                    </button>
+                  <td className="px-3.5 py-2.5">
+                    <button type="button" className={secondaryButtonClass} onClick={() => onEdit(repair)}>Update</button>
                   </td>
                 ) : null}
               </tr>
-            );
-          })}
-          {repairs.length === 0 ? (
-            <tr>
-              <td className="p-4 font-bold text-neutral-500" colSpan={10}>
-                No repair records yet.
-              </td>
-            </tr>
-          ) : null}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function FuelForm({
-  boats,
-  employees,
-  onClose,
-  onSaved,
-}: {
-  boats: Boat[];
-  employees: Employee[];
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const toast = useToast();
-  const [boatId, setBoatId] = useState(boats[0]?.id ?? '');
-  const [logDate, setLogDate] = useState(todayIso);
-  const [entryType, setEntryType] = useState<'trip_usage' | 'refuel'>('trip_usage');
-  const [tripLabel, setTripLabel] = useState('');
-  const [litres, setLitres] = useState('');
-  const [price, setPrice] = useState('');
-  const [tank, setTank] = useState('');
-  const [handledBy, setHandledBy] = useState('');
-  const [notes, setNotes] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  const total = (Number(litres) || 0) * (Number(price) || 0);
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!boatId) { toast.error('Choose a boat.'); return; }
-    setBusy(true);
-    const { error } = await supabase.from('boat_fuel_logs').insert({
-      boat_id: boatId,
-      log_date: logDate,
-      entry_type: entryType,
-      trip_label: tripLabel || null,
-      entered_island: entryType === 'trip_usage',
-      litres: Number(litres) || 0,
-      price_per_litre: Number(price) || 0,
-      total_cost: Number(total.toFixed(2)),
-      tank_level_after_pct: tank === '' ? null : Number(tank),
-      handled_by_employee_id: handledBy || null,
-      notes: notes || null,
-    });
-    setBusy(false);
-    if (error) { toast.error(error.message); return; }
-    toast.success('Fuel entry saved.');
-    onSaved();
-  }
-
-  return (
-    <Modal
-      title="Fuel entry"
-      onClose={onClose}
-      footer={
-        <button type="submit" form="fuel-form" className={`${buttonClass} w-full`} disabled={busy}>
-          {busy ? 'Saving...' : 'Save fuel entry'}
-        </button>
-      }
-    >
-      <form id="fuel-form" onSubmit={submit} className="grid gap-3">
-        <div className="grid grid-cols-2 gap-1 rounded-2xl bg-shell p-1 text-sm font-black">
-          <button
-            type="button"
-            onClick={() => setEntryType('trip_usage')}
-            className={`rounded-xl px-3 py-2.5 ${entryType === 'trip_usage' ? 'bg-accent text-white' : ''}`}
-          >
-            Used going to island
-          </button>
-          <button
-            type="button"
-            onClick={() => setEntryType('refuel')}
-            className={`rounded-xl px-3 py-2.5 ${entryType === 'refuel' ? 'bg-accent text-white' : ''}`}
-          >
-            Reloaded / refilled
-          </button>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Boat">
-            <select className={inputClass} value={boatId} onChange={(e) => setBoatId(e.target.value)} required>
-              <option value="">Choose boat</option>
-              {boats.map((boat) => (
-                <option key={boat.id} value={boat.id}>
-                  {boat.code}{boat.name ? ` · ${boat.name}` : ''}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Date">
-            <input type="date" className={inputClass} value={logDate} onChange={(e) => setLogDate(e.target.value)} required />
-          </Field>
-          <Field label="Petrol volume (litres)">
-            <input type="number" step="0.1" min="0" inputMode="decimal" className={inputClass} value={litres} onChange={(e) => setLitres(e.target.value)} required />
-          </Field>
-          <Field label="Price per litre">
-            <input type="number" step="0.01" min="0" inputMode="decimal" className={inputClass} value={price} onChange={(e) => setPrice(e.target.value)} required />
-          </Field>
-          <Field label="Trip label (optional)">
-            <input className={inputClass} value={tripLabel} onChange={(e) => setTripLabel(e.target.value)} placeholder="Morning run" />
-          </Field>
-          <Field label="Tank level after (%)">
-            <input type="number" min="0" max="100" className={inputClass} value={tank} onChange={(e) => setTank(e.target.value)} />
-          </Field>
-          <Field label="Handled by">
-            <select className={inputClass} value={handledBy} onChange={(e) => setHandledBy(e.target.value)}>
-              <option value="">Not recorded</option>
-              {employees.map((employee) => (
-                <option key={employee.id} value={employee.id}>{employee.full_name}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Notes">
-            <input className={inputClass} value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </Field>
-        </div>
-
-        <p className="rounded-2xl bg-shell px-4 py-3 text-sm font-black">
-          Total cost: {total.toFixed(2)}
-        </p>
-      </form>
-    </Modal>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {repairs.length === 0 ? <div className="p-4"><EmptyState>No repair records yet.</EmptyState></div> : null}
+    </Panel>
   );
 }
 
@@ -558,13 +669,8 @@ function RepairForm({
   const [linkedRepair, setLinkedRepair] = useState(existing?.previous_repair_id ?? '');
   const [busy, setBusy] = useState(false);
 
-  // Prior jobs on the same boat in the same category: this is the "is it the
-  // same problem as last time" answer, shown before the record is saved.
   const priorJobs = useMemo(
-    () =>
-      repairs.filter(
-        (repair) => repair.boat_id === boatId && repair.issue_category === category && repair.id !== existing?.id,
-      ),
+    () => repairs.filter((repair) => repair.boat_id === boatId && repair.issue_category === category && repair.id !== existing?.id),
     [boatId, category, existing?.id, repairs],
   );
 
@@ -603,7 +709,7 @@ function RepairForm({
       onClose={onClose}
       footer={
         <button type="submit" form="repair-form" className={`${buttonClass} w-full`} disabled={busy}>
-          {busy ? 'Saving...' : existing ? 'Save changes' : 'Save repair record'}
+          {busy ? 'Saving…' : existing ? 'Save changes' : 'Save repair'}
         </button>
       }
     >
@@ -612,16 +718,12 @@ function RepairForm({
           <Field label="Boat">
             <select className={inputClass} value={boatId} onChange={(e) => setBoatId(e.target.value)} required>
               <option value="">Choose boat</option>
-              {boats.map((boat) => (
-                <option key={boat.id} value={boat.id}>{boat.code}{boat.name ? ` · ${boat.name}` : ''}</option>
-              ))}
+              {boats.map((boat) => <option key={boat.id} value={boat.id}>{boat.code}{boat.name ? ` · ${boat.name}` : ''}</option>)}
             </select>
           </Field>
           <Field label="Category">
             <select className={inputClass} value={category} onChange={(e) => setCategory(e.target.value as Repair['issue_category'])}>
-              {categories.map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
+              {categories.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </Field>
         </div>
@@ -634,20 +736,14 @@ function RepairForm({
         </Field>
 
         {priorJobs.length > 0 ? (
-          <div className="rounded-2xl border border-warning bg-amber-50 p-3">
-            <p className="flex items-center gap-2 text-sm font-black text-amber-900">
+          <div className="rounded-lg border border-warning/40 bg-warning/[0.06] p-3">
+            <p className="flex items-center gap-2 text-sm font-semibold text-warning">
               <Repeat className="h-4 w-4" /> This boat had {priorJobs.length} earlier {category.replace('_', ' ')} job(s)
             </p>
-            <select
-              className={`${inputClass} mt-2`}
-              value={linkedRepair}
-              onChange={(e) => setLinkedRepair(e.target.value)}
-            >
+            <select className={`${inputClass} mt-2`} value={linkedRepair} onChange={(e) => setLinkedRepair(e.target.value)}>
               <option value="">Not the same problem</option>
               {priorJobs.map((repair) => (
-                <option key={repair.id} value={repair.id}>
-                  {repair.reported_date} · {repair.issue_title}
-                </option>
+                <option key={repair.id} value={repair.id}>{repair.reported_date} · {repair.issue_title}</option>
               ))}
             </select>
           </div>
@@ -690,14 +786,12 @@ function RepairForm({
           <Field label="Reported by">
             <select className={inputClass} value={reportedBy} onChange={(e) => setReportedBy(e.target.value)}>
               <option value="">Not recorded</option>
-              {employees.map((employee) => (
-                <option key={employee.id} value={employee.id}>{employee.full_name}</option>
-              ))}
+              {employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.full_name}</option>)}
             </select>
           </Field>
         </div>
 
-        <label className="flex items-center gap-2 rounded-2xl bg-shell px-4 py-3 text-sm font-black">
+        <label className="flex items-center gap-2 rounded-lg bg-shell px-3 py-2.5 text-sm font-semibold">
           <input type="checkbox" checked={outOfService} onChange={(e) => setOutOfService(e.target.checked)} />
           Boat cannot sail until this is fixed
         </label>

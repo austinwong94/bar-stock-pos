@@ -71,7 +71,7 @@ export function DemoBar() {
                   type="button"
                   onClick={() => demoSwitchPersona(person.id)}
                   className={`rounded-xl border p-2.5 text-left transition ${
-                    person.id === current ? 'border-accent bg-teal-50' : 'border-line bg-white hover:bg-shell'
+                    person.id === current ? 'border-accent bg-shell' : 'border-line bg-white hover:bg-shell'
                   }`}
                 >
                   <p className="text-sm font-black">{person.full_name}</p>

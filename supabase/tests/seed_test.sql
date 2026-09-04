@@ -5,6 +5,9 @@ insert into auth.users (id, email, is_anonymous, raw_user_meta_data) values
   ('33333333-3333-3333-3333-333333333333', 'agentA@blue.test',   false, '{"full_name":"Agent Blue"}'),
   ('44444444-4444-4444-4444-444444444444', 'agentB@red.test',    false, '{"full_name":"Agent Red"}'),
   ('55555555-5555-5555-5555-555555555555', 'captain@lovely.test',false, '{"full_name":"Captain Ali"}'),
+  ('77777777-7777-7777-7777-777777777777', 'agentA2@blue.test',   false, '{"full_name":"Agent Blue Two"}'),
+  ('88888888-8888-8888-8888-888888888888', 'cook@lovely.test',    false, '{"full_name":"Cook Lina"}'),
+  ('99999999-9999-9999-9999-999999999999', 'buyer@lovely.test',   false, '{"full_name":"Buyer Sam"}'),
   ('66666666-6666-6666-6666-666666666666', null,                 true,  '{"full_name":"Bar Tablet"}');
 
 insert into public.agencies (id, name, source_type) values
@@ -16,6 +19,9 @@ update public.profiles set access_role_code='coordinator',  status='active' wher
 update public.profiles set access_role_code='agent', status='active', agency_id='aaaaaaaa-0000-0000-0000-00000000000a' where id='33333333-3333-3333-3333-333333333333';
 update public.profiles set access_role_code='agent', status='active', agency_id='bbbbbbbb-0000-0000-0000-00000000000b' where id='44444444-4444-4444-4444-444444444444';
 update public.profiles set access_role_code='captain', status='active' where id='55555555-5555-5555-5555-555555555555';
+update public.profiles set access_role_code='agent', status='active', agency_id='aaaaaaaa-0000-0000-0000-00000000000a' where id='77777777-7777-7777-7777-777777777777';
+update public.profiles set access_role_code='kitchen_staff', status='active' where id='88888888-8888-8888-8888-888888888888';
+update public.profiles set access_role_code='purchaser', status='active' where id='99999999-9999-9999-9999-999999999999';
 
 insert into public.employees (id, full_name, job_type, profile_id) values
   ('eeeeeeee-0000-0000-0000-00000000000c', 'Captain Ali', 'captain', '55555555-5555-5555-5555-555555555555'),

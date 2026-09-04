@@ -632,7 +632,7 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
       <PageHeader
         title={text('Reports', 'Laporan')}
       />
-      <section className="island-panel mb-3 rounded-2xl p-1.5 sm:mb-5 sm:rounded-[2rem] sm:p-2">
+      <section className="island-panel mb-3 rounded-2xl p-1.5 sm:mb-5 sm:rounded-2xl sm:p-2">
         <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
@@ -655,12 +655,12 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
       ) : (
       <>
       <section className="mb-4 grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4 lg:p-5"><p className="text-xs font-black text-emerald-700 sm:text-sm">Cash Payment 💵</p><p className="mt-1.5 text-lg font-black sm:text-xl lg:text-2xl">{money(periodTotals.cash, String(settings.currency_symbol))}</p></div>
-        <div className="rounded-2xl border border-sky-200 bg-sky-50 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4 lg:p-5"><p className="text-xs font-black text-sky-700 sm:text-sm">QR Payment 📱</p><p className="mt-1.5 text-lg font-black sm:text-xl lg:text-2xl">{money(periodTotals.qr, String(settings.currency_symbol))}</p></div>
-        <div className="rounded-2xl border border-pink-200 bg-pink-50 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4 lg:p-5"><p className="text-xs font-black text-pink-700 sm:text-sm">FOC Cost 🎁</p><p className="mt-1.5 text-lg font-black text-coral sm:text-xl lg:text-2xl">- {money(periodTotals.focCost, String(settings.currency_symbol))}</p></div>
-        <div className="rounded-2xl border border-violet-200 bg-violet-50 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4 lg:p-5"><p className="text-xs font-black text-violet-700 sm:text-sm">Total Revenue</p><p className="mt-1.5 text-lg font-black sm:text-xl lg:text-2xl">{money(periodTotals.paidSales, String(settings.currency_symbol))}</p></div>
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 shadow-soft sm:rounded-xl sm:p-4 lg:p-5"><p className="text-xs font-black text-emerald-700 sm:text-sm">Cash Payment 💵</p><p className="mt-1.5 text-lg font-black sm:text-xl lg:text-2xl">{money(periodTotals.cash, String(settings.currency_symbol))}</p></div>
+        <div className="rounded-2xl border border-sky-200 bg-sky-50 p-3 shadow-soft sm:rounded-xl sm:p-4 lg:p-5"><p className="text-xs font-black text-sky-700 sm:text-sm">QR Payment 📱</p><p className="mt-1.5 text-lg font-black sm:text-xl lg:text-2xl">{money(periodTotals.qr, String(settings.currency_symbol))}</p></div>
+        <div className="rounded-2xl border border-line bg-shell p-3 shadow-soft sm:rounded-xl sm:p-4 lg:p-5"><p className="text-xs font-black text-coral sm:text-sm">FOC Cost 🎁</p><p className="mt-1.5 text-lg font-black text-coral sm:text-xl lg:text-2xl">- {money(periodTotals.focCost, String(settings.currency_symbol))}</p></div>
+        <div className="rounded-2xl border border-violet-200 bg-violet-50 p-3 shadow-soft sm:rounded-xl sm:p-4 lg:p-5"><p className="text-xs font-black text-violet-700 sm:text-sm">Total Revenue</p><p className="mt-1.5 text-lg font-black sm:text-xl lg:text-2xl">{money(periodTotals.paidSales, String(settings.currency_symbol))}</p></div>
       </section>
-      <section className="island-panel rounded-2xl p-3 sm:rounded-[2rem] sm:p-5">
+      <section className="island-panel rounded-2xl p-3 sm:rounded-2xl sm:p-5">
         <h2 className="text-lg font-black sm:text-xl">{text('All reports table', 'Jadual semua laporan')}</h2>
         <div className="mt-2 flex min-w-0 flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           <div className="grid w-full min-w-0 grid-cols-4 gap-1 rounded-2xl bg-white/80 p-1 text-sm font-black lg:max-w-[520px]">
@@ -695,7 +695,7 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
             ) : null}
           </div>
         </div>
-        <div className="mt-3 overflow-x-auto rounded-2xl border border-line bg-white/75 sm:rounded-[1.5rem]">
+        <div className="mt-3 overflow-x-auto rounded-2xl border border-line bg-white/75 sm:rounded-xl">
           <table className="w-full min-w-[1120px] table-fixed text-left text-xs sm:text-sm">
             <thead className="bg-shell text-sm">
               <tr>
@@ -714,13 +714,13 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
               {visibleReportRows.map((sample) => (
                 <tr
                   key={sample.id}
-                  className={`cursor-pointer border-t border-line hover:bg-shell ${activeReport?.id === sample.id ? 'bg-pink-50' : ''}`}
+                  className={`cursor-pointer border-t border-line hover:bg-shell ${activeReport?.id === sample.id ? 'bg-shell' : ''}`}
                   onClick={() => selectReport(sample)}
                 >
                   <td className="px-3 py-2 font-black whitespace-nowrap">{sample.label}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{sample.range}</td>
                   <td className="px-3 py-2 whitespace-nowrap">
-                    <span className={`rounded-xl px-3 py-1 text-xs font-black ${sample.closingStatus === 'closed' ? 'bg-teal-50 text-accent' : sample.closingStatus === 'partial' ? 'bg-amber-50 text-warning' : 'bg-pink-100 text-coral'}`}>
+                    <span className={`rounded-xl px-3 py-1 text-xs font-black ${sample.closingStatus === 'closed' ? 'bg-shell text-accent' : sample.closingStatus === 'partial' ? 'bg-amber-50 text-warning' : 'bg-shell text-coral'}`}>
                       {sample.statusLabel}
                     </span>
                   </td>
@@ -754,11 +754,11 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
           ) : null}
         </div>
       </section>
-      <section className="island-panel mt-4 rounded-2xl p-3 sm:mt-5 sm:rounded-[2rem] sm:p-5">
+      <section className="island-panel mt-4 rounded-2xl p-3 sm:mt-5 sm:rounded-2xl sm:p-5">
         <h2 className="text-lg font-black sm:text-xl">{text('Sales of all items', 'Jualan semua item')} · {activeReport ? `${activeReport.label} (${activeReport.range})` : selectedReportDate}</h2>
         <div className="hidden">
           {selectedItemSales.map((item) => (
-            <article key={item.product} className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4">
+            <article key={item.product} className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-xl sm:p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="font-black">{item.product}</p>
@@ -769,7 +769,7 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
               <div className="mt-2 grid grid-cols-3 gap-1.5 text-xs font-bold sm:mt-3 sm:gap-2 sm:text-sm">
                 <div className="rounded-2xl bg-emerald-50 p-2"><p className="text-emerald-700">Cash Payment</p><p>{money(item.cash, String(settings.currency_symbol))}</p></div>
                 <div className="rounded-2xl bg-sky-50 p-2"><p className="text-sky-700">QR Payment</p><p>{money(item.qr, String(settings.currency_symbol))}</p></div>
-                <div className="rounded-2xl bg-pink-50 p-2"><p className="text-pink-700">FOC</p><p className="text-coral">- {money(item.focCost, String(settings.currency_symbol))}</p></div>
+                <div className="rounded-2xl bg-shell p-2"><p className="text-coral">FOC</p><p className="text-coral">- {money(item.focCost, String(settings.currency_symbol))}</p></div>
               </div>
             </article>
           ))}

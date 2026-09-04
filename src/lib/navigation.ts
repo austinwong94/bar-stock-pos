@@ -1,5 +1,9 @@
 import {
+  Activity,
   BarChart3,
+  ChefHat,
+  ClipboardList,
+  PackageSearch,
   CalendarCheck2,
   ClipboardCheck,
   LayoutDashboard,
@@ -7,6 +11,7 @@ import {
   PackageMinus,
   Settings as SettingsIcon,
   Ship,
+  ShoppingBasket,
   ShieldCheck,
   ShoppingCart,
   Users,
@@ -32,6 +37,29 @@ export type DepartmentNav = {
 
 export const departmentNav: DepartmentNav[] = [
   {
+    code: 'ops',
+    icon: Activity,
+    links: [
+      { to: '/ops', label: 'Today', ms: 'Hari Ini', icon: Activity, permissions: ['ops.log.view'], exact: true },
+      { to: '/ops/summary', label: 'Daily Summary', ms: 'Ringkasan Harian', icon: ClipboardList, permissions: ['ops.log.view'] },
+      { to: '/ops/outbox', label: 'Message Outbox', ms: 'Peti Mesej', icon: BarChart3, permissions: ['ops.messages.send', 'ops.messages.manage'] },
+    ],
+  },
+  {
+    code: 'kitchen',
+    icon: ChefHat,
+    links: [
+      { to: '/kitchen', label: 'Kitchen Requests', ms: 'Permintaan Dapur', icon: ChefHat, permissions: ['kitchen.request.view', 'kitchen.request.create'], exact: true },
+    ],
+  },
+  {
+    code: 'purchasing',
+    icon: ShoppingBasket,
+    links: [
+      { to: '/purchasing', label: 'Things to Purchase', ms: 'Barang Untuk Beli', icon: ShoppingBasket, permissions: ['purchasing.view', 'purchasing.fulfil'], exact: true },
+    ],
+  },
+  {
     code: 'bar',
     icon: ShoppingCart,
     links: [
@@ -48,6 +76,7 @@ export const departmentNav: DepartmentNav[] = [
     icon: Users,
     links: [
       { to: '/guests', label: 'Bookings', ms: 'Tempahan', icon: Users, permissions: ['guests.booking.create', 'guests.booking.view_own', 'guests.booking.view_all'], exact: true },
+      { to: '/guests/sheet', label: 'Sheet Entry', ms: 'Kemasukan Helaian', icon: ClipboardList, permissions: ['guests.booking.create'] },
       { to: '/guests/pickup', label: 'Pickup Runs', ms: 'Kumpulan Jemputan', icon: MapPinned, permissions: ['guests.pickup.manage'] },
     ],
   },
@@ -56,7 +85,6 @@ export const departmentNav: DepartmentNav[] = [
     icon: Ship,
     links: [
       { to: '/fleet', label: 'Boat Board', ms: 'Papan Bot', icon: Ship, permissions: ['fleet.view', 'fleet.assign'], exact: true },
-      { to: '/fleet/boats', label: 'Boat Register', ms: 'Daftar Bot', icon: SettingsIcon, permissions: ['fleet.view', 'fleet.boats.manage'] },
     ],
   },
   {
@@ -81,22 +109,55 @@ export const departmentNav: DepartmentNav[] = [
     ],
   },
   {
+    code: 'items',
+    icon: PackageSearch,
+    links: [
+      { to: '/items', label: 'Missing Items', ms: 'Barang Hilang', icon: PackageSearch, permissions: ['items.view', 'items.report'], exact: true },
+    ],
+  },
+  {
     code: 'platform',
     icon: ShieldCheck,
     links: [
       { to: '/admin/access', label: 'Users & Access', icon: ShieldCheck, permissions: ['platform.users.manage', 'platform.roles.manage'], exact: true },
+      { to: '/admin/boats', label: 'Boats', icon: Ship, permissions: ['fleet.boats.manage'] },
       { to: '/admin/directory', label: 'Directory', icon: Users, permissions: ['platform.directory.manage'] },
       { to: '/admin/settings', label: 'Platform Settings', icon: SettingsIcon, permissions: ['platform.settings.manage'] },
     ],
   },
 ];
 
-export function departmentForPath(pathname: string): DepartmentCode {
+const barPaths = [
+  '/bar',
+  '/pos',
+  '/stock-in',
+  '/stock-out-report',
+  '/inventory',
+  '/products',
+  '/daily-closing',
+  '/daily-report',
+  '/sales',
+  '/movements',
+  '/settings',
+];
+
+/**
+ * Which department a route belongs to, or null on the hub. Returning a
+ * department for "/" is what used to put the bar's Dashboard / POS / Stock
+ * menu underneath every other department.
+ */
+export function departmentForPath(pathname: string): DepartmentCode | null {
+  if (pathname === '/' || pathname === '') return null;
+  if (pathname.startsWith('/ops')) return 'ops';
+  if (pathname.startsWith('/kitchen')) return 'kitchen';
+  if (pathname.startsWith('/purchasing')) return 'purchasing';
+  if (pathname.startsWith('/items')) return 'items';
   if (pathname.startsWith('/guests')) return 'guests';
   if (pathname.startsWith('/fleet')) return 'fleet';
   if (pathname.startsWith('/boarding')) return 'boarding';
   if (pathname.startsWith('/activities')) return 'activities';
   if (pathname.startsWith('/maintenance')) return 'maintenance';
   if (pathname.startsWith('/admin')) return 'platform';
-  return 'bar';
+  if (barPaths.some((path) => pathname.startsWith(path))) return 'bar';
+  return null;
 }

@@ -27,7 +27,7 @@ echo "migrations applied"
 "${PSQL[@]}" -d "$DB" -v ON_ERROR_STOP=1 -q -f "$HERE/seed_test.sql" >/dev/null
 
 fail=0
-for t in test_security.sql test_ops.sql test_admin.sql; do
+for t in test_security.sql test_ops.sql test_admin.sql test_kitchen_ops.sql test_trips_items.sql; do
   echo "--- $t"
   out=$("${PSQL[@]}" -d "$DB" -f "$HERE/$t" 2>&1 | grep -E "PASS|FAIL|ERROR" | sed 's/^psql:[^ ]*: NOTICE:  //') || true
   echo "$out"

@@ -31,13 +31,13 @@ export default function Inventory({ settings }: { settings: SettingsMap }) {
           const stock = product.inventory_balances?.quantity_on_hand ?? 0;
           const low = stock <= product.low_stock_threshold;
           return (
-            <article key={product.id} className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4">
+            <article key={product.id} className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-xl sm:p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h2 className="font-black">{product.name}</h2>
                   <p className="text-sm font-bold text-neutral-600">{product.categories?.name ?? 'Others'}</p>
                 </div>
-                <span className={`rounded-full px-3 py-1 text-xs font-black ${low ? 'bg-amber-100 text-warning' : 'bg-teal-50 text-accent'}`}>
+                <span className={`rounded-full px-3 py-1 text-xs font-black ${low ? 'bg-amber-100 text-warning' : 'bg-shell text-accent'}`}>
                   {low ? 'Low' : product.active ? 'Active' : 'Inactive'}
                 </span>
               </div>
@@ -49,7 +49,7 @@ export default function Inventory({ settings }: { settings: SettingsMap }) {
           );
         })}
       </div>
-      <div className="overflow-x-auto rounded-2xl border border-line bg-white/80 shadow-soft sm:rounded-[2rem]">
+      <div className="overflow-x-auto rounded-2xl border border-line bg-white/80 shadow-soft sm:rounded-2xl">
         <table className="w-full min-w-[680px] text-left">
           <thead className="bg-paper text-sm">
             <tr>

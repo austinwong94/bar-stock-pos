@@ -88,7 +88,7 @@ export function SignIn() {
     <main className="grid min-h-screen place-items-center bg-paper px-3 py-6">
       <form
         onSubmit={submit}
-        className="w-full max-w-md rounded-2xl border border-pink-200 bg-white/95 p-4 shadow-soft backdrop-blur sm:rounded-[2rem] sm:p-6"
+        className="w-full max-w-md rounded-2xl border border-line bg-white/95 p-4 shadow-soft backdrop-blur sm:rounded-2xl sm:p-6"
       >
         <div className="mb-4 flex items-center gap-3 sm:mb-6 sm:gap-4">
           <div className="grid h-11 w-11 place-items-center rounded-2xl bg-accent text-white shadow-soft sm:h-14 sm:w-14 sm:rounded-3xl">
@@ -168,7 +168,7 @@ export function SignIn() {
         )}
 
         {error ? <p className="mt-3 rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{error}</p> : null}
-        {notice ? <p className="mt-3 rounded-2xl bg-teal-50 px-4 py-3 text-sm font-bold text-accent">{notice}</p> : null}
+        {notice ? <p className="mt-3 rounded-2xl bg-shell px-4 py-3 text-sm font-bold text-accent">{notice}</p> : null}
 
         <button type="submit" disabled={busy} className={`${buttonClass} mt-4 w-full`}>
           {mode === 'code' ? <LockKeyhole className="h-5 w-5" /> : mode === 'signup' ? <Mail className="h-5 w-5" /> : <KeyRound className="h-5 w-5" />}

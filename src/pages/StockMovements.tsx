@@ -27,13 +27,13 @@ export default function StockMovements() {
       <PageHeader title="Stock Movement History" />
       <div className="hidden">
         {movements.map((movement) => (
-          <article key={movement.id} className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4">
+          <article key={movement.id} className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-xl sm:p-4">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
                 <p className="font-black">{movement.products?.name ?? '-'}</p>
                 <p className="text-sm font-bold text-neutral-600">{displayDate(movement.created_at)} · {movement.movement_type}</p>
               </div>
-              <span className={`rounded-xl px-3 py-1 text-sm font-black ${movement.quantity_change < 0 ? 'bg-pink-50 text-coral' : 'bg-teal-50 text-accent'}`}>
+              <span className={`rounded-xl px-3 py-1 text-sm font-black ${movement.quantity_change < 0 ? 'bg-shell text-coral' : 'bg-shell text-accent'}`}>
                 {movement.quantity_change}
               </span>
             </div>
@@ -46,7 +46,7 @@ export default function StockMovements() {
           </article>
         ))}
       </div>
-      <div className="overflow-x-auto rounded-2xl border border-line bg-white/80 shadow-soft sm:rounded-[2rem]">
+      <div className="overflow-x-auto rounded-2xl border border-line bg-white/80 shadow-soft sm:rounded-2xl">
         <table className="w-full min-w-[960px] text-left">
           <thead className="bg-paper text-sm">
             <tr>

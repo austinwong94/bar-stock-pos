@@ -24,12 +24,12 @@ function paymentMethodLabel(method: PaymentMethod) {
 function paymentTone(method: PaymentMethod) {
   if (method === 'cash') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
   if (method === 'qr') return 'border-sky-200 bg-sky-50 text-sky-700';
-  return 'border-pink-200 bg-pink-50 text-coral';
+  return 'border-line bg-shell text-coral';
 }
 
 function statusTone(status: Sale['status']) {
   return status === 'completed'
-    ? 'bg-teal-50 text-accent'
+    ? 'bg-shell text-accent'
     : 'bg-red-50 text-danger';
 }
 
@@ -151,29 +151,29 @@ export default function SalesHistory({ settings, embedded = false }: { settings:
       {embedded ? null : <PageHeader title={text('Sales History', 'Sejarah Jualan')} />}
 
       <section className="mb-4 grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-5">
-        <div className="rounded-2xl border border-violet-200 bg-violet-50 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4 lg:p-5">
+        <div className="rounded-2xl border border-violet-200 bg-violet-50 p-3 shadow-soft sm:rounded-xl sm:p-4 lg:p-5">
           <p className="text-xs font-black text-violet-700 sm:text-sm">Total Revenue</p>
           <p className="mt-1.5 text-lg font-black sm:text-xl lg:text-2xl">{money(totals.revenue, String(settings.currency_symbol))}</p>
         </div>
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4 lg:p-5">
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 shadow-soft sm:rounded-xl sm:p-4 lg:p-5">
           <p className="text-xs font-black text-emerald-700 sm:text-sm">Cash Payment 💵</p>
           <p className="mt-1.5 text-lg font-black sm:text-xl lg:text-2xl">{money(totals.cash, String(settings.currency_symbol))}</p>
         </div>
-        <div className="rounded-2xl border border-sky-200 bg-sky-50 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4 lg:p-5">
+        <div className="rounded-2xl border border-sky-200 bg-sky-50 p-3 shadow-soft sm:rounded-xl sm:p-4 lg:p-5">
           <p className="text-xs font-black text-sky-700 sm:text-sm">QR Payment 📱</p>
           <p className="mt-1.5 text-lg font-black sm:text-xl lg:text-2xl">{money(totals.qr, String(settings.currency_symbol))}</p>
         </div>
-        <div className="rounded-2xl border border-pink-200 bg-pink-50 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4 lg:p-5">
-          <p className="text-xs font-black text-pink-700 sm:text-sm">FOC Cost 🎁</p>
+        <div className="rounded-2xl border border-line bg-shell p-3 shadow-soft sm:rounded-xl sm:p-4 lg:p-5">
+          <p className="text-xs font-black text-coral sm:text-sm">FOC Cost 🎁</p>
           <p className="mt-1.5 text-lg font-black text-coral sm:text-xl lg:text-2xl">- {money(totals.focCost, String(settings.currency_symbol))}</p>
         </div>
-        <div className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4 lg:p-5">
+        <div className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-xl sm:p-4 lg:p-5">
           <p className="text-xs font-black text-neutral-600 sm:text-sm">Transactions</p>
           <p className="mt-1.5 text-lg font-black sm:text-xl lg:text-2xl">{totals.transactions}</p>
         </div>
       </section>
 
-      <section className="island-panel mb-4 rounded-2xl p-3 sm:mb-5 sm:rounded-[2rem] sm:p-5">
+      <section className="island-panel mb-4 rounded-2xl p-3 sm:mb-5 sm:rounded-2xl sm:p-5">
         <div className="grid gap-3 lg:grid-cols-[280px_1fr] lg:items-end">
           <Field label="Business date">
             <input className={inputClass} type="date" value={date} onChange={(event) => setDate(event.target.value)} />
@@ -203,7 +203,7 @@ export default function SalesHistory({ settings, embedded = false }: { settings:
 
       <section className="grid gap-3">
         {sales.length === 0 ? (
-          <div className="island-panel rounded-2xl p-4 text-center sm:rounded-[2rem] sm:p-6">
+          <div className="island-panel rounded-2xl p-4 text-center sm:rounded-2xl sm:p-6">
             <ReceiptText className="mx-auto h-10 w-10 text-accent" />
             <p className="mt-3 text-base font-black sm:text-lg">No sales found for {saleDateLabel(date)}.</p>
             <p className="mt-1 text-sm font-bold text-neutral-600">Try another date or payment method.</p>
@@ -211,7 +211,7 @@ export default function SalesHistory({ settings, embedded = false }: { settings:
         ) : null}
 
         {sales.length > 0 ? (
-          <div className="overflow-x-auto rounded-2xl border border-line bg-white/85 shadow-soft sm:rounded-[2rem]">
+          <div className="overflow-x-auto rounded-2xl border border-line bg-white/85 shadow-soft sm:rounded-2xl">
             <table className="w-full min-w-[1100px] text-left text-sm">
               <thead className="bg-paper">
                 <tr>

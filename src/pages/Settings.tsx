@@ -69,8 +69,8 @@ export default function Settings({ settings, onSaved }: { settings: SettingsMap;
   return (
     <>
       <PageHeader title={text('Settings', 'Tetapan')} />
-      <form onSubmit={save} className="island-panel grid max-w-4xl gap-4 rounded-2xl p-3 sm:rounded-[2rem] sm:p-5">
-        <section className="rounded-2xl border border-line bg-white/80 p-3 sm:rounded-[1.5rem] sm:p-4">
+      <form onSubmit={save} className="island-panel grid max-w-4xl gap-4 rounded-2xl p-3 sm:rounded-2xl sm:p-5">
+        <section className="rounded-2xl border border-line bg-white/80 p-3 sm:rounded-xl sm:p-4">
           <h2 className="text-lg font-black sm:text-xl">{text('Staff names', 'Nama staf')}</h2>
           <p className="mt-1 text-sm font-bold text-neutral-600">{text('These become the order-taker buttons in POS.', 'Nama ini menjadi butang penerima pesanan di POS.')}</p>
           <div className="mt-3 grid gap-2 sm:mt-4 sm:grid-cols-2">

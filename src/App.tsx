@@ -25,10 +25,17 @@ import StockMovements from './pages/StockMovements';
 import StockOutReport from './pages/StockOutReport';
 import Settings from './pages/Settings';
 import BoatMaintenance from './pages/ops/BoatMaintenance';
+import OperationsDay from './pages/ops/OperationsDay';
+import DailySummary from './pages/ops/DailySummary';
+import MessageOutbox from './pages/ops/MessageOutbox';
+import Kitchen from './pages/supply/Kitchen';
+import Purchasing from './pages/supply/Purchasing';
+import MissingItems from './pages/items/MissingItems';
 import Boarding from './pages/ops/Boarding';
 import Activities from './pages/ops/Activities';
 import Bookings from './pages/guests/Bookings';
 import PickupCoordination from './pages/guests/PickupCoordination';
+import BookingSheet from './pages/guests/BookingSheet';
 import BoatBoard from './pages/fleet/BoatBoard';
 import BoatRegister from './pages/fleet/BoatRegister';
 import AccessControl from './pages/admin/AccessControl';
@@ -187,20 +194,37 @@ function PlatformRoutes({
           }
         />
         <Route
+          path="/guests/sheet"
+          element={<Guard need={['guests.booking.create']}><BookingSheet /></Guard>}
+        />
+        <Route
           path="/guests/pickup"
           element={<Guard need={['guests.pickup.manage']}><PickupCoordination settings={settings} /></Guard>}
         />
 
         {/* Boat assignment */}
         <Route path="/fleet" element={<Guard need={['fleet.view', 'fleet.assign']}><BoatBoard /></Guard>} />
-        <Route path="/fleet/boats" element={<Guard need={['fleet.view', 'fleet.boats.manage']}><BoatRegister /></Guard>} />
+        <Route path="/fleet/boats" element={<Navigate to="/admin/boats" replace />} />
 
         {/* Boarding and activities */}
         <Route path="/boarding" element={<Guard need={['boarding.view', 'boarding.view_all', 'boarding.mark']}><Boarding /></Guard>} />
         <Route path="/activities" element={<Guard need={['activities.view', 'activities.select', 'activities.mark']}><Activities /></Guard>} />
 
+        {/* Daily operations */}
+        <Route path="/ops" element={<Guard need={['ops.log.view']}><OperationsDay /></Guard>} />
+        <Route path="/ops/summary" element={<Guard need={['ops.log.view']}><DailySummary settings={settings} /></Guard>} />
+        <Route path="/ops/outbox" element={<Guard need={['ops.messages.send', 'ops.messages.manage']}><MessageOutbox /></Guard>} />
+
+        {/* Kitchen and purchasing */}
+        <Route path="/kitchen" element={<Guard need={['kitchen.request.view', 'kitchen.request.create']}><Kitchen /></Guard>} />
+        <Route path="/purchasing" element={<Guard need={['purchasing.view', 'purchasing.fulfil']}><Purchasing settings={settings} /></Guard>} />
+
+        {/* Island items */}
+        <Route path="/items" element={<Guard need={['items.view', 'items.report']}><MissingItems settings={settings} /></Guard>} />
+
         {/* Master admin */}
         <Route path="/admin/access" element={<Guard need={['platform.users.manage', 'platform.roles.manage']}><AccessControl /></Guard>} />
+        <Route path="/admin/boats" element={<Guard need={['fleet.boats.manage']}><BoatRegister /></Guard>} />
         <Route path="/admin/directory" element={<Guard need={['platform.directory.manage']}><Directory /></Guard>} />
         <Route
           path="/admin/settings"
@@ -238,9 +262,9 @@ function CloudRequired({ message }: { message: string }) {
 
   return (
     <main className="grid min-h-screen place-items-center bg-paper px-4 py-8">
-      <section className="w-full max-w-lg rounded-2xl border border-pink-200 bg-white/95 p-5 shadow-soft sm:rounded-[2rem] sm:p-6">
+      <section className="w-full max-w-lg rounded-2xl border border-line bg-white/95 p-5 shadow-soft sm:rounded-2xl sm:p-6">
         <div className="flex items-start gap-3">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-pink-50 text-coral">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-shell text-coral">
             <AlertTriangle className="h-6 w-6" />
           </span>
           <div>
