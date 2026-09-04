@@ -170,7 +170,7 @@ export default function BoatMaintenance({ settings }: { settings: SettingsMap })
         </div>
       </div>
 
-      <div className="mb-4 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-2.5 xl:grid-cols-4">
         <Stat label="Trips in period" value={String(totals?.trips ?? trips.length)} hint={`${emergencyTrips.length} emergency`} />
         <Stat label="Fuel bought" value={`${Number(totals?.litres_bought ?? 0).toFixed(0)} L`} />
         <Stat

@@ -123,6 +123,13 @@ export default function BoatBoard() {
   const totalPax = bookings.reduce((sum, booking) => sum + booking.pax_total, 0);
   const seatedPax = totalPax - unassignedPax;
   const capacity = assignments.reduce((sum, assignment) => sum + (boatById.get(assignment.boat_id)?.capacity_pax ?? 0), 0);
+  // The mix matters as much as the count when seating a boat.
+  const paxMix = [
+    `${bookings.reduce((sum, booking) => sum + booking.pax_adults, 0)} adult`,
+    `${bookings.reduce((sum, booking) => sum + booking.pax_children, 0)} child`,
+    `${bookings.reduce((sum, booking) => sum + booking.pax_elderly, 0)} elderly`,
+    `${bookings.reduce((sum, booking) => sum + (booking.pax_assisted ?? 0), 0)} need help`,
+  ].join(' · ');
   const locked = assignments.some((assignment) => assignment.locked);
   const maintenanceBoats = boats.filter((boat) => boat.status === 'maintenance');
 
@@ -178,11 +185,16 @@ export default function BoatBoard() {
         ) : null}
       </div>
 
-      <div className="mb-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-3 grid grid-cols-2 gap-2 xl:grid-cols-4">
         <Stat label="Boats in service" value={String(assignments.length)} />
         <Stat label="Seats available" value={String(capacity)} />
         <Stat label="Assigned pax" value={`${seatedPax} / ${totalPax}`} tone={seatedPax === totalPax ? 'good' : 'default'} />
-        <Stat label="Waiting for a boat" value={String(unassignedPax)} tone={unassignedPax > 0 ? 'warn' : 'good'} />
+        <Stat
+          label="Waiting for a boat"
+          value={String(unassignedPax)}
+          tone={unassignedPax > 0 ? 'warn' : 'good'}
+          hint={paxMix}
+        />
       </div>
 
       {maintenanceBoats.length > 0 ? (
@@ -373,7 +385,8 @@ function GroupCard({
         <div className="mt-1.5 flex flex-wrap gap-1">
           <PaxChip label="adult" count={booking.pax_adults} />
           <PaxChip label="child" count={booking.pax_children} tone="warn" />
-          <PaxChip label="elderly" count={booking.pax_elderly} tone="alert" />
+          <PaxChip label="elderly" count={booking.pax_elderly} tone="warn" />
+          <PaxChip label="needs help" count={booking.pax_assisted} tone="alert" />
         </div>
 
         <p className="mt-1.5 truncate text-xs font-medium text-muted">

@@ -107,7 +107,7 @@ export default function MissingItems({ settings }: { settings: SettingsMap }) {
         }
       />
 
-      <div className="mb-4 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-2.5 xl:grid-cols-4">
         <Stat label="Still missing" value={String(totals.outstanding)} tone={totals.outstanding ? 'warn' : 'good'} />
         <Stat label="Found again" value={String(totals.recovered)} />
         <Stat label="Written off" value={String(totals.writtenOff)} />

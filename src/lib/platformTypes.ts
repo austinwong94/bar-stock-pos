@@ -182,6 +182,8 @@ export type Tourist = {
   is_lead: boolean;
   seat_note: string | null;
   sort_order: number;
+  needs_assistance: boolean;
+  assistance_note: string | null;
   tourist_private?: TouristPrivate | null;
 };
 
@@ -204,7 +206,7 @@ export type PickupLocation = {
   active: boolean;
 };
 
-export type PickupGroup = {
+export type PickupRun = {
   id: string;
   service_date: string;
   name: string;
@@ -212,10 +214,38 @@ export type PickupGroup = {
   latitude: number | null;
   longitude: number | null;
   pickup_time: string | null;
-  vehicle: string | null;
+  depart_time: string | null;
+  vehicle_id: string | null;
   driver_employee_id: string | null;
+  status: 'planned' | 'on_the_road' | 'completed' | 'cancelled';
+  sort_order: number;
   notes: string | null;
   auto_created: boolean;
+  transport_vehicles?: Pick<TransportVehicle, 'code' | 'name' | 'capacity_pax'> | null;
+};
+
+export type TransportVehicle = {
+  id: string;
+  code: string;
+  name: string | null;
+  vehicle_type: 'van' | 'minibus' | 'bus' | 'car' | 'pickup_truck' | 'other';
+  capacity_pax: number;
+  plate_no: string | null;
+  default_driver_employee_id: string | null;
+  active: boolean;
+  notes: string | null;
+  sort_order: number;
+};
+
+export type CatalogueItem = {
+  id: string;
+  kind: 'ingredient' | 'equipment';
+  name: string;
+  category: string | null;
+  unit: string;
+  default_quantity: number | null;
+  times_used: number;
+  active: boolean;
 };
 
 export type Booking = {
@@ -233,6 +263,10 @@ export type Booking = {
   pax_adults: number;
   pax_children: number;
   pax_elderly: number;
+  pax_assisted: number;
+  pickup_required: boolean;
+  pickup_stop_order: number | null;
+  pickup_eta: string | null;
   pickup_location_id: string | null;
   pickup_hotel_name: string | null;
   pickup_area: string | null;
@@ -300,6 +334,8 @@ export type ManifestRow = {
   age_band: AgeBand;
   is_lead: boolean;
   nationality: string | null;
+  needs_assistance: boolean;
+  assistance_note: string | null;
   booking_ref: string;
   lead_name: string;
   group_size: number;

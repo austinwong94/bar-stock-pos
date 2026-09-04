@@ -59,7 +59,7 @@ export default function BoatRegister() {
         }
       />
 
-      <div className="mb-3 grid gap-2 sm:grid-cols-3">
+      <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
         <Stat label="Boats in the fleet" value={String(boats.length)} />
         <Stat label="Active today" value={String(activeBoats.length)} tone="good" />
         <Stat label="Total seats" value={String(totalSeats)} />

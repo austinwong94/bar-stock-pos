@@ -99,7 +99,7 @@ export default function OperationsDay() {
         </Field>
       </div>
 
-      <div className="mb-3 grid gap-2 sm:grid-cols-3">
+      <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
         <Stat label="Steps finished" value={`${done} / ${status.length}`} tone={done === status.length && status.length > 0 ? 'good' : 'default'} />
         <Stat label="Running late" value={String(late)} tone={late > 0 ? 'bad' : 'good'} />
         <Stat label="Things logged today" value={String(events.length)} />

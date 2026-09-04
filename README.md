@@ -142,18 +142,28 @@ code sign-ins and suspends the tablets already signed in with it.
 ## Day to day
 
 **Entering bookings.** One booking holds everyone who travelled together, so a
-family of five is five guest rows on one booking. In the guest grid you can
+family of five is five guest rows on one booking. Each guest is marked adult,
+child, elderly or needs-assistance, and those counts show on every card that
+matters — the booking list, the pickup run, the boat — so a PIC can arrange the
+day without opening anything. In the guest grid you can
 paste a block straight out of Excel — Name, Phone, Nationality, Adult/Child and
 Passport, tab separated, one guest a line — and the rows fill themselves. Pax
 counts are always recalculated from the names, so the boat capacity maths cannot
 drift from the list.
 
-**Pickup runs.** Open Pickup Runs, press **Auto group** and bookings at the same
-hotel, or at hotels within the radius you set (1.5 km by default), fall into one
-run. Anything the system got wrong is fixed by dragging the card, or on a tablet
-by tapping the card and then tapping the run. Grouping by distance needs
-coordinates on the pickup point, which you set once in **Directory > Pickup
-points**; without them it matches on the hotel name.
+**Pickup and transport.** Pickup is opt-in: a booking is only collected if
+someone ticked *needs collecting*, so guests making their own way to the jetty
+never clutter the board. Press **Plan the runs** and the vans fill themselves —
+hotels within the radius you set share a vehicle, a van is never loaded past its
+seat count, and each route is ordered from the hotel furthest from the jetty
+inwards, with a collection time worked backwards from the first boat departure.
+Anything the plan got wrong is fixed by dragging a card, or on a tablet by
+tapping the card then the run.
+
+Distance planning needs coordinates on the pickup point (**Directory → Pickup
+points**) and the jetty position (**Platform Settings**); without coordinates it
+falls back to matching hotel names. Vans live in **Admin → Vehicles**, where
+their seat count is what stops a run being overloaded.
 
 **Boat board.** Every active boat shows its type, capacity, who is aboard, how
 many pax are assigned and how many seats are left, next to the pool of guests
@@ -185,8 +195,12 @@ a new job in the same category on the same boat within a year is flagged as a
 repeat and linked to the previous one, and a job marked *cannot sail* parks the
 boat until it is closed.
 
-**Kitchen and purchasing.** The kitchen enters what it needs for a date and a
-pax count, saves it as a draft, then confirms it. Confirming is what moves it
+**Kitchen and purchasing.** Most of a weekly order is the same every week, so
+the kitchen taps items from a catalogue that sorts by how often they are
+actually used and fills in the usual quantity and unit. Anything typed joins the
+catalogue for next time, and **Copy** starts a new draft from a past order. The
+kitchen enters what it needs for a date and a pax count, saves it as a draft,
+then confirms it. Confirming is what moves it
 onto the buying list and writes the WhatsApp message. The purchaser ticks items
 off with cost and supplier; the request closes itself when nothing is left
 pending.

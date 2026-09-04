@@ -87,7 +87,7 @@ export default function Purchasing({ settings }: { settings: SettingsMap }) {
         }
       />
 
-      <div className="mb-3 grid gap-2 sm:grid-cols-3">
+      <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
         <Stat label="Open requests" value={String(totals.open)} tone={totals.open ? 'warn' : 'good'} />
         <Stat label="Items still to buy" value={String(totals.pending)} />
         {showCost ? <Stat label="Recorded spend" value={money(totals.spend, currency)} /> : null}

@@ -89,7 +89,7 @@ export default function MessageOutbox() {
         }
       />
 
-      <div className="mb-3 grid gap-2 sm:grid-cols-3">
+      <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
         <Stat label="Waiting to be sent" value={String(queued.length)} tone={queued.length ? 'warn' : 'good'} />
         <Stat label="Rules switched on" value={String(rules.filter((rule) => rule.enabled).length)} />
         <Stat label="Rules switched off" value={String(rules.filter((rule) => !rule.enabled).length)} />

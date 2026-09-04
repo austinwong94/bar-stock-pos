@@ -51,6 +51,7 @@ function applyFilters(rows: Row[], filters: Filter[]) {
 const embeds: Record<string, (row: Row, spec: string) => any> = {
   agencies: (row) => db.agencies.find((item) => item.id === row.agency_id) ?? null,
   boats: (row) => db.boats.find((item) => item.id === row.boat_id) ?? null,
+  transport_vehicles: (row) => db.transport_vehicles.find((item) => item.id === row.vehicle_id) ?? null,
   products: (row) => null,
   tourists: (row, spec) => {
     const list = db.tourists
@@ -314,7 +315,13 @@ function recountPax(bookingId: string) {
   booking.pax_children = people.length - booking.pax_adults - booking.pax_elderly;
 }
 
-function distanceKm(lat1: number, lon1: number, lat2: number, lon2: number) {
+function distanceKm(
+  lat1: number | null | undefined,
+  lon1: number | null | undefined,
+  lat2: number | null | undefined,
+  lon2: number | null | undefined,
+): number | null {
+  if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return null;
   const toRad = (value: number) => (value * Math.PI) / 180;
   const a =
     Math.sin(toRad(lat2 - lat1) / 2) ** 2 +
@@ -430,6 +437,85 @@ function queueMessage(
   return message.id;
 }
 
+
+/**
+ * Same route logic as the SQL: start at the hotel furthest from the jetty,
+ * always hop to the nearest unvisited stop, then work the times backwards
+ * from when the van has to be at the jetty.
+ */
+function orderPickupRun(runId: string) {
+  const run = db.pickup_groups.find((row) => row.id === runId);
+  if (!run) return 0;
+  const base = { lat: 5.42, lng: 100.34 };
+  const speed = 30;
+  const dwell = 5;
+
+  const bookings = db.bookings.filter((row) => row.pickup_group_id === runId);
+  if (bookings.length === 0) return 0;
+
+  const stops = new Map<string, { lat: number | null; lng: number | null }>();
+  bookings.forEach((booking) => {
+    const key = String(booking.pickup_hotel_name || booking.pickup_area || booking.id).toLowerCase();
+    if (!stops.has(key)) stops.set(key, { lat: booking.pickup_latitude, lng: booking.pickup_longitude });
+  });
+
+  const remaining = [...stops.entries()];
+  remaining.sort(
+    (a, b) =>
+      (distanceKm(b[1].lat, b[1].lng, base.lat, base.lng) ?? -1) -
+      (distanceKm(a[1].lat, a[1].lng, base.lat, base.lng) ?? -1),
+  );
+
+  const ordered: Array<{ key: string; minutes: number }> = [];
+  let current = remaining.shift()!;
+  let minutes = 0;
+  ordered.push({ key: current[0], minutes });
+
+  while (remaining.length > 0) {
+    remaining.sort(
+      (a, b) =>
+        (distanceKm(current[1].lat, current[1].lng, a[1].lat, a[1].lng) ?? 999) -
+        (distanceKm(current[1].lat, current[1].lng, b[1].lat, b[1].lng) ?? 999),
+    );
+    const next = remaining.shift()!;
+    const hop = distanceKm(current[1].lat, current[1].lng, next[1].lat, next[1].lng) ?? 0;
+    minutes += dwell + (hop / speed) * 60;
+    ordered.push({ key: next[0], minutes });
+    current = next;
+  }
+
+  const toJetty = distanceKm(current[1].lat, current[1].lng, base.lat, base.lng) ?? 0;
+  const total = minutes + dwell + (toJetty / speed) * 60;
+
+  const departures = db.boat_assignments
+    .filter((a) => a.service_date === run.service_date && a.departure_time)
+    .map((a) => a.departure_time as string)
+    .sort();
+  const target = departures[0] ?? '09:00';
+  const [th, tm] = target.split(':').map(Number);
+  const targetMinutes = th * 60 + tm - 30;
+  const startMinutes = Math.max(targetMinutes - Math.ceil(total), 0);
+  const fmt = (value: number) =>
+    `${String(Math.floor(value / 60) % 24).padStart(2, '0')}:${String(Math.round(value % 60)).padStart(2, '0')}`;
+
+  run.depart_time = fmt(startMinutes);
+  run.pickup_time = run.depart_time;
+
+  ordered.forEach((stop, index) => {
+    bookings
+      .filter(
+        (booking) =>
+          String(booking.pickup_hotel_name || booking.pickup_area || booking.id).toLowerCase() === stop.key,
+      )
+      .forEach((booking) => {
+        booking.pickup_stop_order = index + 1;
+        booking.pickup_eta = fmt(startMinutes + Math.ceil(stop.minutes));
+      });
+  });
+
+  return ordered.length;
+}
+
 const rpcHandlers: Record<string, (args: any) => any> = {
   my_permissions: () => db.permissions.filter((row) => can(row.code)).map((row) => row.code),
 
@@ -458,6 +544,207 @@ const rpcHandlers: Record<string, (args: any) => any> = {
     });
   },
 
+
+
+  // ---- pickup and transport --------------------------------------------
+  set_booking_pickup: ({ p_booking_id, p_required }: any) => {
+    // Either the coordinator, or the person who entered the booking.
+    const owner = db.bookings.find((row) => row.id === p_booking_id)?.created_by;
+    if (!can('guests.pickup.manage') && !can('guests.booking.edit_all') && owner !== currentUserIdRef.value) {
+      throw new Error('You cannot change this booking.');
+    }
+    const booking = db.bookings.find((row) => row.id === p_booking_id);
+    if (!booking) throw new Error('Booking not found.');
+    booking.pickup_required = p_required;
+    if (!p_required) {
+      booking.pickup_group_id = null;
+      booking.pickup_stop_order = null;
+      booking.pickup_eta = null;
+    }
+    return null;
+  },
+
+  order_pickup_run: ({ p_run_id }: any) => orderPickupRun(p_run_id),
+
+  auto_plan_pickups: ({ p_service_date, p_radius_km }: any) => {
+    requirePermission('guests.pickup.manage');
+    const radius = Number(p_radius_km) || 1.5;
+    const base = { lat: 5.42, lng: 100.34 };
+    let placed = 0;
+
+    const waiting = db.bookings
+      .filter(
+        (b) =>
+          b.service_date === p_service_date &&
+          b.pickup_required &&
+          !b.pickup_group_id &&
+          b.status !== 'cancelled',
+      )
+      // Furthest hotel first, so a run builds inwards towards the jetty.
+      .sort(
+        (a, b) =>
+          (distanceKm(b.pickup_latitude, b.pickup_longitude, base.lat, base.lng) ?? -1) -
+          (distanceKm(a.pickup_latitude, a.pickup_longitude, base.lat, base.lng) ?? -1),
+      );
+
+    waiting.forEach((booking) => {
+      const spot = booking.pickup_hotel_name || booking.pickup_area || 'Pickup';
+      let run = db.pickup_groups
+        .filter((g) => g.service_date === p_service_date && g.status !== 'cancelled')
+        .find((g) => {
+          const seats = db.transport_vehicles.find((v) => v.id === g.vehicle_id)?.capacity_pax ?? 0;
+          const used = db.bookings
+            .filter((b) => b.pickup_group_id === g.id)
+            .reduce((sum, b) => sum + b.pax_total, 0);
+          const near = db.bookings.some(
+            (b) =>
+              b.pickup_group_id === g.id &&
+              (String(b.pickup_hotel_name ?? '').toLowerCase() === String(spot).toLowerCase() ||
+                (booking.pickup_latitude != null &&
+                  b.pickup_latitude != null &&
+                  (distanceKm(booking.pickup_latitude, booking.pickup_longitude, b.pickup_latitude, b.pickup_longitude) ?? 999) <= radius)),
+          );
+          return near && (seats === 0 || used + booking.pax_total <= seats);
+        });
+
+      if (!run) {
+        const vehicle = db.transport_vehicles
+          .filter(
+            (v) =>
+              v.active &&
+              !db.pickup_groups.some(
+                (g) => g.service_date === p_service_date && g.vehicle_id === v.id && g.status !== 'cancelled',
+              ),
+          )
+          .sort((a, b) => b.capacity_pax - a.capacity_pax)[0];
+        run = {
+          id: uid(),
+          service_date: p_service_date,
+          name: `${vehicle?.code ?? 'Run'} · ${spot}`,
+          area_label: booking.pickup_area ?? null,
+          latitude: booking.pickup_latitude ?? null,
+          longitude: booking.pickup_longitude ?? null,
+          pickup_time: null,
+          depart_time: null,
+          vehicle_id: vehicle?.id ?? null,
+          driver_employee_id: vehicle?.default_driver_employee_id ?? null,
+          status: 'planned',
+          sort_order: db.pickup_groups.length + 1,
+          notes: null,
+          auto_created: true,
+          created_at: new Date().toISOString(),
+        };
+        db.pickup_groups.push(run);
+      }
+
+      booking.pickup_group_id = run.id;
+      placed += 1;
+    });
+
+    db.pickup_groups = db.pickup_groups.filter(
+      (g) =>
+        g.service_date !== p_service_date ||
+        !g.auto_created ||
+        db.bookings.some((b) => b.pickup_group_id === g.id),
+    );
+    db.pickup_groups
+      .filter((g) => g.service_date === p_service_date)
+      .forEach((g) => orderPickupRun(g.id));
+    return placed;
+  },
+
+  assign_pickup_run: ({ p_booking_id, p_run_id, p_allow_overload }: any) => {
+    requirePermission('guests.pickup.manage');
+    const booking = db.bookings.find((row) => row.id === p_booking_id);
+    if (!booking) throw new Error('Booking not found.');
+    const previous = booking.pickup_group_id;
+
+    if (p_run_id) {
+      const run = db.pickup_groups.find((row) => row.id === p_run_id);
+      if (!run) throw new Error('Pickup run not found.');
+      const seats = db.transport_vehicles.find((v) => v.id === run.vehicle_id)?.capacity_pax ?? 0;
+      const used = db.bookings
+        .filter((b) => b.pickup_group_id === p_run_id && b.id !== p_booking_id)
+        .reduce((sum, b) => sum + b.pax_total, 0);
+      if (!p_allow_overload && seats > 0 && used + booking.pax_total > seats) {
+        throw new Error(`${run.name} has ${Math.max(seats - used, 0)} seat(s) left and this booking is ${booking.pax_total} pax.`);
+      }
+      booking.pickup_required = true;
+    }
+
+    booking.pickup_group_id = p_run_id ?? null;
+    booking.pickup_stop_order = null;
+    booking.pickup_eta = null;
+    if (p_run_id) orderPickupRun(p_run_id);
+    if (previous && previous !== p_run_id) orderPickupRun(previous);
+    return null;
+  },
+
+  save_pickup_run: (args: any) => {
+    requirePermission('guests.pickup.manage');
+    if (!args.p_name?.trim()) throw new Error('Give the run a name.');
+    let run = args.p_id ? db.pickup_groups.find((row) => row.id === args.p_id) : null;
+    if (!run) {
+      run = {
+        id: uid(), service_date: args.p_service_date, auto_created: false,
+        area_label: null, latitude: null, longitude: null,
+        sort_order: db.pickup_groups.length + 1, created_at: new Date().toISOString(),
+      };
+      db.pickup_groups.push(run);
+    }
+    Object.assign(run, {
+      name: args.p_name.trim(),
+      vehicle_id: args.p_vehicle_id ?? null,
+      driver_employee_id: args.p_driver_employee_id ?? null,
+      depart_time: args.p_depart_time || run.depart_time || null,
+      pickup_time: args.p_depart_time || run.pickup_time || null,
+      status: args.p_status || run.status || 'planned',
+      notes: args.p_notes ?? run.notes ?? null,
+    });
+    return run;
+  },
+
+  delete_pickup_run: ({ p_run_id }: any) => {
+    requirePermission('guests.pickup.manage');
+    db.bookings
+      .filter((row) => row.pickup_group_id === p_run_id)
+      .forEach((row) => {
+        row.pickup_group_id = null;
+        row.pickup_stop_order = null;
+        row.pickup_eta = null;
+      });
+    db.pickup_groups = db.pickup_groups.filter((row) => row.id !== p_run_id);
+    return null;
+  },
+
+  copy_purchase_request: ({ p_source_id, p_needed_for_date }: any) => {
+    requirePermission('kitchen.request.create');
+    const source = db.purchase_requests.find((row) => row.id === p_source_id);
+    if (!source) throw new Error('Request not found.');
+    const sameDay = db.purchase_requests.filter((row) => row.needed_for_date === p_needed_for_date).length + 1;
+    const copy = {
+      ...source,
+      id: uid(),
+      request_no: `PR-${String(p_needed_for_date).replace(/-/g, '').slice(2)}-${String(sameDay).padStart(3, '0')}`,
+      needed_for_date: p_needed_for_date,
+      status: 'draft',
+      submitted_at: null,
+      completed_at: null,
+      requested_by: currentUserIdRef.value,
+      created_at: new Date().toISOString(),
+    };
+    db.purchase_requests.push(copy);
+    db.purchase_request_items
+      .filter((row) => row.request_id === p_source_id)
+      .forEach((row) => {
+        db.purchase_request_items.push({
+          ...row, id: uid(), request_id: copy.id,
+          purchase_status: 'pending', purchased_quantity: null, actual_cost: null,
+          supplier: null, purchased_by: null, purchased_at: null, purchase_note: null,
+        });
+      });
+    return copy.id;
+  },
 
   // ---- kitchen and purchasing ----------------------------------------
   save_purchase_request: ({ p_request, p_items }: any) => {
@@ -1183,96 +1470,9 @@ const rpcHandlers: Record<string, (args: any) => any> = {
     return null;
   },
 
-  save_pickup_group: (args: any) => {
-    requirePermission('guests.pickup.manage');
-    if (!args.p_name?.trim()) throw new Error('A pickup group name is required.');
-    if (!args.p_id) {
-      const group = {
-        id: uid(),
-        service_date: args.p_service_date,
-        name: args.p_name.trim(),
-        area_label: args.p_area_label ?? null,
-        latitude: null,
-        longitude: null,
-        pickup_time: args.p_pickup_time || null,
-        vehicle: args.p_vehicle ?? null,
-        driver_employee_id: args.p_driver_employee_id ?? null,
-        notes: args.p_notes ?? null,
-        auto_created: false,
-      };
-      db.pickup_groups.push(group);
-      return group;
-    }
-    const group = db.pickup_groups.find((row) => row.id === args.p_id);
-    if (!group) throw new Error('Pickup group not found.');
-    Object.assign(group, {
-      name: args.p_name.trim(),
-      area_label: args.p_area_label ?? group.area_label,
-      pickup_time: args.p_pickup_time || null,
-      vehicle: args.p_vehicle ?? group.vehicle,
-      driver_employee_id: args.p_driver_employee_id ?? null,
-    });
-    return group;
-  },
 
-  set_pickup_group: ({ p_booking_id, p_group_id }: any) => {
-    requirePermission('guests.pickup.manage');
-    const booking = db.bookings.find((row) => row.id === p_booking_id);
-    if (!booking) throw new Error('Booking not found.');
-    booking.pickup_group_id = p_group_id;
-    return null;
-  },
 
-  delete_pickup_group: ({ p_group_id }: any) => {
-    requirePermission('guests.pickup.manage');
-    db.bookings.filter((row) => row.pickup_group_id === p_group_id).forEach((row) => { row.pickup_group_id = null; });
-    db.pickup_groups = db.pickup_groups.filter((row) => row.id !== p_group_id);
-    return null;
-  },
 
-  auto_group_pickups: ({ p_service_date, p_radius_km }: any) => {
-    requirePermission('guests.pickup.manage');
-    const radius = Number(p_radius_km) || 1.5;
-    let grouped = 0;
-    db.bookings
-      .filter((row) => row.service_date === p_service_date && !row.pickup_group_id && row.status !== 'cancelled')
-      .sort((a, b) => String(a.pickup_hotel_name).localeCompare(String(b.pickup_hotel_name)))
-      .forEach((booking) => {
-        const spot = booking.pickup_hotel_name || booking.pickup_area || 'Unassigned pickup';
-        let group = db.pickup_groups
-          .filter((row) => row.service_date === p_service_date)
-          .filter(
-            (row) =>
-              row.name.toLowerCase() === String(spot).toLowerCase() ||
-              (booking.pickup_latitude !== null &&
-                row.latitude !== null &&
-                distanceKm(booking.pickup_latitude, booking.pickup_longitude, row.latitude, row.longitude) <= radius),
-          )
-          .sort((a, b) => (a.name.toLowerCase() === String(spot).toLowerCase() ? -1 : 1))[0];
-        if (!group) {
-          group = {
-            id: uid(),
-            service_date: p_service_date,
-            name: spot,
-            area_label: booking.pickup_area,
-            latitude: booking.pickup_latitude,
-            longitude: booking.pickup_longitude,
-            pickup_time: booking.pickup_time,
-            vehicle: null,
-            driver_employee_id: null,
-            notes: null,
-            auto_created: true,
-          };
-          db.pickup_groups.push(group);
-        }
-        booking.pickup_group_id = group.id;
-        grouped += 1;
-      });
-    db.pickup_groups = db.pickup_groups.filter(
-      (row) => row.service_date !== p_service_date || !row.auto_created || db.bookings.some((b) => b.pickup_group_id === row.id),
-    );
-    return grouped;
-  },
 
   mark_boarding: ({ p_passenger_ids, p_status }: any) => {
     requirePermission('boarding.mark');

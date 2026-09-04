@@ -40,6 +40,7 @@ import BoatBoard from './pages/fleet/BoatBoard';
 import BoatRegister from './pages/fleet/BoatRegister';
 import AccessControl from './pages/admin/AccessControl';
 import Directory from './pages/admin/Directory';
+import Vehicles from './pages/admin/Vehicles';
 import PlatformSettings from './pages/admin/PlatformSettings';
 
 const LazyDemoBar = lazy(() =>
@@ -225,6 +226,7 @@ function PlatformRoutes({
         {/* Master admin */}
         <Route path="/admin/access" element={<Guard need={['platform.users.manage', 'platform.roles.manage']}><AccessControl /></Guard>} />
         <Route path="/admin/boats" element={<Guard need={['fleet.boats.manage']}><BoatRegister /></Guard>} />
+        <Route path="/admin/vehicles" element={<Guard need={['guests.pickup.vehicles', 'platform.directory.manage']}><Vehicles /></Guard>} />
         <Route path="/admin/directory" element={<Guard need={['platform.directory.manage']}><Directory /></Guard>} />
         <Route
           path="/admin/settings"

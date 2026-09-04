@@ -15,6 +15,7 @@ import {
   todayIso,
 } from '../../lib/opsData';
 import { csvEscape } from '../../lib/format';
+import { PaxChip } from './PickupCoordination';
 import type { AgeBand, Agency, Booking, BookingHistoryRow, PickupLocation, Tourist } from '../../lib/platformTypes';
 
 type PersonRow = {
@@ -24,6 +25,7 @@ type PersonRow = {
   nationality: string;
   age_band: AgeBand;
   passport_no: string;
+  needs_assistance: boolean;
 };
 
 const emptyPerson = (): PersonRow => ({
@@ -32,6 +34,7 @@ const emptyPerson = (): PersonRow => ({
   nationality: '',
   age_band: 'adult',
   passport_no: '',
+  needs_assistance: false,
 });
 
 export default function Bookings() {
@@ -222,7 +225,7 @@ export default function Bookings() {
         </div>
       </div>
 
-      <div className="mb-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-3 grid grid-cols-2 gap-2 xl:grid-cols-4">
         <Stat label="Bookings" value={String(filtered.length)} />
         <Stat label="Total pax" value={String(totals.pax)} tone="good" />
         {Object.entries(totals.bySource).slice(0, 2).map(([source, pax]) => (
@@ -336,12 +339,26 @@ function BookingRow({
           {booking.agencies?.name ? <p className="mt-1 text-xs font-medium text-neutral-600">{booking.agencies.name}</p> : null}
         </td>
         <td className="p-3">
-          {booking.pickup_hotel_name ?? '—'}
-          {booking.pickup_time ? <p className="text-xs font-medium text-neutral-600">{booking.pickup_time.slice(0, 5)}</p> : null}
+          {booking.pickup_required ? (
+            <>
+              <span className="font-medium">{booking.pickup_hotel_name ?? 'Hotel not set'}</span>
+              <p className="text-xs font-medium text-muted">
+                {booking.pickup_eta ? `Collected ${booking.pickup_eta.slice(0, 5)}` : 'Not on a run yet'}
+              </p>
+            </>
+          ) : (
+            <span className="text-xs font-medium text-muted">Own transport</span>
+          )}
         </td>
         <td className="p-3">
-          <span className="inline-flex items-center gap-1 font-black">
+          <span className="inline-flex items-center gap-1 font-semibold text-ink">
             <Users className="h-4 w-4 text-accent" /> {booking.pax_total}
+          </span>
+          <span className="mt-1 flex flex-wrap gap-1">
+            <PaxChip label="adult" count={booking.pax_adults} />
+            <PaxChip label="child" count={booking.pax_children} tone="warn" />
+            <PaxChip label="elderly" count={booking.pax_elderly} tone="warn" />
+            <PaxChip label="needs help" count={booking.pax_assisted} tone="alert" />
           </span>
         </td>
         <td className="p-3">
@@ -391,7 +408,14 @@ function BookingRow({
                       </td>
                       <td className="py-1 pr-3">{person.phone ?? '—'}</td>
                       <td className="py-1 pr-3">{person.nationality ?? '—'}</td>
-                      <td className="py-1 pr-3 capitalize">{person.age_band}</td>
+                      <td className="py-1 pr-3 capitalize">
+                        {person.age_band}
+                        {person.needs_assistance ? (
+                          <span className="ml-1.5 rounded bg-coral/12 px-1.5 py-0.5 text-[0.625rem] font-semibold text-coral">
+                            needs help
+                          </span>
+                        ) : null}
+                      </td>
                       {showPassport ? <td className="py-1 pr-3">{person.tourist_private?.passport_no ?? '—'}</td> : null}
                     </tr>
                   ))}
@@ -437,6 +461,7 @@ function BookingForm({
   const [pickupTime, setPickupTime] = useState(booking?.pickup_time?.slice(0, 5) ?? '');
   const [status, setStatus] = useState(booking?.status ?? 'confirmed');
   const [requests, setRequests] = useState(booking?.special_requests ?? '');
+  const [needsPickup, setNeedsPickup] = useState(booking ? booking.pickup_required : true);
   const [people, setPeople] = useState<PersonRow[]>(() => initialPeople(booking));
   const [busy, setBusy] = useState(false);
 
@@ -508,6 +533,7 @@ function BookingForm({
       pickup_latitude: chosen?.latitude ?? booking?.pickup_latitude ?? '',
       pickup_longitude: chosen?.longitude ?? booking?.pickup_longitude ?? '',
       pickup_time: pickupTime,
+      pickup_required: needsPickup,
       status,
       special_requests: requests,
     };
@@ -518,6 +544,7 @@ function BookingForm({
       phone: person.phone,
       nationality: person.nationality,
       age_band: person.age_band,
+      needs_assistance: person.needs_assistance,
       is_lead: index === 0,
       ...(canSeePrivate ? { private: { passport_no: person.passport_no } } : {}),
     }));
@@ -577,6 +604,25 @@ function BookingForm({
               </Field>
             </>
           ) : null}
+          <div className="sm:col-span-2">
+            <label className={`flex cursor-pointer items-start gap-2.5 rounded-lg border p-3 transition ${
+              needsPickup ? 'border-accent bg-accent/[0.05]' : 'border-line bg-surface'
+            }`}>
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={needsPickup}
+                onChange={(event) => setNeedsPickup(event.target.checked)}
+              />
+              <span>
+                <span className="block text-sm font-semibold text-ink">This group needs collecting from their hotel</span>
+                <span className="block text-xs font-medium text-muted">
+                  Leave it off for guests making their own way to the jetty. Only guests with this on appear on the
+                  pickup board.
+                </span>
+              </span>
+            </label>
+          </div>
           <Field label="Hotel / pickup point">
             <select className={inputClass} value={locationId} onChange={(e) => chooseLocation(e.target.value)}>
               <option value="">Type it below instead</option>
@@ -634,6 +680,7 @@ function BookingForm({
                   <th className="pb-1 pr-2">Phone</th>
                   <th className="pb-1 pr-2">Nationality</th>
                   <th className="pb-1 pr-2">Type</th>
+                  <th className="pb-1 pr-2 w-16">Needs help</th>
                   {canSeePrivate ? <th className="pb-1 pr-2">Passport</th> : null}
                   <th className="pb-1 w-8"></th>
                 </tr>
@@ -668,6 +715,14 @@ function BookingForm({
                         <option value="elderly">Elderly</option>
                         <option value="infant">Infant</option>
                       </select>
+                    </td>
+                    <td className="pr-2 py-0.5 text-center">
+                      <input
+                        type="checkbox"
+                        checked={person.needs_assistance}
+                        onChange={(e) => updatePerson(index, { needs_assistance: e.target.checked })}
+                        aria-label={`Needs assistance, guest ${index + 1}`}
+                      />
                     </td>
                     {canSeePrivate ? (
                       <td className="pr-2 py-0.5">
@@ -705,6 +760,7 @@ function initialPeople(booking: Booking | null): PersonRow[] {
     nationality: tourist.nationality ?? '',
     age_band: tourist.age_band,
     passport_no: tourist.tourist_private?.passport_no ?? '',
+    needs_assistance: tourist.needs_assistance ?? false,
   }));
 }
 

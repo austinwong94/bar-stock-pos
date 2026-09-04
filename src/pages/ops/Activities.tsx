@@ -116,14 +116,14 @@ export default function Activities() {
         </Field>
       </div>
 
-      <div className="mb-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-3 grid grid-cols-2 gap-2 xl:grid-cols-4">
         <Stat label="Guests on the island" value={String(onIsland)} />
         <Stat label="Back on the boat" value={String(backOnBoat)} tone="good" />
         <Stat label="Still on the island" value={String(stillOut)} tone={stillOut > 0 ? 'warn' : 'good'} />
         <Stat label="No activity chosen" value={String(counts.unchosen)} tone={counts.unchosen > 0 ? 'warn' : 'good'} />
       </div>
 
-      <div className="mb-3 grid gap-2 sm:grid-cols-3">
+      <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
         {types.map((type) => {
           const entry = counts.perActivity.get(type.code) ?? { chosen: 0, joined: 0, back: 0 };
           return (

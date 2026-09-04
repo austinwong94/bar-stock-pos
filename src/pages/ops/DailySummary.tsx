@@ -96,7 +96,7 @@ export default function DailySummary({ settings }: { settings: SettingsMap }) {
 
       {loading ? <p className="py-6 text-center text-sm font-medium text-muted">Loading…</p> : null}
 
-      <div className="mb-4 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-2.5 xl:grid-cols-4">
         <Stat
           label="Guests today"
           value={String(guests?.pax ?? 0)}

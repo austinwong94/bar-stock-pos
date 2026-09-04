@@ -69,6 +69,8 @@ type SeedBooking = {
   time: string;
   date: string;
   people: Array<[string, string, AgeBandSeed, string?]>;
+  pickup?: boolean;
+  assist?: number;
 };
 
 const seedBookings: SeedBooking[] = [
@@ -81,7 +83,9 @@ const seedBookings: SeedBooking[] = [
       ['Tan Jun Hao', '', 'child'],
       ['Tan Xin Yi', '', 'child'],
       ['Tan Bao Bao', '', 'infant'],
+      ['Tan Ah Ma', '', 'elderly'],
     ],
+    assist: 6,
   },
   {
     id: 'bk-lee', ref: 'LP-A-002', source: 'agent', agency: 'ag-blue', createdBy: 'u-agent-blue',
@@ -119,6 +123,7 @@ const seedBookings: SeedBooking[] = [
   {
     id: 'bk-walkin', ref: 'LP-A-006', source: 'walk_in', agency: null, createdBy: 'u-coord',
     lead: 'Kim Solo', phone: '+82 10 5566 7788', location: 'pl-town', time: '08:00', date: TODAY,
+    pickup: false,
     people: [['Kim Ji Woo', '+82 10 5566 7788', 'adult', 'F66778899']],
   },
   {
@@ -156,6 +161,10 @@ export function buildBookings() {
       pax_adults: adults,
       pax_children: seed.people.length - adults - elderly,
       pax_elderly: elderly,
+      pax_assisted: seed.assist ? 1 : 0,
+      pickup_required: seed.pickup !== false,
+      pickup_stop_order: null,
+      pickup_eta: null,
       pickup_location_id: location.id,
       pickup_hotel_name: location.name,
       pickup_area: location.area,
@@ -184,6 +193,8 @@ export function buildBookings() {
         is_lead: index === 0,
         seat_note: null,
         sort_order: index + 1,
+        needs_assistance: seed.assist === index + 1,
+        assistance_note: seed.assist === index + 1 ? 'Walks with a stick, needs help boarding' : null,
       });
       if (passport) {
         privates.push({
@@ -200,6 +211,52 @@ export function buildBookings() {
 
   return { bookings, tourists, privates };
 }
+
+export const demoVehicles = [
+  { id: 'veh-1', code: 'Van 1', name: 'Toyota Hiace', vehicle_type: 'van', capacity_pax: 12, plate_no: 'PKA 1234', default_driver_employee_id: 'em-kumar', active: true, notes: null, sort_order: 1 },
+  { id: 'veh-2', code: 'Van 2', name: 'Nissan Urvan', vehicle_type: 'van', capacity_pax: 10, plate_no: 'PKA 5678', default_driver_employee_id: null, active: true, notes: null, sort_order: 2 },
+  { id: 'veh-3', code: 'Car 1', name: 'Toyota Avanza', vehicle_type: 'car', capacity_pax: 5, plate_no: 'PKB 9012', default_driver_employee_id: null, active: true, notes: 'For small groups and airport runs', sort_order: 3 },
+];
+
+const catalogue: Array<[string, string, string, string, number]> = [
+  ['ingredient', 'Chicken breast', 'Meat', 'kg', 10],
+  ['ingredient', 'Prawns', 'Seafood', 'kg', 5],
+  ['ingredient', 'Squid', 'Seafood', 'kg', 4],
+  ['ingredient', 'Fish fillet', 'Seafood', 'kg', 8],
+  ['ingredient', 'Jasmine rice', 'Dry goods', 'kg', 20],
+  ['ingredient', 'Noodles', 'Dry goods', 'kg', 6],
+  ['ingredient', 'Cooking oil', 'Dry goods', 'L', 5],
+  ['ingredient', 'Mixed vegetables', 'Fresh', 'kg', 8],
+  ['ingredient', 'Onions', 'Fresh', 'kg', 5],
+  ['ingredient', 'Garlic', 'Fresh', 'kg', 2],
+  ['ingredient', 'Chilli', 'Fresh', 'kg', 2],
+  ['ingredient', 'Tomatoes', 'Fresh', 'kg', 4],
+  ['ingredient', 'Watermelon', 'Fruit', 'kg', 10],
+  ['ingredient', 'Pineapple', 'Fruit', 'pcs', 8],
+  ['ingredient', 'Eggs', 'Fresh', 'tray', 3],
+  ['ingredient', 'Drinking water', 'Drinks', 'box', 6],
+  ['ingredient', 'Ice', 'Drinks', 'bag', 6],
+  ['ingredient', 'Charcoal', 'Other', 'bag', 4],
+  ['equipment', 'Snorkel goggles', 'Snorkel gear', 'pcs', 1],
+  ['equipment', 'Fins', 'Snorkel gear', 'pcs', 1],
+  ['equipment', 'Life jacket (adult)', 'Safety gear', 'pcs', 1],
+  ['equipment', 'Life jacket (child)', 'Safety gear', 'pcs', 1],
+  ['equipment', 'Dry bag', 'Equipment', 'pcs', 1],
+  ['equipment', 'Staff polo shirt', 'Clothing', 'pcs', 1],
+];
+
+export const demoCatalogue = catalogue.map(([kind, name, category, unit, qty], index) => ({
+  id: `cat-${index + 1}`,
+  kind,
+  name,
+  category,
+  unit,
+  default_quantity: qty,
+  times_used: catalogue.length - index,
+  last_used_at: null,
+  active: true,
+  created_at: new Date().toISOString(),
+}));
 
 export const demoFuelPurchases = [
   { id: 'fp-1', purchase_date: TODAY, litres: 180, price_per_litre: 2.5, total_cost: 450, supplier: 'Jetty station', fuel_type: 'petrol', collected_by_employee_id: 'em-rosli', notes: 'Morning fill for the fleet', created_at: new Date().toISOString() },

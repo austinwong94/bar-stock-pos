@@ -1,5 +1,5 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react';
-import { ChefHat, Plus, Send, Trash2 } from 'lucide-react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { ChefHat, Copy, Plus, Search, Send, Trash2 } from 'lucide-react';
 import { PageHeader, Stat } from '../../components/Page';
 import { Field, buttonClass, inputClass, secondaryButtonClass } from '../../components/Form';
 import { Modal } from '../../components/Modal';
@@ -7,7 +7,7 @@ import { useToast } from '../../components/Toast';
 import { supabase } from '../../lib/supabase';
 import { useAccess } from '../../lib/access';
 import { readErrorMessage, todayIso } from '../../lib/opsData';
-import type { PurchaseRequest, PurchaseRequestItem } from '../../lib/platformTypes';
+import type { CatalogueItem, PurchaseRequest, PurchaseRequestItem } from '../../lib/platformTypes';
 
 type ItemRow = { id?: string; item_name: string; quantity: string; unit: string; note: string };
 
@@ -62,6 +62,19 @@ export default function Kitchen() {
     void reloadBadges();
   }
 
+  async function copyRequest(request: PurchaseRequest) {
+    const when = window.prompt('Copy this order to which date?', todayIso());
+    if (!when) return;
+    const { error } = await supabase.rpc('copy_purchase_request', {
+      p_source_id: request.id,
+      p_needed_for_date: when,
+    });
+    if (error) { toast.error(error.message); return; }
+    toast.success('Copied as a new draft. Adjust the quantities and send it.');
+    void refresh();
+    void reloadBadges();
+  }
+
   async function cancelRequest(request: PurchaseRequest) {
     const reason = window.prompt(`Why is ${request.request_no} being cancelled?`);
     if (!reason?.trim()) return;
@@ -88,7 +101,7 @@ export default function Kitchen() {
         }
       />
 
-      <div className="mb-3 grid gap-2 sm:grid-cols-3">
+      <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
         <Stat label="Not sent yet" value={String(drafts.length)} tone={drafts.length ? 'warn' : 'good'} />
         <Stat label="With purchasing" value={String(open.length)} />
         <Stat label="All requests" value={String(requests.length)} />
@@ -134,6 +147,11 @@ export default function Kitchen() {
                   {request.status === 'draft' && canSubmit ? (
                     <button type="button" className={buttonClass} onClick={() => submitRequest(request)}>
                       <Send className="h-4 w-4" /> Confirm &amp; send
+                    </button>
+                  ) : null}
+                  {canCreate ? (
+                    <button type="button" className={secondaryButtonClass} onClick={() => copyRequest(request)}>
+                      <Copy className="h-4 w-4" /> Copy
                     </button>
                   ) : null}
                   {request.status !== 'cancelled' && request.status !== 'completed' ? (
@@ -203,6 +221,33 @@ function RequestForm({
 
   function update(index: number, patch: Partial<ItemRow>) {
     setItems((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  }
+
+  // A tap fills the first empty row, so the common case is: tap, tap, tap, send.
+  function addFromCatalogue(entry: CatalogueItem) {
+    setItems((rows) => {
+      const already = rows.findIndex((row) => row.item_name.toLowerCase() === entry.name.toLowerCase());
+      if (already >= 0) {
+        const next = [...rows];
+        const current = Number(next[already].quantity) || 0;
+        const step = Number(entry.default_quantity) || 1;
+        next[already] = { ...next[already], quantity: String(current + step) };
+        return next;
+      }
+      const blank = rows.findIndex((row) => !row.item_name.trim());
+      const filled: ItemRow = {
+        item_name: entry.name,
+        quantity: entry.default_quantity ? String(entry.default_quantity) : '',
+        unit: entry.unit,
+        note: '',
+      };
+      if (blank >= 0) {
+        const next = [...rows];
+        next[blank] = filled;
+        return next;
+      }
+      return [...rows, filled];
+    });
   }
 
   function handlePaste(event: React.ClipboardEvent, start: number) {
@@ -278,16 +323,18 @@ function RequestForm({
           </Field>
         </div>
 
-        <div className="rounded-2xl border border-line bg-shell/60 p-3">
+        <ItemPicker onPick={addFromCatalogue} chosen={items.map((item) => item.item_name.toLowerCase())} />
+
+        <div className="rounded-lg border border-line bg-paper p-3">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <div>
-              <p className="text-sm font-black">Ingredients and materials</p>
-              <p className="text-xs font-semibold text-neutral-600">
-                Paste from Excel: Item, Quantity, Unit, Note.
+              <p className="text-sm font-semibold text-ink">What is on the order</p>
+              <p className="text-xs font-medium text-muted">
+                Tap items above, or paste from Excel: Item, Quantity, Unit, Note.
               </p>
             </div>
             <button type="button" className={secondaryButtonClass} onClick={() => setItems((rows) => [...rows, emptyItem()])}>
-              <Plus className="h-4 w-4" /> Row
+              <Plus className="h-4 w-4" /> Blank row
             </button>
           </div>
 
@@ -351,4 +398,102 @@ function initialItems(request: PurchaseRequest | null): ItemRow[] {
     unit: item.unit,
     note: item.note ?? '',
   }));
+}
+
+/**
+ * Most of a weekly order is the same every week, so the catalogue is the
+ * primary way in and typing is the fallback. Items sort by how often they
+ * are actually used, and anything typed joins the list for next time.
+ */
+function ItemPicker({ onPick, chosen }: { onPick: (item: CatalogueItem) => void; chosen: string[] }) {
+  const [catalogue, setCatalogue] = useState<CatalogueItem[]>([]);
+  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState('All');
+
+  useEffect(() => {
+    void (async () => {
+      const { data } = await supabase
+        .from('catalogue_items')
+        .select('*')
+        .eq('kind', 'ingredient')
+        .eq('active', true)
+        .order('times_used', { ascending: false })
+        .order('name');
+      setCatalogue((data ?? []) as CatalogueItem[]);
+    })();
+  }, []);
+
+  const categories = useMemo(
+    () => ['All', ...Array.from(new Set(catalogue.map((item) => item.category ?? 'Other')))],
+    [catalogue],
+  );
+
+  const visible = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return catalogue
+      .filter((item) => (category === 'All' ? true : (item.category ?? 'Other') === category))
+      .filter((item) => (needle ? item.name.toLowerCase().includes(needle) : true))
+      .slice(0, 40);
+  }, [catalogue, category, search]);
+
+  if (catalogue.length === 0) return null;
+
+  return (
+    <div className="rounded-lg border border-accent/25 bg-accent/[0.03] p-3">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-ink">Tap what you need</p>
+        <div className="relative w-40">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
+          <input
+            className="h-8 w-full rounded border border-line bg-surface pl-8 pr-2 text-sm outline-none focus:border-accent"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search"
+            aria-label="Search items"
+          />
+        </div>
+      </div>
+
+      <div className="mb-2 flex flex-wrap gap-1">
+        {categories.map((entry) => (
+          <button
+            key={entry}
+            type="button"
+            onClick={() => setCategory(entry)}
+            className={`rounded px-2 py-1 text-xs font-semibold transition ${
+              category === entry ? 'bg-accent text-white' : 'bg-surface text-muted hover:text-ink'
+            }`}
+          >
+            {entry}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {visible.map((item) => {
+          const picked = chosen.includes(item.name.toLowerCase());
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onPick(item)}
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm font-medium transition ${
+                picked
+                  ? 'border-accent bg-accent text-white'
+                  : 'border-line bg-surface text-ink hover:border-accent hover:bg-shell'
+              }`}
+            >
+              {item.name}
+              <span className={`text-xs tabular ${picked ? 'text-white/70' : 'text-muted'}`}>
+                {item.default_quantity ? `${Number(item.default_quantity)}${item.unit}` : item.unit}
+              </span>
+            </button>
+          );
+        })}
+        {visible.length === 0 ? (
+          <p className="text-xs font-medium text-muted">Nothing matches. Type it into a blank row and it joins the list.</p>
+        ) : null}
+      </div>
+    </div>
+  );
 }

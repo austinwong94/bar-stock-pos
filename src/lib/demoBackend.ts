@@ -15,6 +15,8 @@ import {
   demoBoats,
   demoEmployees,
   demoBoatTrips,
+  demoCatalogue,
+  demoVehicles,
   demoFuelPurchases,
   demoPickupLocations,
   demoRepairs,
@@ -95,6 +97,7 @@ const PERMISSIONS: Row[] = [
   ['items.manage', 'items', 'Close and correct', 'Mark items found or written off, and edit entries.', true],
   ['items.cost.view', 'items', 'See item values', 'View the money value put on missing items.', true],
   ['guests.booking.edit_agency', 'guests', "Edit the whole agency's bookings", 'Edit any booking from the same agency, not only your own entries.', true],
+  ['guests.pickup.vehicles', 'guests', 'Manage vehicles', 'Add vans and set who drives them.', true],
 ].map(([code, department_code, name, description, sensitive], index) => ({
   code, department_code, name, description, sensitive, sort_order: index,
 }));
@@ -127,7 +130,7 @@ const ROLE_GRANTS: Record<string, string[]> = {
     'boarding.view', 'boarding.view_all', 'boarding.mark',
     'activities.view', 'activities.select', 'activities.mark',
     'kitchen.request.view', 'purchasing.view', 'ops.log.view', 'ops.messages.send',
-    'items.view', 'items.report',
+    'items.view', 'items.report', 'guests.pickup.vehicles',
   ],
   bar_staff: PERMISSIONS.filter((p) => p.department_code === 'bar').map((p) => p.code),
   captain: ['boarding.view', 'boarding.mark', 'activities.view', 'items.view', 'items.report'],
@@ -224,14 +227,182 @@ const seededDb: Record<string, Row[]> = {
     { id: 'mi-3', item_name: 'Staff polo shirt', category: 'clothing', quantity: 2, missing_on: TODAY, noticed_location: 'Staff room', boat_id: null, remarks: 'Taken from the drying line', estimated_value: 30, status: 'missing', found_on: null, found_remarks: null, reported_by: 'u-coord', resolved_by: null, created_at: new Date().toISOString() },
   ],
   attendance_log: [],
+  transport_vehicles: demoVehicles.map((row) => ({ ...row })),
+  catalogue_items: demoCatalogue.map((row) => ({ ...row })),
 };
+
+
+/**
+ * A demo that opens on empty states teaches nothing, so the sample day is
+ * already half-run: boats assigned with crew, most guests checked in, some
+ * activities chosen, and the vans planned. It is built with the same shapes
+ * the RPCs produce, not special-cased data.
+ */
+function applyWorkedDay(seed: Record<string, Row[]>) {
+  const id = () => `w-${Math.random().toString(36).slice(2, 10)}`;
+  const todayBookings = seed.bookings.filter((b) => b.service_date === TODAY);
+
+  const plan: Array<{ boat: string; captain: string | null; guide: string | null; time: string; leads: string[] }> = [
+    { boat: 'bt-1', captain: 'em-ali', guide: 'em-mei', time: '09:00', leads: ['Tan Family', 'Walker Honeymoon', 'Kim Solo'] },
+    { boat: 'bt-2', captain: null, guide: 'em-mei', time: '09:00', leads: ['Nguyen Party', 'Lee Couple'] },
+    { boat: 'bt-3', captain: 'em-rosli', guide: 'em-aina', time: '09:30', leads: ['Schmidt Group'] },
+  ];
+
+  plan.forEach((entry) => {
+    const assignment = {
+      id: id(),
+      service_date: TODAY,
+      boat_id: entry.boat,
+      trip_no: 1,
+      departure_time: entry.time,
+      return_time: null,
+      captain_employee_id: entry.captain,
+      guide_employee_id: entry.guide,
+      status: 'planned',
+      locked: false,
+      notes: null,
+      created_by: 'u-coord',
+    };
+    seed.boat_assignments.push(assignment);
+
+    entry.leads.forEach((lead) => {
+      const booking = todayBookings.find((b) => b.lead_name === lead);
+      if (!booking) return;
+      seed.trip_bookings.push({
+        id: id(), assignment_id: assignment.id, booking_id: booking.id,
+        assigned_by: 'u-coord', assigned_at: new Date().toISOString(),
+      });
+      seed.tourists
+        .filter((tourist) => tourist.booking_id === booking.id)
+        .forEach((tourist) => {
+          seed.trip_passengers.push({
+            id: id(),
+            assignment_id: assignment.id,
+            booking_id: booking.id,
+            tourist_id: tourist.id,
+            boarding_status: 'pending',
+            boarded_at: null,
+            boarded_by: null,
+            activity_code: null,
+            activity_status: 'pending',
+            activity_marked_at: null,
+            activity_marked_by: null,
+            returned: false,
+            returned_at: null,
+            returned_by: null,
+            note: null,
+          });
+        });
+    });
+  });
+
+  // Boat 1 is fully checked in and out on the water; Boat 2 is mid check-in;
+  // Boat 3 has not started, which is what the "running late" alert is for.
+  const boatOne = seed.boat_assignments.find((a) => a.boat_id === 'bt-1');
+  const boatTwo = seed.boat_assignments.find((a) => a.boat_id === 'bt-2');
+  const stamp = (offsetMinutes: number) => {
+    const when = new Date();
+    when.setHours(8, 30 + offsetMinutes, 0, 0);
+    return when.toISOString();
+  };
+
+  const logRow = (passenger: Row, action: string, value: string, actor: string, name: string, minute: number) => {
+    const boat = seed.boats.find((b) => b.id === seed.boat_assignments.find((a) => a.id === passenger.assignment_id)?.boat_id);
+    const tourist = seed.tourists.find((x) => x.id === passenger.tourist_id);
+    const booking = seed.bookings.find((x) => x.id === passenger.booking_id);
+    seed.attendance_log.push({
+      id: id(), service_date: TODAY, assignment_id: passenger.assignment_id,
+      boat_code: boat?.code ?? null, passenger_id: passenger.id,
+      tourist_name: tourist?.full_name ?? null, booking_ref: booking?.booking_ref ?? null,
+      action, from_value: null, to_value: value, actor_id: actor, actor_name: name,
+      created_at: stamp(minute),
+    });
+  };
+
+  seed.trip_passengers
+    .filter((p) => p.assignment_id === boatOne?.id)
+    .forEach((passenger, index) => {
+      passenger.boarding_status = 'arrived';
+      passenger.boarded_at = stamp(index);
+      passenger.boarded_by = 'u-captain';
+      passenger.activity_code = index % 3 === 0 ? 'volcano' : 'snorkel';
+      logRow(passenger, 'boarding', 'arrived', 'u-captain', 'Captain Ali', index);
+      logRow(passenger, 'activity_choice', passenger.activity_code, 'u-guide', 'Mei — Tour Guide', 20 + index);
+    });
+
+  seed.trip_passengers
+    .filter((p) => p.assignment_id === boatTwo?.id)
+    .forEach((passenger, index) => {
+      if (index >= 5) return;
+      passenger.boarding_status = 'arrived';
+      passenger.boarded_at = stamp(5 + index);
+      passenger.boarded_by = 'u-coord';
+      logRow(passenger, 'boarding', 'arrived', 'u-coord', 'Siti — Coordinator', 5 + index);
+    });
+
+  if (boatOne) {
+    seed.operations_events.push({
+      id: id(), service_date: TODAY, department_code: 'boarding',
+      event_code: 'boarding.completed', subject: 'Boat 1',
+      detail: 'All guests checked in', severity: 'info',
+      reference_type: 'boat_assignment', reference_id: boatOne.id,
+      occurred_at: stamp(8), actor_id: 'u-captain',
+    });
+    seed.operations_events.push({
+      id: id(), service_date: TODAY, department_code: 'activities',
+      event_code: 'activities.selected', subject: 'Boat 1',
+      detail: 'All guests have an activity', severity: 'info',
+      reference_type: 'boat_assignment', reference_id: boatOne.id,
+      occurred_at: stamp(28), actor_id: 'u-guide',
+    });
+  }
+
+  // Trips for the boats that sailed, so the fuel estimate has something.
+  seed.boat_assignments.forEach((assignment) => {
+    const boarded = seed.trip_passengers.filter(
+      (p) => p.assignment_id === assignment.id && p.boarding_status === 'arrived',
+    ).length;
+    if (boarded === 0) return;
+    seed.boat_trips.push({
+      id: id(), service_date: TODAY, boat_id: assignment.boat_id, trip_type: 'island_run',
+      assignment_id: assignment.id, departure_time: assignment.departure_time, return_time: null,
+      pax_count: boarded, purpose: 'Scheduled island run', notes: null,
+      auto_generated: true, recorded_by: 'u-coord', created_at: new Date().toISOString(),
+    });
+  });
+
+  // Two vans already planned, with the route ordered furthest hotel first.
+  const runs = [
+    { id: id(), vehicle: 'veh-1', driver: 'em-kumar', name: 'Van 1 · Sunset Bay', leads: ['Schmidt Group'], depart: '06:55' },
+    { id: id(), vehicle: 'veh-2', driver: null, name: 'Van 2 · Marina', leads: ['Tan Family', 'Lee Couple', 'Walker Honeymoon'], depart: '07:20' },
+  ];
+  runs.forEach((run, runIndex) => {
+    seed.pickup_groups.push({
+      id: run.id, service_date: TODAY, name: run.name, area_label: null,
+      latitude: null, longitude: null, pickup_time: run.depart, depart_time: run.depart,
+      vehicle_id: run.vehicle, driver_employee_id: run.driver, status: 'planned',
+      sort_order: runIndex + 1, notes: null, auto_created: true, created_at: new Date().toISOString(),
+    });
+    run.leads.forEach((lead, stopIndex) => {
+      const booking = todayBookings.find((b) => b.lead_name === lead);
+      if (!booking) return;
+      booking.pickup_group_id = run.id;
+      booking.pickup_stop_order = stopIndex + 1;
+      const [h, m] = run.depart.split(':').map(Number);
+      const minutes = h * 60 + m + stopIndex * 8;
+      booking.pickup_eta = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+    });
+  });
+
+  return seed;
+}
 
 // The demo reloads on a persona switch, so what one person set up has to
 // still be there for the next one. Everything stays in this browser.
 function hydrate(): Record<string, Row[]> {
   try {
     const saved = localStorage.getItem(DB_KEY);
-    if (!saved) return seededDb;
+    if (!saved) return applyWorkedDay(seededDb);
     const parsed = JSON.parse(saved) as Record<string, Row[]>;
     // Catalogue tables always come from code so a stale snapshot cannot
     // pin the demo to an old permission list.
@@ -242,7 +413,7 @@ function hydrate(): Record<string, Row[]> {
       access_roles: parsed.access_roles ?? seededDb.access_roles,
     };
   } catch {
-    return seededDb;
+    return applyWorkedDay(seededDb);
   }
 }
 
@@ -419,6 +590,15 @@ function visibleRows(table: string): Row[] {
         : [];
     case 'pickup_groups':
       return can('guests.pickup.manage') || can('guests.booking.view_all') || can('fleet.view') ? rows : [];
+    case 'transport_vehicles':
+      return can('guests.pickup.manage') || can('guests.pickup.vehicles') || can('platform.directory.manage')
+        ? rows
+        : [];
+    case 'catalogue_items':
+      return can('kitchen.request.view') || can('kitchen.request.create') || can('purchasing.view')
+        || can('items.view') || can('items.report')
+        ? rows
+        : [];
     case 'bookings':
       return rows.filter((row) => canViewBooking(row.id));
     case 'tourists':
@@ -466,6 +646,8 @@ function manifestRows(): Row[] {
         age_band: tourist.age_band,
         is_lead: tourist.is_lead,
         nationality: tourist.nationality,
+        needs_assistance: tourist.needs_assistance ?? false,
+        assistance_note: tourist.assistance_note ?? null,
         booking_ref: booking.booking_ref,
         lead_name: booking.lead_name,
         group_size: booking.pax_total,

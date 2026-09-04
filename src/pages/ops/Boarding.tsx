@@ -80,7 +80,7 @@ export default function Boarding() {
         </Field>
       </div>
 
-      <div className="mb-3 grid gap-2 sm:grid-cols-3">
+      <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
         <Stat label="On the list" value={String(rows.length)} />
         <Stat label="Checked in" value={String(arrived)} tone="good" />
         <Stat label="Still waiting" value={String(missing)} tone={missing > 0 ? 'warn' : 'good'} />
@@ -156,9 +156,18 @@ export default function Boarding() {
                           }`}
                         >
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-black">{row.full_name}</p>
-                            <p className="truncate text-xs font-semibold text-neutral-600">
-                              {row.phone ?? 'No number'}{row.age_band !== 'adult' ? ` · ${row.age_band}` : ''}
+                            <p className="truncate text-sm font-semibold text-ink">
+                              {row.full_name}
+                              {row.needs_assistance ? (
+                                <span className="ml-1.5 rounded bg-coral/12 px-1.5 py-0.5 text-[0.625rem] font-semibold text-coral">
+                                  needs help
+                                </span>
+                              ) : null}
+                            </p>
+                            <p className="truncate text-xs font-medium text-muted">
+                              {row.phone ?? 'No number'}
+                              {row.age_band !== 'adult' ? ` · ${row.age_band}` : ''}
+                              {row.assistance_note ? ` · ${row.assistance_note}` : ''}
                             </p>
                           </div>
                           {canMark ? (

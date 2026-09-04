@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 import type { SettingsMap } from '../lib/types';
 import { useLanguage } from '../lib/language';
 import { useAccess } from '../lib/access';
-import { departmentForPath, departmentNav } from '../lib/navigation';
+import { departmentForPath, departmentNav, navGroups } from '../lib/navigation';
 
 export function Layout({ settings }: { settings: SettingsMap }) {
   const navigate = useNavigate();
@@ -45,8 +45,11 @@ export function Layout({ settings }: { settings: SettingsMap }) {
   const showHub = visibleDepartments.length > 1;
   const totalBadges = Object.values(badges).reduce((sum, badge) => sum + badge.count, 0);
 
+  // Departments are shown under the moment of the day you reach for them,
+  // and the active one expands to its pages inline. Nothing hides at the
+  // bottom of a flat list of eleven.
   const departmentList = (
-    <nav className="grid gap-0.5">
+    <nav className="grid gap-3">
       {showHub ? (
         <NavLink
           to="/"
@@ -58,56 +61,66 @@ export function Layout({ settings }: { settings: SettingsMap }) {
           }
         >
           <LayoutGrid className="h-4 w-4 shrink-0" />
-          <span className="min-w-0 flex-1 truncate">{text('All departments', 'Semua jabatan')}</span>
+          <span className="min-w-0 flex-1 truncate">{text('Today at a glance', 'Hari ini')}</span>
           {totalBadges > 0 ? <BadgeDot count={totalBadges} /> : null}
         </NavLink>
       ) : null}
 
-      {visibleDepartments.map((department) => {
-        const group = departmentNav.find((item) => item.code === department.code);
-        const Icon = group?.icon ?? LayoutGrid;
-        const target = group?.links.find((link) => canAny(...link.permissions))?.to ?? '/';
-        const active = department.code === activeDepartment;
-        const badge = badges[department.code];
+      {navGroups.map((group) => {
+        const members = visibleDepartments.filter((department) => group.departments.includes(department.code));
+        if (members.length === 0) return null;
         return (
-          <button
-            key={department.code}
-            type="button"
-            onClick={() => navigate(target)}
-            className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-semibold transition ${
-              active ? 'bg-accent text-white' : 'text-ink hover:bg-shell'
-            }`}
-          >
-            <Icon className="h-4 w-4 shrink-0" />
-            <span className="min-w-0 flex-1 truncate">{department.name}</span>
-            {badge?.count ? <BadgeDot count={badge.count} inverted={active} /> : null}
-          </button>
+          <div key={group.code} className="grid gap-0.5">
+            <p className="eyebrow px-2.5 pb-0.5">{text(group.label, group.ms)}</p>
+            {members.map((department) => {
+              const nav = departmentNav.find((item) => item.code === department.code);
+              const Icon = nav?.icon ?? LayoutGrid;
+              const pages = (nav?.links ?? []).filter((link) => canAny(...link.permissions));
+              const target = pages[0]?.to ?? '/';
+              const active = department.code === activeDepartment;
+              const badge = badges[department.code];
+              return (
+                <div key={department.code}>
+                  <button
+                    type="button"
+                    onClick={() => navigate(target)}
+                    className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition ${
+                      active ? 'bg-accent font-semibold text-white' : 'font-medium text-ink hover:bg-shell'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="min-w-0 flex-1 truncate">{department.name}</span>
+                    {badge?.count ? <BadgeDot count={badge.count} inverted={active} /> : null}
+                  </button>
+
+                  {active && pages.length > 1 ? (
+                    <div className="mb-1 ml-[1.4rem] grid gap-0.5 border-l border-line pl-2 pt-0.5">
+                      {pages.map((link) => (
+                        <NavLink
+                          key={link.to}
+                          to={link.to}
+                          end={link.exact}
+                          className={({ isActive }) =>
+                            `truncate rounded-lg px-2.5 py-1.5 text-[0.8125rem] transition ${
+                              isActive ? 'bg-shell font-semibold text-accent' : 'font-medium text-muted hover:bg-shell hover:text-ink'
+                            }`
+                          }
+                        >
+                          {text(link.label, link.ms ?? link.label)}
+                        </NavLink>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
         );
       })}
     </nav>
   );
 
-  const pageList =
-    links.length > 1 ? (
-      <nav className="mt-4 grid gap-0.5 border-t border-line pt-4">
-        <p className="eyebrow mb-1 px-2.5">{departmentMeta?.name}</p>
-        {links.map((link) => (
-          <NavLink
-            key={link.to}
-            to={link.to}
-            end={link.exact}
-            className={({ isActive }) =>
-              `flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition ${
-                isActive ? 'bg-shell font-semibold text-accent' : 'text-muted hover:bg-shell hover:text-ink'
-              }`
-            }
-          >
-            <link.icon className="h-4 w-4 shrink-0" />
-            <span className="min-w-0 truncate">{text(link.label, link.ms ?? link.label)}</span>
-          </NavLink>
-        ))}
-      </nav>
-    ) : null;
+  const pageList = null;
 
   return (
     <div className="min-h-screen">
@@ -119,7 +132,7 @@ export function Layout({ settings }: { settings: SettingsMap }) {
           </span>
           <div className="min-w-0">
             <p className="truncate text-sm font-bold leading-tight text-ink">
-              {String(settings.platform_name ?? 'Lovely Paradise')}
+              {String(settings.platform_name ?? 'Lovely Paradise').replace(/\s+Operations?$/i, '')}
             </p>
             <p className="truncate text-xs font-medium text-muted">{profile?.full_name ?? 'Signed in'}</p>
           </div>
