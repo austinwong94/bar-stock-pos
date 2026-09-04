@@ -411,7 +411,7 @@ function BookingRow({
                       <td className="py-1 pr-3 capitalize">
                         {person.age_band}
                         {person.needs_assistance ? (
-                          <span className="ml-1.5 rounded bg-coral/12 px-1.5 py-0.5 text-[0.625rem] font-semibold text-coral">
+                          <span className="ml-1.5 rounded bg-alert/12 px-1.5 py-0.5 text-[0.625rem] font-semibold text-alert">
                             needs help
                           </span>
                         ) : null}

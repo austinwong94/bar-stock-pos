@@ -126,3 +126,20 @@ select pg_temp.check('the summary includes what was bought',
 select pg_temp.as_user('22222222-2222-2222-2222-222222222222');
 select pg_temp.check('a coordinator has no ops log access by default',
   public.has_permission('ops.log.view'), true);
+
+-- ============ passports are auditable without breaking the write ============
+set role authenticated;
+select pg_temp.as_user('11111111-1111-1111-1111-111111111111');
+select public.save_booking(
+  jsonb_build_object('service_date','2026-09-13','lead_name','Passport Test','source_type','in_house'),
+  jsonb_build_array(jsonb_build_object(
+    'full_name','Traveller One','age_band','adult',
+    'private', jsonb_build_object('passport_no','Z9988776')))
+) as pass \gset
+reset role;
+select pg_temp.check('a passport number saves', passport_no, 'Z9988776')
+from public.tourist_private tp
+join public.tourists t on t.id = tp.tourist_id
+where t.booking_id = :'pass';
+select pg_temp.check('and the write is recorded against the guest', count(*)::int > 0, true)
+from public.audit_logs where entity_type = 'tourist_private';

@@ -254,7 +254,7 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
       <div className="mb-4 grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-5">
         <Stat label={`${text('Cash Payment', 'Bayaran tunai')} 💵`} value={money(report?.total_cash ?? totals.cash, String(settings.currency_symbol))} />
         <Stat label={`${text('QR Payment', 'Bayaran QR')} 📱`} value={money(report?.total_qr ?? totals.qr, String(settings.currency_symbol))} />
-        <Stat label="FOC Cost 🎁" value={<span className="text-coral">- {money(report?.total_complimentary_value ?? totals.focCost, String(settings.currency_symbol))}</span>} tone="bad" />
+        <Stat label="FOC Cost 🎁" value={<span className="text-alert">- {money(report?.total_complimentary_value ?? totals.focCost, String(settings.currency_symbol))}</span>} tone="bad" />
         <Stat label={text('Total Revenue', 'Jumlah hasil')} value={money(report?.total_sales ?? totals.paidRevenue, String(settings.currency_symbol))} />
         <Stat label={text('Transactions', 'Transaksi')} value={totals.tx} />
       </div>
@@ -304,7 +304,7 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
               <div className="mt-2 grid grid-cols-3 gap-1.5 text-xs font-bold sm:mt-3 sm:gap-2 sm:text-sm">
                 <div className="rounded-2xl bg-emerald-50 p-2"><p className="text-emerald-700">Cash Payment</p><p>{money(item.cash, String(settings.currency_symbol))}</p></div>
                 <div className="rounded-2xl bg-sky-50 p-2"><p className="text-sky-700">QR Payment</p><p>{money(item.qr, String(settings.currency_symbol))}</p></div>
-                <div className="rounded-2xl bg-shell p-2"><p className="text-coral">FOC</p><p className="text-coral">- {money(item.focCost, String(settings.currency_symbol))}</p></div>
+                <div className="rounded-2xl bg-shell p-2"><p className="text-alert">FOC</p><p className="text-alert">- {money(item.focCost, String(settings.currency_symbol))}</p></div>
               </div>
             </article>
           ))}
@@ -328,7 +328,7 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
                   <td className="p-3 whitespace-nowrap">{item.quantity}</td>
                   <td className="p-3 whitespace-nowrap">{money(item.cash, String(settings.currency_symbol))}</td>
                   <td className="p-3 whitespace-nowrap">{money(item.qr, String(settings.currency_symbol))}</td>
-                  <td className="p-3 whitespace-nowrap text-coral">- {money(item.focCost, String(settings.currency_symbol))}</td>
+                  <td className="p-3 whitespace-nowrap text-alert">- {money(item.focCost, String(settings.currency_symbol))}</td>
                   <td className="p-3 font-black whitespace-nowrap">{money(item.cash + item.qr, String(settings.currency_symbol))}</td>
                 </tr>
               ))}
@@ -337,7 +337,7 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
                 <td className="p-3 font-black whitespace-nowrap">{itemTotals.quantity}</td>
                 <td className="p-3 font-black whitespace-nowrap">{money(itemTotals.cash, String(settings.currency_symbol))}</td>
                 <td className="p-3 font-black whitespace-nowrap">{money(itemTotals.qr, String(settings.currency_symbol))}</td>
-                <td className="p-3 font-black whitespace-nowrap text-coral">- {money(itemTotals.focCost, String(settings.currency_symbol))}</td>
+                <td className="p-3 font-black whitespace-nowrap text-alert">- {money(itemTotals.focCost, String(settings.currency_symbol))}</td>
                 <td className="p-3 font-black whitespace-nowrap">{money(itemTotals.paidSales, String(settings.currency_symbol))}</td>
               </tr>
             </tbody>
@@ -386,7 +386,7 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
               <div><span className="text-neutral-500">Transactions</span><p className="text-ink">{totals.tx}</p></div>
               <div><span className="text-neutral-500">Cash Payment sales</span><p className="text-ink">{money(totals.cash, String(settings.currency_symbol))}</p></div>
               <div><span className="text-neutral-500">QR Payment sales</span><p className="text-ink">{money(totals.qr, String(settings.currency_symbol))}</p></div>
-              <div><span className="text-neutral-500">FOC Cost</span><p className="text-coral">- {money(totals.focCost, String(settings.currency_symbol))}</p></div>
+              <div><span className="text-neutral-500">FOC Cost</span><p className="text-alert">- {money(totals.focCost, String(settings.currency_symbol))}</p></div>
               <div><span className="text-neutral-500">Total Revenue</span><p className="text-ink">{money(totals.paidRevenue, String(settings.currency_symbol))}</p></div>
               <div><span className="text-neutral-500">Actual cash counted</span><p className="text-ink">{money(Number(actualCash || 0), String(settings.currency_symbol))}</p></div>
               <div><span className="text-neutral-500">Cash variance</span><p className="text-ink">{money(Number(actualCash || 0) - totals.cash, String(settings.currency_symbol))}</p></div>

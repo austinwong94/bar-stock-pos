@@ -33,7 +33,7 @@ export default function StockMovements() {
                 <p className="font-black">{movement.products?.name ?? '-'}</p>
                 <p className="text-sm font-bold text-neutral-600">{displayDate(movement.created_at)} · {movement.movement_type}</p>
               </div>
-              <span className={`rounded-xl px-3 py-1 text-sm font-black ${movement.quantity_change < 0 ? 'bg-shell text-coral' : 'bg-shell text-accent'}`}>
+              <span className={`rounded-xl px-3 py-1 text-sm font-black ${movement.quantity_change < 0 ? 'bg-shell text-alert' : 'bg-shell text-accent'}`}>
                 {movement.quantity_change}
               </span>
             </div>

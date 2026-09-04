@@ -169,7 +169,7 @@ export function Layout({ settings }: { settings: SettingsMap }) {
             >
               <Menu className="h-4.5 w-4.5" />
               {totalBadges > 0 ? (
-                <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-coral px-1 text-[0.625rem] font-bold text-white">
+                <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-alert px-1 text-[0.625rem] font-bold text-white">
                   {totalBadges > 9 ? '9+' : totalBadges}
                 </span>
               ) : null}
@@ -246,7 +246,7 @@ function BadgeDot({ count, inverted = false }: { count: number; inverted?: boole
   return (
     <span
       className={`grid h-5 min-w-5 shrink-0 place-items-center rounded-full px-1.5 text-[0.6875rem] font-bold tabular ${
-        inverted ? 'bg-white/25 text-white' : 'bg-coral text-white'
+        inverted ? 'bg-white/25 text-white' : 'bg-alert text-white'
       }`}
     >
       {count > 99 ? '99+' : count}

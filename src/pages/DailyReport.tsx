@@ -657,7 +657,7 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
       <section className="mb-4 grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 shadow-soft sm:rounded-xl sm:p-4 lg:p-5"><p className="text-xs font-black text-emerald-700 sm:text-sm">Cash Payment 💵</p><p className="mt-1.5 text-lg font-black sm:text-xl lg:text-2xl">{money(periodTotals.cash, String(settings.currency_symbol))}</p></div>
         <div className="rounded-2xl border border-sky-200 bg-sky-50 p-3 shadow-soft sm:rounded-xl sm:p-4 lg:p-5"><p className="text-xs font-black text-sky-700 sm:text-sm">QR Payment 📱</p><p className="mt-1.5 text-lg font-black sm:text-xl lg:text-2xl">{money(periodTotals.qr, String(settings.currency_symbol))}</p></div>
-        <div className="rounded-2xl border border-line bg-shell p-3 shadow-soft sm:rounded-xl sm:p-4 lg:p-5"><p className="text-xs font-black text-coral sm:text-sm">FOC Cost 🎁</p><p className="mt-1.5 text-lg font-black text-coral sm:text-xl lg:text-2xl">- {money(periodTotals.focCost, String(settings.currency_symbol))}</p></div>
+        <div className="rounded-2xl border border-line bg-shell p-3 shadow-soft sm:rounded-xl sm:p-4 lg:p-5"><p className="text-xs font-black text-alert sm:text-sm">FOC Cost 🎁</p><p className="mt-1.5 text-lg font-black text-alert sm:text-xl lg:text-2xl">- {money(periodTotals.focCost, String(settings.currency_symbol))}</p></div>
         <div className="rounded-2xl border border-violet-200 bg-violet-50 p-3 shadow-soft sm:rounded-xl sm:p-4 lg:p-5"><p className="text-xs font-black text-violet-700 sm:text-sm">Total Revenue</p><p className="mt-1.5 text-lg font-black sm:text-xl lg:text-2xl">{money(periodTotals.paidSales, String(settings.currency_symbol))}</p></div>
       </section>
       <section className="island-panel rounded-2xl p-3 sm:rounded-2xl sm:p-5">
@@ -720,13 +720,13 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
                   <td className="px-3 py-2 font-black whitespace-nowrap">{sample.label}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{sample.range}</td>
                   <td className="px-3 py-2 whitespace-nowrap">
-                    <span className={`rounded-xl px-3 py-1 text-xs font-black ${sample.closingStatus === 'closed' ? 'bg-shell text-accent' : sample.closingStatus === 'partial' ? 'bg-amber-50 text-warning' : 'bg-shell text-coral'}`}>
+                    <span className={`rounded-xl px-3 py-1 text-xs font-black ${sample.closingStatus === 'closed' ? 'bg-shell text-accent' : sample.closingStatus === 'partial' ? 'bg-amber-50 text-warning' : 'bg-shell text-alert'}`}>
                       {sample.statusLabel}
                     </span>
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">{money(sample.cash, String(settings.currency_symbol))}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{money(sample.qr, String(settings.currency_symbol))}</td>
-                  <td className="px-3 py-2 whitespace-nowrap text-coral">- {money(sample.focCost, String(settings.currency_symbol))}</td>
+                  <td className="px-3 py-2 whitespace-nowrap text-alert">- {money(sample.focCost, String(settings.currency_symbol))}</td>
                   <td className="px-3 py-2 font-black whitespace-nowrap">{money(sample.paidSales, String(settings.currency_symbol))}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{money(sample.variance, String(settings.currency_symbol))}</td>
                   <td className="px-3 py-2 whitespace-nowrap">
@@ -769,7 +769,7 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
               <div className="mt-2 grid grid-cols-3 gap-1.5 text-xs font-bold sm:mt-3 sm:gap-2 sm:text-sm">
                 <div className="rounded-2xl bg-emerald-50 p-2"><p className="text-emerald-700">Cash Payment</p><p>{money(item.cash, String(settings.currency_symbol))}</p></div>
                 <div className="rounded-2xl bg-sky-50 p-2"><p className="text-sky-700">QR Payment</p><p>{money(item.qr, String(settings.currency_symbol))}</p></div>
-                <div className="rounded-2xl bg-shell p-2"><p className="text-coral">FOC</p><p className="text-coral">- {money(item.focCost, String(settings.currency_symbol))}</p></div>
+                <div className="rounded-2xl bg-shell p-2"><p className="text-alert">FOC</p><p className="text-alert">- {money(item.focCost, String(settings.currency_symbol))}</p></div>
               </div>
             </article>
           ))}
@@ -793,7 +793,7 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
                   <td className="p-3 whitespace-nowrap">{item.quantity}</td>
                   <td className="p-3 whitespace-nowrap">{money(item.cash, String(settings.currency_symbol))}</td>
                   <td className="p-3 whitespace-nowrap">{money(item.qr, String(settings.currency_symbol))}</td>
-                  <td className="p-3 whitespace-nowrap text-coral">- {money(item.focCost, String(settings.currency_symbol))}</td>
+                  <td className="p-3 whitespace-nowrap text-alert">- {money(item.focCost, String(settings.currency_symbol))}</td>
                   <td className="p-3 font-black whitespace-nowrap">{money(item.cash + item.qr, String(settings.currency_symbol))}</td>
                 </tr>
               ))}
@@ -802,7 +802,7 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
                 <td className="p-3 font-black whitespace-nowrap">{itemTotals.quantity}</td>
                 <td className="p-3 font-black whitespace-nowrap">{money(itemTotals.cash, String(settings.currency_symbol))}</td>
                 <td className="p-3 font-black whitespace-nowrap">{money(itemTotals.qr, String(settings.currency_symbol))}</td>
-                <td className="p-3 font-black whitespace-nowrap text-coral">- {money(itemTotals.focCost, String(settings.currency_symbol))}</td>
+                <td className="p-3 font-black whitespace-nowrap text-alert">- {money(itemTotals.focCost, String(settings.currency_symbol))}</td>
                 <td className="p-3 font-black whitespace-nowrap">{money(itemTotals.paidSales, String(settings.currency_symbol))}</td>
               </tr>
             </tbody>

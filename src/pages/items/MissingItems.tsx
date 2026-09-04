@@ -118,7 +118,7 @@ export default function MissingItems({ settings }: { settings: SettingsMap }) {
         <div className="mb-4 flex flex-wrap gap-1.5">
           {byCategory.map(([category, count]) => (
             <span key={category} className="rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs font-semibold">
-              {categoryLabel(category)} <span className="ml-1 tabular text-coral">{count}</span>
+              {categoryLabel(category)} <span className="ml-1 tabular text-alert">{count}</span>
             </span>
           ))}
         </div>

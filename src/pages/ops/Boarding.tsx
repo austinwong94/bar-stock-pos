@@ -126,7 +126,7 @@ export default function Boarding() {
                   <div key={group.bookingRef} className="rounded-xl border border-line bg-shell/40 p-2.5">
                     <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
                       <p className="flex items-center gap-1.5 text-sm font-black">
-                        <Users className="h-4 w-4 text-coral" />
+                        <Users className="h-4 w-4 text-alert" />
                         {group.leadName}
                         <span className="rounded-lg bg-white px-2 py-0.5 text-xs font-black text-neutral-600">
                           {group.rows.length} together · {group.bookingRef}
@@ -159,7 +159,7 @@ export default function Boarding() {
                             <p className="truncate text-sm font-semibold text-ink">
                               {row.full_name}
                               {row.needs_assistance ? (
-                                <span className="ml-1.5 rounded bg-coral/12 px-1.5 py-0.5 text-[0.625rem] font-semibold text-coral">
+                                <span className="ml-1.5 rounded bg-alert/12 px-1.5 py-0.5 text-[0.625rem] font-semibold text-alert">
                                   needs help
                                 </span>
                               ) : null}

@@ -24,7 +24,7 @@ function paymentMethodLabel(method: PaymentMethod) {
 function paymentTone(method: PaymentMethod) {
   if (method === 'cash') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
   if (method === 'qr') return 'border-sky-200 bg-sky-50 text-sky-700';
-  return 'border-line bg-shell text-coral';
+  return 'border-line bg-shell text-alert';
 }
 
 function statusTone(status: Sale['status']) {
@@ -164,8 +164,8 @@ export default function SalesHistory({ settings, embedded = false }: { settings:
           <p className="mt-1.5 text-lg font-black sm:text-xl lg:text-2xl">{money(totals.qr, String(settings.currency_symbol))}</p>
         </div>
         <div className="rounded-2xl border border-line bg-shell p-3 shadow-soft sm:rounded-xl sm:p-4 lg:p-5">
-          <p className="text-xs font-black text-coral sm:text-sm">FOC Cost 🎁</p>
-          <p className="mt-1.5 text-lg font-black text-coral sm:text-xl lg:text-2xl">- {money(totals.focCost, String(settings.currency_symbol))}</p>
+          <p className="text-xs font-black text-alert sm:text-sm">FOC Cost 🎁</p>
+          <p className="mt-1.5 text-lg font-black text-alert sm:text-xl lg:text-2xl">- {money(totals.focCost, String(settings.currency_symbol))}</p>
         </div>
         <div className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-xl sm:p-4 lg:p-5">
           <p className="text-xs font-black text-neutral-600 sm:text-sm">Transactions</p>
@@ -253,7 +253,7 @@ export default function SalesHistory({ settings, embedded = false }: { settings:
                       <td className="p-3 whitespace-nowrap">
                         {Number(sale.discount_amount ?? 0) > 0 ? `- ${money(sale.discount_amount, String(settings.currency_symbol))}` : '-'}
                       </td>
-                      <td className={`p-3 font-black whitespace-nowrap ${isFoc ? 'text-coral' : 'text-ink'}`}>
+                      <td className={`p-3 font-black whitespace-nowrap ${isFoc ? 'text-alert' : 'text-ink'}`}>
                         {isFoc ? '- ' : ''}{money(isFoc ? sale.total_amount : sale.paid_amount, String(settings.currency_symbol))}
                       </td>
                       <td className="p-3 whitespace-nowrap">

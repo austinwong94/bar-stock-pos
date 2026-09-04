@@ -36,7 +36,7 @@ export function DemoBar() {
           onClick={() => setOpen((value) => !value)}
           className="flex w-full items-center gap-2 text-left text-sm font-black"
         >
-          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-coral text-white">
+          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-alert text-white">
             <FlaskConical className="h-4 w-4" />
           </span>
           <span className="min-w-0 flex-1 truncate">

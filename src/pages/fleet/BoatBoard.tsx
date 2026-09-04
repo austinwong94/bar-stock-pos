@@ -215,10 +215,10 @@ export default function BoatBoard() {
       <div className="grid gap-3 lg:grid-cols-[20rem_1fr]">
         <section
           {...dropProps(UNASSIGNED)}
-          className="rounded-2xl border-2 border-dashed border-coral bg-white/70 p-3 shadow-soft"
+          className="rounded-2xl border-2 border-dashed border-alert bg-white/70 p-3 shadow-soft"
         >
           <h2 className="mb-2 flex items-center gap-2 text-sm font-black">
-            <Users className="h-4 w-4 text-coral" /> Not on a boat ({unassignedPax} pax)
+            <Users className="h-4 w-4 text-alert" /> Not on a boat ({unassignedPax} pax)
           </h2>
           <div className="grid gap-2">
             {unassigned.map((booking) => (
@@ -252,7 +252,7 @@ export default function BoatBoard() {
                 key={assignment.id}
                 {...dropProps(assignment.id)}
                 className={`flex flex-col rounded-2xl border-2 bg-white/90 p-3 shadow-soft ${
-                  full ? 'border-coral' : 'border-line'
+                  full ? 'border-alert' : 'border-line'
                 }`}
               >
                 <header className="mb-2 border-b border-line pb-2">
@@ -268,7 +268,7 @@ export default function BoatBoard() {
                       </p>
                     </div>
                     <div className="shrink-0 text-right">
-                      <p className={`text-lg font-black leading-none ${full ? 'text-coral' : 'text-accent'}`}>
+                      <p className={`text-lg font-black leading-none ${full ? 'text-alert' : 'text-accent'}`}>
                         {pax}/{seats}
                       </p>
                       <p className="text-[11px] font-bold uppercase text-neutral-500">{left} seat(s) left</p>
@@ -439,7 +439,7 @@ function PaxChip({
   const tones = {
     default: 'bg-shell text-muted',
     warn: 'bg-warning/12 text-warning',
-    alert: 'bg-coral/12 text-coral',
+    alert: 'bg-alert/12 text-alert',
   };
   return (
     <span className={`rounded px-1.5 py-0.5 text-[0.6875rem] font-semibold tabular ${tones[tone]}`}>

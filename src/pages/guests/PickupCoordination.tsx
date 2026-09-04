@@ -14,6 +14,14 @@ const NO_RUN = 'no-run';
 
 const time = (value: string | null | undefined) => (value ? value.slice(0, 5) : null);
 
+// Auto named runs read "Van 2 · Sunset Beach Villa"; the code is already on the
+// line above, so the card shows just the route.
+function routeLabel(run: PickupRun) {
+  const code = run.transport_vehicles?.code;
+  if (code && run.name.startsWith(`${code} · `)) return run.name.slice(code.length + 3);
+  return run.name;
+}
+
 export default function PickupCoordination({ settings }: { settings: SettingsMap }) {
   const toast = useToast();
   const [date, setDate] = useState(todayIso);
@@ -222,22 +230,24 @@ export default function PickupCoordination({ settings }: { settings: SettingsMap
               <section
                 key={run.id}
                 {...dropProps(run.id)}
-                className={`flex flex-col rounded-lg border-2 bg-surface ${full ? 'border-coral/50' : 'border-line'}`}
+                className={`flex flex-col rounded-lg border-2 bg-surface ${full ? 'border-alert/50' : 'border-line'}`}
               >
                 <header className="border-b border-line px-3 py-2.5">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="flex items-center gap-1.5 text-sm font-semibold text-ink">
                         <Bus className="h-4 w-4 shrink-0 text-accent" />
-                        <span className="truncate">{run.transport_vehicles?.code ?? 'No vehicle'}</span>
+                        {/* The vehicle code is what a driver is called by, so it
+                            never truncates; the model gives way instead. */}
+                        <span className="shrink-0 whitespace-nowrap">{run.transport_vehicles?.code ?? 'No vehicle'}</span>
                         {run.transport_vehicles?.name ? (
                           <span className="truncate text-xs font-medium text-muted">{run.transport_vehicles.name}</span>
                         ) : null}
                       </p>
-                      <p className="mt-0.5 truncate text-xs font-medium text-muted">{run.name}</p>
+                      <p className="mt-0.5 truncate text-xs font-medium text-muted">{routeLabel(run)}</p>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
-                      <span className={`text-sm font-bold tabular ${full ? 'text-coral' : 'text-accent'}`}>
+                      <span className={`text-sm font-bold tabular ${full ? 'text-alert' : 'text-accent'}`}>
                         {pax}/{seats || '—'}
                       </span>
                       <button type="button" onClick={() => reorder(run)} aria-label="Reorder route" className="grid h-7 w-7 place-items-center rounded text-muted transition hover:bg-shell hover:text-accent">
@@ -371,7 +381,7 @@ export function PaxChip({
   const tones = {
     default: 'bg-shell text-muted',
     warn: 'bg-warning/12 text-warning',
-    alert: 'bg-coral/12 text-coral',
+    alert: 'bg-alert/12 text-alert',
   };
   return (
     <span className={`rounded px-1.5 py-0.5 text-[0.6875rem] font-semibold tabular ${tones[tone]}`}>

@@ -103,7 +103,7 @@ export default function Home({ settings }: { settings: SettingsMap }) {
                   onClick={() => navigate(row.target)}
                   className="flex w-full items-center gap-3 px-3.5 py-3 text-left transition hover:bg-shell"
                 >
-                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-coral/12 text-xs font-bold tabular text-coral">
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-alert/12 text-xs font-bold tabular text-alert">
                     {row.count}
                   </span>
                   <span className="min-w-0 flex-1">
@@ -159,7 +159,7 @@ export default function Home({ settings }: { settings: SettingsMap }) {
                             <span className="flex items-center gap-2">
                               <span className="truncate text-sm font-semibold text-ink">{link.label}</span>
                               {index === 0 && badge?.count ? (
-                                <span className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-coral px-1.5 text-[0.6875rem] font-bold tabular text-white">
+                                <span className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-alert px-1.5 text-[0.6875rem] font-bold tabular text-white">
                                   {badge.count}
                                 </span>
                               ) : null}
@@ -186,7 +186,7 @@ function Chip({ children, tone = 'default' }: { children: React.ReactNode; tone?
   const tones = {
     default: 'bg-surface text-muted border-line',
     warn: 'bg-warning/10 text-warning border-warning/25',
-    alert: 'bg-coral/10 text-coral border-coral/25',
+    alert: 'bg-alert/10 text-alert border-alert/25',
   };
   return <span className={`rounded border px-1.5 py-0.5 tabular ${tones[tone]}`}>{children}</span>;
 }

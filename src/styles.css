@@ -4,8 +4,8 @@
 
 :root {
   color-scheme: light;
-  color: #12211f;
-  background: #f5f7f6;
+  color: #241820;
+  background: #faf8f9;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   -webkit-font-smoothing: antialiased;
@@ -31,7 +31,7 @@ body {
   min-height: 100vh;
   overflow-x: hidden;
   /* Flat ground. The old radial gradients fought every panel on top. */
-  background: #f5f7f6;
+  background: #faf8f9;
 }
 
 img,
@@ -64,19 +64,19 @@ h3 {
 
 /* One visible focus treatment for the whole app. */
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
-  outline: 2px solid #0d6e64;
+  outline: 2px solid #b3164f;
   outline-offset: 2px;
   border-radius: 6px;
 }
 
 .island-panel {
-  border: 1px solid #dde3e2;
+  border: 1px solid #e8dde2;
   background: #ffffff;
   border-radius: 10px;
 }
 
 .island-card {
-  border: 1px solid #dde3e2;
+  border: 1px solid #e8dde2;
   background: #ffffff;
   border-radius: 10px;
 }
@@ -87,7 +87,7 @@ h3 {
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #616e6c;
+  color: #6f6068;
 }
 
 /* Wide tables scroll inside their own container, never the page body. */

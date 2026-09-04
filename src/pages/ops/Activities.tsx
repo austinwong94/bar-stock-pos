@@ -168,7 +168,7 @@ export default function Activities() {
                 <div key={group.bookingRef} className="rounded-xl border border-line bg-shell/40 p-2.5">
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                     <p className="flex items-center gap-1.5 text-sm font-black">
-                      <Users className="h-4 w-4 text-coral" /> {group.leadName}
+                      <Users className="h-4 w-4 text-alert" /> {group.leadName}
                       <span className="rounded-lg bg-white px-2 py-0.5 text-xs font-black text-neutral-600">
                         {group.rows.length} together
                       </span>
@@ -239,7 +239,7 @@ export default function Activities() {
                               onClick={() => setActivity([row.passenger_id], null)}
                               title="Not decided yet"
                               aria-label={`Clear activity for ${row.full_name}`}
-                              className="rounded-lg border border-line bg-surface px-2 py-1.5 text-muted transition hover:border-coral hover:text-coral disabled:opacity-45"
+                              className="rounded-lg border border-line bg-surface px-2 py-1.5 text-muted transition hover:border-alert hover:text-alert disabled:opacity-45"
                             >
                               <Undo2 className="h-3.5 w-3.5" />
                             </button>

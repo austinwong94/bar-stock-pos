@@ -150,7 +150,7 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
             </div>
             <div className="min-w-0 rounded-2xl bg-white/70 p-3 shadow-soft backdrop-blur">
               <p className="text-xs font-bold text-neutral-600 sm:text-sm">FOC Cost 🎁</p>
-              <p className="break-words text-lg font-black text-coral sm:text-xl">- {money(totals.focCost, String(settings.currency_symbol))}</p>
+              <p className="break-words text-lg font-black text-alert sm:text-xl">- {money(totals.focCost, String(settings.currency_symbol))}</p>
             </div>
           </div>
         </div>
@@ -158,7 +158,7 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-3 min-[1450px]:grid-cols-5">
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 shadow-soft sm:p-4"><p className="text-xs font-black text-emerald-700 sm:text-sm">{text('Cash Payment', 'Bayaran tunai')} 💵</p><p className="mt-1.5 text-lg font-black sm:text-xl">{money(totals.cash, String(settings.currency_symbol))}</p></div>
         <div className="rounded-2xl border border-sky-200 bg-sky-50 p-3 shadow-soft sm:p-4"><p className="text-xs font-black text-sky-700 sm:text-sm">{text('QR Payment', 'Bayaran QR')} 📱</p><p className="mt-1.5 text-lg font-black sm:text-xl">{money(totals.qr, String(settings.currency_symbol))}</p></div>
-        <div className="rounded-2xl border border-line bg-shell p-3 shadow-soft sm:p-4"><p className="text-xs font-black text-coral sm:text-sm">FOC Cost 🎁</p><p className="mt-1.5 text-lg font-black text-coral sm:text-xl">- {money(totals.focCost, String(settings.currency_symbol))}</p></div>
+        <div className="rounded-2xl border border-line bg-shell p-3 shadow-soft sm:p-4"><p className="text-xs font-black text-alert sm:text-sm">FOC Cost 🎁</p><p className="mt-1.5 text-lg font-black text-alert sm:text-xl">- {money(totals.focCost, String(settings.currency_symbol))}</p></div>
         <div className="rounded-2xl border border-violet-200 bg-violet-50 p-3 shadow-soft sm:p-4"><p className="text-xs font-black text-violet-700 sm:text-sm">Total Revenue</p><p className="mt-1.5 text-lg font-black sm:text-xl">{money(totals.paidRevenue, String(settings.currency_symbol))}</p></div>
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 shadow-soft sm:p-4"><p className="text-xs font-black text-amber-700 sm:text-sm">{text('Transactions', 'Transaksi')}</p><p className="mt-1.5 text-lg font-black sm:text-xl">{totals.tx}</p></div>
       </div>

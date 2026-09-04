@@ -604,30 +604,54 @@ const rpcHandlers: Record<string, (args: any) => any> = {
                   b.pickup_latitude != null &&
                   (distanceKm(booking.pickup_latitude, booking.pickup_longitude, b.pickup_latitude, b.pickup_longitude) ?? 999) <= radius)),
           );
-          return near && (seats === 0 || used + booking.pax_total <= seats);
+          return near && seats > 0 && used + booking.pax_total <= seats;
         });
 
       if (!run) {
-        const vehicle = db.transport_vehicles
+        // How many people are still waiting around this hotel, so the run gets a
+        // vehicle sized to the whole stop rather than to whoever booked first.
+        // Otherwise a two pax hotel takes the coach and the vans run out.
+        const clusterPax = db.bookings
           .filter(
-            (v) =>
-              v.active &&
-              !db.pickup_groups.some(
-                (g) => g.service_date === p_service_date && g.vehicle_id === v.id && g.status !== 'cancelled',
-              ),
+            (b) =>
+              b.service_date === p_service_date &&
+              b.pickup_required &&
+              !b.pickup_group_id &&
+              b.status !== 'cancelled' &&
+              (String(b.pickup_hotel_name ?? '').toLowerCase() === String(spot).toLowerCase() ||
+                (booking.pickup_latitude != null &&
+                  (distanceKm(booking.pickup_latitude, booking.pickup_longitude, b.pickup_latitude, b.pickup_longitude) ??
+                    999) <= radius)),
           )
-          .sort((a, b) => b.capacity_pax - a.capacity_pax)[0];
+          .reduce((sum, b) => sum + b.pax_total, 0);
+
+        const free = db.transport_vehicles.filter(
+          (v) =>
+            v.active &&
+            !db.pickup_groups.some(
+              (g) => g.service_date === p_service_date && g.vehicle_id === v.id && g.status !== 'cancelled',
+            ),
+        );
+        const need = Math.max(clusterPax, booking.pax_total);
+        // The smallest free vehicle that covers the stop; if the stop is bigger
+        // than anything free, the biggest one and the rest goes on the next run.
+        const vehicle =
+          free.filter((v) => v.capacity_pax >= need).sort((a, b) => a.capacity_pax - b.capacity_pax)[0] ??
+          free.filter((v) => v.capacity_pax >= booking.pax_total).sort((a, b) => b.capacity_pax - a.capacity_pax)[0];
+        // Nothing free that fits: leave it waiting rather than overloading a van
+        // or inventing a run with no vehicle and no seat limit.
+        if (!vehicle) return;
         run = {
           id: uid(),
           service_date: p_service_date,
-          name: `${vehicle?.code ?? 'Run'} · ${spot}`,
+          name: `${vehicle.code} · ${spot}`,
           area_label: booking.pickup_area ?? null,
           latitude: booking.pickup_latitude ?? null,
           longitude: booking.pickup_longitude ?? null,
           pickup_time: null,
           depart_time: null,
-          vehicle_id: vehicle?.id ?? null,
-          driver_employee_id: vehicle?.default_driver_employee_id ?? null,
+          vehicle_id: vehicle.id,
+          driver_employee_id: vehicle.default_driver_employee_id ?? null,
           status: 'planned',
           sort_order: db.pickup_groups.length + 1,
           notes: null,

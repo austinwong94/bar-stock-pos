@@ -83,6 +83,19 @@ supabase db execute --file supabase/seed_platform.sql
 
 If your CLI has no `db execute`, paste the files into the Supabase SQL editor.
 
+To try the platform against a realistic load before you have real bookings,
+add the practice data as well:
+
+```bash
+supabase db execute --file supabase/seed_demo_data.sql
+```
+
+It writes three days — yesterday finished, today part run, tomorrow still to
+plan — with around ninety guests a day across roughly twenty-five bookings from
+agents, OTAs, in-house and walk-ins, plus vehicles, a fifth boat, boat seating,
+boarding, fuel purchases and repairs. It is safe to run more than once, and
+`delete from bookings where service_date between ...` removes it again.
+
 3. In Supabase, open **Auth > Sign In / Providers** and:
    - enable **Email** (staff, agents and the master admin sign in with it),
    - enable **Anonymous sign-ins** only if you still want the shared bar tablet
@@ -299,6 +312,18 @@ per-user "never allow" beats the role.
 - Daily report saves a JSON snapshot and does not change after later data changes unless reopened/admin corrected.
 - Inactive products do not show in POS but remain visible in historical records.
 
+## Colours and theme
+
+Every colour comes from named tokens in `tailwind.config.js`, so the whole
+platform is re-themed in one place. The current scheme is pink: `accent`
+(`#b3164f`) for anything you can act on, `deep` for pressed and active states,
+`shell`/`line` for the warm neutral frame. Status colours stay separate from
+the accent on purpose — `alert` for overdue, `palm` for done, `danger` for
+destructive, `warning` for attention — so a red row still reads as a problem on
+a pink page. Radii are capped at 8–12px.
+
+If you change the accent, change `theme-color` in `index.html` to match.
+
 ## Offline demo build
 
 `npm run build:demo` produces `dist/lovely-paradise-demo.html`: the whole app in
@@ -313,7 +338,10 @@ guide, the shared bar tablet, an accountant and an unapproved account.
 
 Sample data lives in this browser only and survives a persona switch, so you
 can seat a boat as the coordinator and then check those guests in as the
-captain. **Reset demo data** puts it back.
+captain. **Reset demo data** puts it back. It carries the same three days and
+about ninety guests a day as `supabase/seed_demo_data.sql`, which is enough for
+the boat board, the pickup planner and the capacity limits to behave the way
+they do in real use.
 
 Two things do not work in the demo, by design: file downloads (guest export)
 and photo upload, because both need a real backend.

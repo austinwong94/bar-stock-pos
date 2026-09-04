@@ -4,22 +4,23 @@ export default {
   theme: {
     extend: {
       colors: {
-        // One accent (deep ocean teal), a clay second, and status colours
-        // that are deliberately separate from both.
-        ink: '#12211f',
-        muted: '#616e6c',
-        paper: '#f5f7f6',
+        // Deep rose accent with neutrals carrying a slight plum bias, so the
+        // greys read as chosen rather than inherited. Status colours stay
+        // separate from the accent: amber warns, red is destructive, green
+        // confirms, and burnt orange is reserved for "deal with this".
+        ink: '#241820',
+        muted: '#6f6068',
+        paper: '#faf8f9',
         surface: '#ffffff',
-        shell: '#eceff0',
-        line: '#dde3e2',
-        accent: '#0d6e64',
-        lagoon: '#0a564e',
-        coral: '#b4532f',
+        shell: '#f4eef1',
+        line: '#e8dde2',
+        accent: '#b3164f',
+        deep: '#8d0f3e',
+        alert: '#c2410c',
         palm: '#15774f',
         danger: '#b02a20',
-        warning: '#96620a',
+        warning: '#a16207',
       },
-      // Small, even radii. The old scale went up to 32px and read as toy-like.
       borderRadius: {
         DEFAULT: '6px',
         sm: '4px',
@@ -29,16 +30,12 @@ export default {
         '2xl': '10px',
         '3xl': '12px',
       },
-      // Hairline borders carry the structure now, so shadows stay almost
-      // invisible and are reserved for things that genuinely float.
       boxShadow: {
-        soft: '0 1px 2px rgba(18, 33, 31, 0.05)',
-        glow: '0 1px 2px rgba(13, 110, 100, 0.16)',
-        pop: '0 12px 32px rgba(18, 33, 31, 0.14)',
+        soft: '0 1px 2px rgba(36, 24, 32, 0.06)',
+        glow: '0 1px 2px rgba(179, 22, 79, 0.18)',
+        pop: '0 12px 32px rgba(36, 24, 32, 0.16)',
       },
       fontWeight: {
-        // font-black was 900 on nearly every label. Retuned so the same
-        // markup reads as a considered hierarchy instead of a shout.
         medium: '500',
         semibold: '560',
         bold: '600',

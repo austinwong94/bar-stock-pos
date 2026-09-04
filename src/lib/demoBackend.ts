@@ -233,165 +233,187 @@ const seededDb: Record<string, Row[]> = {
 
 
 /**
- * A demo that opens on empty states teaches nothing, so the sample day is
- * already half-run: boats assigned with crew, most guests checked in, some
- * activities chosen, and the vans planned. It is built with the same shapes
- * the RPCs produce, not special-cased data.
+ * A demo that opens on empty states teaches nothing, so the sample days are
+ * already run to different stages: yesterday finished, today half-run,
+ * tomorrow untouched so there is something to plan. Everything is built
+ * with the shapes the RPCs produce, not special-cased data.
  */
 function applyWorkedDay(seed: Record<string, Row[]>) {
   const id = () => `w-${Math.random().toString(36).slice(2, 10)}`;
-  const todayBookings = seed.bookings.filter((b) => b.service_date === TODAY);
-
-  const plan: Array<{ boat: string; captain: string | null; guide: string | null; time: string; leads: string[] }> = [
-    { boat: 'bt-1', captain: 'em-ali', guide: 'em-mei', time: '09:00', leads: ['Tan Family', 'Walker Honeymoon', 'Kim Solo'] },
-    { boat: 'bt-2', captain: null, guide: 'em-mei', time: '09:00', leads: ['Nguyen Party', 'Lee Couple'] },
-    { boat: 'bt-3', captain: 'em-rosli', guide: 'em-aina', time: '09:30', leads: ['Schmidt Group'] },
-  ];
-
-  plan.forEach((entry) => {
-    const assignment = {
-      id: id(),
-      service_date: TODAY,
-      boat_id: entry.boat,
-      trip_no: 1,
-      departure_time: entry.time,
-      return_time: null,
-      captain_employee_id: entry.captain,
-      guide_employee_id: entry.guide,
-      status: 'planned',
-      locked: false,
-      notes: null,
-      created_by: 'u-coord',
-    };
-    seed.boat_assignments.push(assignment);
-
-    entry.leads.forEach((lead) => {
-      const booking = todayBookings.find((b) => b.lead_name === lead);
-      if (!booking) return;
-      seed.trip_bookings.push({
-        id: id(), assignment_id: assignment.id, booking_id: booking.id,
-        assigned_by: 'u-coord', assigned_at: new Date().toISOString(),
-      });
-      seed.tourists
-        .filter((tourist) => tourist.booking_id === booking.id)
-        .forEach((tourist) => {
-          seed.trip_passengers.push({
-            id: id(),
-            assignment_id: assignment.id,
-            booking_id: booking.id,
-            tourist_id: tourist.id,
-            boarding_status: 'pending',
-            boarded_at: null,
-            boarded_by: null,
-            activity_code: null,
-            activity_status: 'pending',
-            activity_marked_at: null,
-            activity_marked_by: null,
-            returned: false,
-            returned_at: null,
-            returned_by: null,
-            note: null,
-          });
-        });
-    });
-  });
-
-  // Boat 1 is fully checked in and out on the water; Boat 2 is mid check-in;
-  // Boat 3 has not started, which is what the "running late" alert is for.
-  const boatOne = seed.boat_assignments.find((a) => a.boat_id === 'bt-1');
-  const boatTwo = seed.boat_assignments.find((a) => a.boat_id === 'bt-2');
-  const stamp = (offsetMinutes: number) => {
+  const stamp = (hour: number, minute: number, dayOffset = 0) => {
     const when = new Date();
-    when.setHours(8, 30 + offsetMinutes, 0, 0);
+    when.setDate(when.getDate() + dayOffset);
+    when.setHours(hour, minute, 0, 0);
     return when.toISOString();
   };
 
-  const logRow = (passenger: Row, action: string, value: string, actor: string, name: string, minute: number) => {
-    const boat = seed.boats.find((b) => b.id === seed.boat_assignments.find((a) => a.id === passenger.assignment_id)?.boat_id);
-    const tourist = seed.tourists.find((x) => x.id === passenger.tourist_id);
-    const booking = seed.bookings.find((x) => x.id === passenger.booking_id);
+  const crew = [
+    { captain: 'em-ali', guide: 'em-mei' },
+    { captain: 'em-rosli', guide: 'em-aina' },
+    { captain: null, guide: 'em-mei' },
+  ];
+
+  /** Greedily seat a day's bookings across the active boats, keeping groups whole. */
+  function seatDay(date: string, departure: string) {
+    const boats = seed.boats.filter((boat) => boat.status === 'active');
+    const assignments = boats.map((boat, index) => {
+      const assignment = {
+        id: id(),
+        service_date: date,
+        boat_id: boat.id,
+        trip_no: 1,
+        departure_time: departure,
+        return_time: null,
+        captain_employee_id: crew[index % crew.length].captain,
+        guide_employee_id: crew[index % crew.length].guide,
+        status: 'planned',
+        locked: false,
+        notes: null,
+        created_by: 'u-coord',
+      };
+      seed.boat_assignments.push(assignment);
+      return { assignment, boat, seated: 0 };
+    });
+
+    seed.bookings
+      .filter((booking) => booking.service_date === date)
+      // Biggest groups first, so a coach party is not stranded by leftovers.
+      .sort((a, b) => b.pax_total - a.pax_total)
+      .forEach((booking) => {
+        const slot = assignments
+          .filter((entry) => entry.seated + booking.pax_total <= entry.boat.capacity_pax)
+          .sort((a, b) => b.boat.capacity_pax - b.seated - (a.boat.capacity_pax - a.seated))[0];
+        if (!slot) return;
+
+        slot.seated += booking.pax_total;
+        seed.trip_bookings.push({
+          id: id(), assignment_id: slot.assignment.id, booking_id: booking.id,
+          assigned_by: 'u-coord', assigned_at: new Date().toISOString(),
+        });
+        seed.tourists
+          .filter((tourist) => tourist.booking_id === booking.id)
+          .forEach((tourist) => {
+            seed.trip_passengers.push({
+              id: id(),
+              assignment_id: slot.assignment.id,
+              booking_id: booking.id,
+              tourist_id: tourist.id,
+              boarding_status: 'pending',
+              boarded_at: null,
+              boarded_by: null,
+              activity_code: null,
+              activity_status: 'pending',
+              activity_marked_at: null,
+              activity_marked_by: null,
+              returned: false,
+              returned_at: null,
+              returned_by: null,
+              note: null,
+            });
+          });
+      });
+
+    return assignments.filter((entry) => entry.seated > 0);
+  }
+
+  function logRow(passenger: Row, action: string, value: string, actor: string, name: string, at: string) {
+    const assignment = seed.boat_assignments.find((row) => row.id === passenger.assignment_id);
+    const boat = seed.boats.find((row) => row.id === assignment?.boat_id);
+    const tourist = seed.tourists.find((row) => row.id === passenger.tourist_id);
+    const booking = seed.bookings.find((row) => row.id === passenger.booking_id);
     seed.attendance_log.push({
-      id: id(), service_date: TODAY, assignment_id: passenger.assignment_id,
+      id: id(), service_date: assignment?.service_date ?? null, assignment_id: passenger.assignment_id,
       boat_code: boat?.code ?? null, passenger_id: passenger.id,
       tourist_name: tourist?.full_name ?? null, booking_ref: booking?.booking_ref ?? null,
-      action, from_value: null, to_value: value, actor_id: actor, actor_name: name,
-      created_at: stamp(minute),
-    });
-  };
-
-  seed.trip_passengers
-    .filter((p) => p.assignment_id === boatOne?.id)
-    .forEach((passenger, index) => {
-      passenger.boarding_status = 'arrived';
-      passenger.boarded_at = stamp(index);
-      passenger.boarded_by = 'u-captain';
-      passenger.activity_code = index % 3 === 0 ? 'volcano' : 'snorkel';
-      logRow(passenger, 'boarding', 'arrived', 'u-captain', 'Captain Ali', index);
-      logRow(passenger, 'activity_choice', passenger.activity_code, 'u-guide', 'Mei — Tour Guide', 20 + index);
-    });
-
-  seed.trip_passengers
-    .filter((p) => p.assignment_id === boatTwo?.id)
-    .forEach((passenger, index) => {
-      if (index >= 5) return;
-      passenger.boarding_status = 'arrived';
-      passenger.boarded_at = stamp(5 + index);
-      passenger.boarded_by = 'u-coord';
-      logRow(passenger, 'boarding', 'arrived', 'u-coord', 'Siti — Coordinator', 5 + index);
-    });
-
-  if (boatOne) {
-    seed.operations_events.push({
-      id: id(), service_date: TODAY, department_code: 'boarding',
-      event_code: 'boarding.completed', subject: 'Boat 1',
-      detail: 'All guests checked in', severity: 'info',
-      reference_type: 'boat_assignment', reference_id: boatOne.id,
-      occurred_at: stamp(8), actor_id: 'u-captain',
-    });
-    seed.operations_events.push({
-      id: id(), service_date: TODAY, department_code: 'activities',
-      event_code: 'activities.selected', subject: 'Boat 1',
-      detail: 'All guests have an activity', severity: 'info',
-      reference_type: 'boat_assignment', reference_id: boatOne.id,
-      occurred_at: stamp(28), actor_id: 'u-guide',
+      action, from_value: null, to_value: value, actor_id: actor, actor_name: name, created_at: at,
     });
   }
 
-  // Trips for the boats that sailed, so the fuel estimate has something.
+  function milestone(assignmentId: string, code: string, department: string, detail: string, at: string) {
+    const assignment = seed.boat_assignments.find((row) => row.id === assignmentId);
+    if (!assignment) return;
+    seed.operations_events.push({
+      id: id(), service_date: assignment.service_date, department_code: department,
+      event_code: code, subject: seed.boats.find((b) => b.id === assignment.boat_id)?.code ?? null,
+      detail, severity: 'info', reference_type: 'boat_assignment', reference_id: assignmentId,
+      occurred_at: at, actor_id: 'u-coord',
+    });
+  }
+
+  const activities = ['snorkel', 'volcano', 'others'];
+
+  // ---- Yesterday: a completed day, useful for the summary and reports ----
+  seatDay(YESTERDAY, '09:00').forEach((entry, boatIndex) => {
+    const passengers = seed.trip_passengers.filter((p) => p.assignment_id === entry.assignment.id);
+    passengers.forEach((passenger, index) => {
+      // A couple of no-shows across the day, which is realistic.
+      const noShow = boatIndex === 0 && index === 2;
+      passenger.boarding_status = noShow ? 'no_show' : 'arrived';
+      passenger.boarded_at = stamp(8, 20 + (index % 30), -1);
+      passenger.boarded_by = 'u-captain';
+      logRow(passenger, 'boarding', passenger.boarding_status, 'u-captain', 'Captain Ali', passenger.boarded_at);
+      if (noShow) return;
+      passenger.activity_code = activities[index % activities.length];
+      passenger.activity_status = 'joined';
+      passenger.activity_marked_at = stamp(11, index % 40, -1);
+      passenger.activity_marked_by = 'u-guide';
+      passenger.returned = true;
+      passenger.returned_at = stamp(15, 30 + (index % 20), -1);
+      passenger.returned_by = 'u-guide';
+      logRow(passenger, 'activity_choice', passenger.activity_code, 'u-guide', 'Mei — Tour Guide', passenger.activity_marked_at);
+      logRow(passenger, 'back_on_boat', 'yes', 'u-guide', 'Mei — Tour Guide', passenger.returned_at);
+    });
+    milestone(entry.assignment.id, 'boarding.completed', 'boarding', 'All guests checked in', stamp(8, 55, -1));
+    milestone(entry.assignment.id, 'activities.selected', 'activities', 'All guests have an activity', stamp(11, 5, -1));
+    milestone(entry.assignment.id, 'activities.completed', 'activities', 'Activity roll call done', stamp(14, 40, -1));
+    milestone(entry.assignment.id, 'activities.all_returned', 'activities', 'Everyone back on board', stamp(16, 0, -1));
+    seed.boat_assignments.find((a) => a.id === entry.assignment.id)!.status = 'returned';
+  });
+
+  // ---- Today: crewed and assigned, boarding part done ----
+  seatDay(TODAY, '09:00').forEach((entry, boatIndex) => {
+    const passengers = seed.trip_passengers.filter((p) => p.assignment_id === entry.assignment.id);
+    // First boat fully in and choosing activities, second part way, rest not started.
+    const share = boatIndex === 0 ? passengers.length : boatIndex === 1 ? Math.ceil(passengers.length * 0.6) : 0;
+    passengers.slice(0, share).forEach((passenger, index) => {
+      passenger.boarding_status = 'arrived';
+      passenger.boarded_at = stamp(8, 25 + (index % 25));
+      passenger.boarded_by = boatIndex === 0 ? 'u-captain' : 'u-coord';
+      logRow(passenger, 'boarding', 'arrived', passenger.boarded_by,
+        boatIndex === 0 ? 'Captain Ali' : 'Siti — Coordinator', passenger.boarded_at);
+      if (boatIndex === 0 && index % 3 !== 2) {
+        passenger.activity_code = activities[index % 2];
+        logRow(passenger, 'activity_choice', passenger.activity_code, 'u-guide', 'Mei — Tour Guide', stamp(10, index % 30));
+      }
+    });
+    if (share === passengers.length && passengers.length > 0) {
+      milestone(entry.assignment.id, 'boarding.completed', 'boarding',
+        `${passengers.length} guests checked in`, stamp(8, 50));
+    }
+  });
+
+  // Trips for the boats that sailed, so the fuel estimate has something real.
   seed.boat_assignments.forEach((assignment) => {
     const boarded = seed.trip_passengers.filter(
       (p) => p.assignment_id === assignment.id && p.boarding_status === 'arrived',
     ).length;
     if (boarded === 0) return;
     seed.boat_trips.push({
-      id: id(), service_date: TODAY, boat_id: assignment.boat_id, trip_type: 'island_run',
-      assignment_id: assignment.id, departure_time: assignment.departure_time, return_time: null,
+      id: id(), service_date: assignment.service_date, boat_id: assignment.boat_id,
+      trip_type: 'island_run', assignment_id: assignment.id,
+      departure_time: assignment.departure_time, return_time: null,
       pax_count: boarded, purpose: 'Scheduled island run', notes: null,
       auto_generated: true, recorded_by: 'u-coord', created_at: new Date().toISOString(),
     });
   });
 
-  // Two vans already planned, with the route ordered furthest hotel first.
-  const runs = [
-    { id: id(), vehicle: 'veh-1', driver: 'em-kumar', name: 'Van 1 · Sunset Bay', leads: ['Schmidt Group'], depart: '06:55' },
-    { id: id(), vehicle: 'veh-2', driver: null, name: 'Van 2 · Marina', leads: ['Tan Family', 'Lee Couple', 'Walker Honeymoon'], depart: '07:20' },
-  ];
-  runs.forEach((run, runIndex) => {
-    seed.pickup_groups.push({
-      id: run.id, service_date: TODAY, name: run.name, area_label: null,
-      latitude: null, longitude: null, pickup_time: run.depart, depart_time: run.depart,
-      vehicle_id: run.vehicle, driver_employee_id: run.driver, status: 'planned',
-      sort_order: runIndex + 1, notes: null, auto_created: true, created_at: new Date().toISOString(),
-    });
-    run.leads.forEach((lead, stopIndex) => {
-      const booking = todayBookings.find((b) => b.lead_name === lead);
-      if (!booking) return;
-      booking.pickup_group_id = run.id;
-      booking.pickup_stop_order = stopIndex + 1;
-      const [h, m] = run.depart.split(':').map(Number);
-      const minutes = h * 60 + m + stopIndex * 8;
-      booking.pickup_eta = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
-    });
+  // One emergency run yesterday, the kind the manual entry exists for.
+  seed.boat_trips.push({
+    id: id(), service_date: YESTERDAY, boat_id: 'bt-1', trip_type: 'emergency',
+    assignment_id: null, departure_time: '14:10', return_time: '15:05', pax_count: 3,
+    purpose: 'Took a guest with heat stroke back to the mainland',
+    notes: 'Guide Mei escorted', auto_generated: false, recorded_by: 'u-coord',
+    created_at: new Date().toISOString(),
   });
 
   return seed;

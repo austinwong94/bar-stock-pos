@@ -1,13 +1,22 @@
 // Seed data for the offline demo build. Dates are generated relative to
 // today so the default filters always land on something to look at.
+/**
+ * Every page asks for dates in Asia/Kuala_Lumpur, so the seed has to agree.
+ * Using local time here put the sample day one behind whenever the container
+ * ran west of Malaysia, and the boat board opened empty.
+ */
 function iso(offsetDays: number) {
   const date = new Date();
   date.setDate(date.getDate() + offsetDays);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kuala_Lumpur',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
 }
+
+import { NATIONALITY_FOR, generateDay } from './demoDataset';
 
 export const TODAY = iso(0);
 export const YESTERDAY = iso(-1);
@@ -42,10 +51,11 @@ export const demoEmployees = [
 ];
 
 export const demoBoats = [
-  { id: 'bt-1', code: 'Boat 1', name: 'Sea Star', boat_type: 'speedboat', capacity_pax: 12, ownership: 'owned', owner_name: null, registration_no: 'PKB 1120', engine_info: '2 x 115hp', expected_litres_per_trip: 20, status: 'active', status_note: null, sort_order: 1, notes: null },
-  { id: 'bt-2', code: 'Boat 2', name: 'Blue Wave', boat_type: 'speedboat', capacity_pax: 10, ownership: 'owned', owner_name: null, registration_no: 'PKB 2240', engine_info: '2 x 90hp', expected_litres_per_trip: 18, status: 'active', status_note: null, sort_order: 2, notes: null },
-  { id: 'bt-3', code: 'Boat 3', name: 'Island Hop', boat_type: 'ferry', capacity_pax: 24, ownership: 'owned', owner_name: null, registration_no: 'PKB 3310', engine_info: 'Inboard diesel', expected_litres_per_trip: 35, status: 'active', status_note: null, sort_order: 3, notes: null },
-  { id: 'bt-4', code: 'Boat 4', name: 'Partner One', boat_type: 'speedboat', capacity_pax: 10, ownership: 'partner', owner_name: 'Pak Hassan', registration_no: 'PKB 4405', engine_info: '2 x 100hp', expected_litres_per_trip: 19, status: 'maintenance', status_note: 'Under repair', sort_order: 4, notes: null },
+  { id: 'bt-1', code: 'Boat 1', name: 'Sea Star', boat_type: 'speedboat', capacity_pax: 14, ownership: 'owned', owner_name: null, registration_no: 'PKB 1120', engine_info: '2 x 115hp', expected_litres_per_trip: 20, status: 'active', status_note: null, sort_order: 1, notes: null },
+  { id: 'bt-2', code: 'Boat 2', name: 'Blue Wave', boat_type: 'speedboat', capacity_pax: 14, ownership: 'owned', owner_name: null, registration_no: 'PKB 2240', engine_info: '2 x 90hp', expected_litres_per_trip: 18, status: 'active', status_note: null, sort_order: 2, notes: null },
+  { id: 'bt-3', code: 'Boat 3', name: 'Island Hop', boat_type: 'ferry', capacity_pax: 40, ownership: 'owned', owner_name: null, registration_no: 'PKB 3310', engine_info: 'Inboard diesel', expected_litres_per_trip: 38, status: 'active', status_note: null, sort_order: 3, notes: null },
+  { id: 'bt-4', code: 'Boat 4', name: 'Partner One', boat_type: 'speedboat', capacity_pax: 20, ownership: 'partner', owner_name: 'Pak Hassan', registration_no: 'PKB 4405', engine_info: '2 x 100hp', expected_litres_per_trip: 22, status: 'maintenance', status_note: 'Under repair', sort_order: 4, notes: null },
+  { id: 'bt-5', code: 'Boat 5', name: 'Reef Runner', boat_type: 'ferry', capacity_pax: 30, ownership: 'owned', owner_name: null, registration_no: 'PKB 5500', engine_info: 'Inboard diesel', expected_litres_per_trip: 32, status: 'active', status_note: null, sort_order: 5, notes: null },
 ];
 
 export const demoPickupLocations = [
@@ -55,157 +65,79 @@ export const demoPickupLocations = [
   { id: 'pl-town', name: 'Town Backpackers', area: 'Old Town', address: 'Lebuh Chulia 40', latitude: 5.42, longitude: 100.34, active: true },
 ];
 
-type AgeBandSeed = 'adult' | 'child' | 'infant' | 'elderly';
-
-type SeedBooking = {
-  id: string;
-  ref: string;
-  source: string;
-  agency: string | null;
-  createdBy: string;
-  lead: string;
-  phone: string;
-  location: string;
-  time: string;
-  date: string;
-  people: Array<[string, string, AgeBandSeed, string?]>;
-  pickup?: boolean;
-  assist?: number;
-};
-
-const seedBookings: SeedBooking[] = [
-  {
-    id: 'bk-tan', ref: 'LP-A-001', source: 'agent', agency: 'ag-blue', createdBy: 'u-agent-blue',
-    lead: 'Tan Family', phone: '+60 12-345 6789', location: 'pl-marina', time: '07:30', date: TODAY,
-    people: [
-      ['Tan Wei Ming', '+60 12-345 6789', 'adult', 'A12345678'],
-      ['Tan Siew Lan', '+60 12-345 6780', 'adult', 'A12345679'],
-      ['Tan Jun Hao', '', 'child'],
-      ['Tan Xin Yi', '', 'child'],
-      ['Tan Bao Bao', '', 'infant'],
-      ['Tan Ah Ma', '', 'elderly'],
-    ],
-    assist: 6,
-  },
-  {
-    id: 'bk-lee', ref: 'LP-A-002', source: 'agent', agency: 'ag-blue', createdBy: 'u-agent-blue',
-    lead: 'Lee Couple', phone: '+60 19-880 2211', location: 'pl-suites', time: '07:40', date: TODAY,
-    people: [['Lee Ann', '+60 19-880 2211', 'adult', 'B22110099'], ['Lee Bob', '', 'adult', 'B22110100']],
-  },
-  {
-    id: 'bk-schmidt', ref: 'LP-A-003', source: 'agent', agency: 'ag-red', createdBy: 'u-agent-red',
-    lead: 'Schmidt Group', phone: '+49 170 2233445', location: 'pl-sunset', time: '07:15', date: TODAY,
-    people: [
-      ['Hans Schmidt', '+49 170 2233445', 'adult', 'C99887766'],
-      ['Anna Schmidt', '', 'adult', 'C99887767'],
-      ['Lukas Schmidt', '', 'adult', 'C99887768'],
-      ['Marie Schmidt', '', 'child'],
-      ['Opa Schmidt', '', 'elderly'],
-    ],
-  },
-  {
-    id: 'bk-klook', ref: 'LP-A-004', source: 'ota', agency: 'ag-ota', createdBy: 'u-coord',
-    lead: 'Nguyen Party', phone: '+84 90 112 3344', location: 'pl-town', time: '07:50', date: TODAY,
-    people: [
-      ['Nguyen Minh', '+84 90 112 3344', 'adult', 'D11223344'],
-      ['Nguyen Lan', '', 'adult'],
-      ['Tran Bao', '', 'adult'],
-      ['Pham Duc', '', 'adult'],
-      ['Vo Thi Hoa', '', 'adult'],
-      ['Le Van Nam', '', 'adult'],
-    ],
-  },
-  {
-    id: 'bk-house', ref: 'LP-A-005', source: 'in_house', agency: null, createdBy: 'u-coord',
-    lead: 'Walker Honeymoon', phone: '+44 7700 900123', location: 'pl-marina', time: '07:30', date: TODAY,
-    people: [['James Walker', '+44 7700 900123', 'adult', 'E55443322'], ['Emily Walker', '', 'adult', 'E55443323']],
-  },
-  {
-    id: 'bk-walkin', ref: 'LP-A-006', source: 'walk_in', agency: null, createdBy: 'u-coord',
-    lead: 'Kim Solo', phone: '+82 10 5566 7788', location: 'pl-town', time: '08:00', date: TODAY,
-    pickup: false,
-    people: [['Kim Ji Woo', '+82 10 5566 7788', 'adult', 'F66778899']],
-  },
-  {
-    id: 'bk-tomorrow', ref: 'LP-B-001', source: 'agent', agency: 'ag-blue', createdBy: 'u-agent-blue',
-    lead: 'Chen Group', phone: '+886 912 334 556', location: 'pl-sunset', time: '07:20', date: TOMORROW,
-    people: [
-      ['Chen Wei', '+886 912 334 556', 'adult'],
-      ['Chen Li', '', 'adult'],
-      ['Chen Yu', '', 'child'],
-    ],
-  },
-];
-
 export function buildBookings() {
   const bookings: Record<string, unknown>[] = [];
   const tourists: Record<string, unknown>[] = [];
   const privates: Record<string, unknown>[] = [];
 
-  seedBookings.forEach((seed) => {
-    const location = demoPickupLocations.find((item) => item.id === seed.location)!;
-    const adults = seed.people.filter(([, , band]) => band === 'adult').length;
-    const elderly = seed.people.filter(([, , band]) => band === 'elderly').length;
-    bookings.push({
-      id: seed.id,
-      booking_ref: seed.ref,
-      service_date: seed.date,
-      source_type: seed.source,
-      agency_id: seed.agency,
-      external_ref: null,
-      lead_name: seed.lead,
-      lead_phone: seed.phone,
-      lead_email: null,
-      nationality: null,
-      pax_total: seed.people.length,
-      pax_adults: adults,
-      pax_children: seed.people.length - adults - elderly,
-      pax_elderly: elderly,
-      pax_assisted: seed.assist ? 1 : 0,
-      pickup_required: seed.pickup !== false,
-      pickup_stop_order: null,
-      pickup_eta: null,
-      pickup_location_id: location.id,
-      pickup_hotel_name: location.name,
-      pickup_area: location.area,
-      pickup_latitude: location.latitude,
-      pickup_longitude: location.longitude,
-      pickup_time: seed.time,
-      pickup_group_id: null,
-      status: 'confirmed',
-      special_requests: null,
-      notes: null,
-      created_by: seed.createdBy,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    });
+  // Yesterday finished, today half-run, tomorrow still to plan.
+  [YESTERDAY, TODAY, TOMORROW].forEach((date, dayIndex) => {
+    generateDay(date, dayIndex).forEach((seed) => {
+      const adults = seed.people.filter((person) => person.band === 'adult').length;
+      const elderly = seed.people.filter((person) => person.band === 'elderly').length;
+      const assisted = seed.people.filter((person) => person.assist).length;
 
-    seed.people.forEach(([name, phone, band, passport], index) => {
-      const touristId = `${seed.id}-t${index + 1}`;
-      tourists.push({
-        id: touristId,
-        booking_id: seed.id,
-        full_name: name,
-        phone: phone || null,
+      bookings.push({
+        id: seed.id,
+        booking_ref: seed.booking_ref,
+        service_date: seed.service_date,
+        source_type: seed.source_type,
+        agency_id: seed.agency_id,
+        external_ref: null,
+        lead_name: seed.lead_name,
+        lead_phone: seed.lead_phone,
+        lead_email: null,
         nationality: null,
-        age_band: band,
-        gender: null,
-        is_lead: index === 0,
-        seat_note: null,
-        sort_order: index + 1,
-        needs_assistance: seed.assist === index + 1,
-        assistance_note: seed.assist === index + 1 ? 'Walks with a stick, needs help boarding' : null,
+        pax_total: seed.people.length,
+        pax_adults: adults,
+        pax_children: seed.people.length - adults - elderly,
+        pax_elderly: elderly,
+        pax_assisted: assisted,
+        pickup_location_id: seed.hotel.id,
+        pickup_hotel_name: seed.hotel.name,
+        pickup_area: seed.hotel.area,
+        pickup_latitude: seed.hotel.lat,
+        pickup_longitude: seed.hotel.lng,
+        pickup_time: null,
+        pickup_group_id: null,
+        pickup_required: seed.pickup_required,
+        pickup_stop_order: null,
+        pickup_eta: null,
+        status: 'confirmed',
+        special_requests: null,
+        notes: null,
+        created_by: seed.created_by,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       });
-      if (passport) {
-        privates.push({
-          tourist_id: touristId,
-          passport_no: passport,
-          date_of_birth: null,
-          email: null,
-          medical_notes: null,
-          dietary_notes: null,
+
+      seed.people.forEach((person, index) => {
+        const touristId = `${seed.id}-t${index + 1}`;
+        tourists.push({
+          id: touristId,
+          booking_id: seed.id,
+          full_name: person.name,
+          phone: person.phone,
+          nationality: NATIONALITY_FOR(index + seed.people.length),
+          age_band: person.band,
+          gender: null,
+          is_lead: index === 0,
+          seat_note: null,
+          sort_order: index + 1,
+          needs_assistance: person.assist,
+          assistance_note: person.assist ? 'Needs a hand getting on and off the boat' : null,
         });
-      }
+        if (index === 0) {
+          privates.push({
+            tourist_id: touristId,
+            passport_no: `P${String(1000000 + bookings.length * 37 + index).slice(0, 7)}`,
+            date_of_birth: null,
+            email: null,
+            medical_notes: null,
+            dietary_notes: null,
+          });
+        }
+      });
     });
   });
 
@@ -215,7 +147,11 @@ export function buildBookings() {
 export const demoVehicles = [
   { id: 'veh-1', code: 'Van 1', name: 'Toyota Hiace', vehicle_type: 'van', capacity_pax: 12, plate_no: 'PKA 1234', default_driver_employee_id: 'em-kumar', active: true, notes: null, sort_order: 1 },
   { id: 'veh-2', code: 'Van 2', name: 'Nissan Urvan', vehicle_type: 'van', capacity_pax: 10, plate_no: 'PKA 5678', default_driver_employee_id: null, active: true, notes: null, sort_order: 2 },
-  { id: 'veh-3', code: 'Car 1', name: 'Toyota Avanza', vehicle_type: 'car', capacity_pax: 5, plate_no: 'PKB 9012', default_driver_employee_id: null, active: true, notes: 'For small groups and airport runs', sort_order: 3 },
+  { id: 'veh-3', code: 'Van 3', name: 'Ford Transit', vehicle_type: 'van', capacity_pax: 14, plate_no: 'PKA 3344', default_driver_employee_id: null, active: true, notes: null, sort_order: 3 },
+  { id: 'veh-4', code: 'Bus 1', name: 'Higer 30-seater', vehicle_type: 'bus', capacity_pax: 30, plate_no: 'PKB 7788', default_driver_employee_id: null, active: true, notes: 'Used when a coach party is in', sort_order: 4 },
+  { id: 'veh-5', code: 'Car 1', name: 'Toyota Avanza', vehicle_type: 'car', capacity_pax: 5, plate_no: 'PKB 9012', default_driver_employee_id: null, active: true, notes: 'Small groups and airport runs', sort_order: 5 },
+  { id: 'veh-6', code: 'Van 4', name: 'Toyota Hiace', vehicle_type: 'van', capacity_pax: 12, plate_no: 'PKA 4411', default_driver_employee_id: null, active: true, notes: null, sort_order: 6 },
+  { id: 'veh-7', code: 'Car 2', name: 'Perodua Alza', vehicle_type: 'car', capacity_pax: 6, plate_no: 'PKB 2255', default_driver_employee_id: null, active: true, notes: null, sort_order: 7 },
 ];
 
 const catalogue: Array<[string, string, string, string, number]> = [

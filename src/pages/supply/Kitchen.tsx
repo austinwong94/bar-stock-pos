@@ -127,7 +127,7 @@ export default function Kitchen() {
                             ? 'bg-shell text-accent'
                             : request.status === 'cancelled'
                               ? 'bg-neutral-100 text-neutral-600'
-                              : 'bg-shell text-coral'
+                              : 'bg-shell text-alert'
                       }`}
                     >
                       {requestStatusLabels[request.status]}

@@ -152,7 +152,7 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
           className={`rounded-2xl border p-3 text-left shadow-soft transition sm:p-4 ${mode === 'out' ? 'border-accent bg-shell ring-2 ring-accent/20' : 'border-line bg-white/85 hover:border-accent'}`}
           onClick={() => setMode('out')}
         >
-          <p className="text-xs font-black uppercase tracking-widest text-coral">{text('History', 'Sejarah')}</p>
+          <p className="text-xs font-black uppercase tracking-widest text-alert">{text('History', 'Sejarah')}</p>
           <h2 className="mt-1.5 text-lg font-black sm:text-xl">{text('Stock Out', 'Stok Keluar')}</h2>
         </button>
       </section>
@@ -169,8 +169,8 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
             <p className="mt-1.5 text-lg font-black sm:text-2xl">{money(filteredOutRows.filter((row) => row.method !== 'complimentary').reduce((sum, row) => sum + row.total, 0), String(settings.currency_symbol))}</p>
           </div>
           <div className="rounded-2xl border border-line bg-shell p-3 shadow-soft sm:rounded-xl sm:p-5">
-            <p className="text-xs font-black text-coral sm:text-sm">FOC Cost</p>
-            <p className="mt-1.5 text-lg font-black text-coral sm:text-2xl">- {money(filteredOutRows.filter((row) => row.method === 'complimentary').reduce((sum, row) => sum + row.total, 0), String(settings.currency_symbol))}</p>
+            <p className="text-xs font-black text-alert sm:text-sm">FOC Cost</p>
+            <p className="mt-1.5 text-lg font-black text-alert sm:text-2xl">- {money(filteredOutRows.filter((row) => row.method === 'complimentary').reduce((sum, row) => sum + row.total, 0), String(settings.currency_symbol))}</p>
           </div>
         </section>
       ) : null}
@@ -296,13 +296,13 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
                       <p className="font-black">{row.item}</p>
                       <p className="text-sm font-bold text-neutral-600">{row.date} · {row.worker}</p>
                     </div>
-                    <span className={`rounded-xl px-3 py-1 text-sm font-black ${row.method === 'complimentary' ? 'bg-shell text-coral' : 'bg-shell text-accent'}`}>
+                    <span className={`rounded-xl px-3 py-1 text-sm font-black ${row.method === 'complimentary' ? 'bg-shell text-alert' : 'bg-shell text-accent'}`}>
                       {methodLabel(row.method)}
                     </span>
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-1.5 text-xs font-bold sm:mt-3 sm:gap-2 sm:text-sm">
                     <div className="rounded-2xl bg-shell p-3"><p className="text-neutral-500">Quantity Out</p><p>{row.qty}</p></div>
-                    <div className="rounded-2xl bg-shell p-3"><p className="text-neutral-500">Value</p><p className={row.method === 'complimentary' ? 'text-coral' : ''}>{row.method === 'complimentary' ? '- ' : ''}{money(row.total, String(settings.currency_symbol))}</p></div>
+                    <div className="rounded-2xl bg-shell p-3"><p className="text-neutral-500">Value</p><p className={row.method === 'complimentary' ? 'text-alert' : ''}>{row.method === 'complimentary' ? '- ' : ''}{money(row.total, String(settings.currency_symbol))}</p></div>
                   </div>
                   <p className="mt-3 text-sm font-bold text-neutral-600">{row.sale}</p>
                 </article>
@@ -330,7 +330,7 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
                       <td className="p-3 font-black whitespace-nowrap">{row.item}</td>
                       <td className="p-3 whitespace-nowrap">{row.qty}</td>
                       <td className="p-3 whitespace-nowrap">{methodLabel(row.method)}</td>
-                      <td className={`p-3 whitespace-nowrap ${row.method === 'complimentary' ? 'text-coral' : ''}`}>
+                      <td className={`p-3 whitespace-nowrap ${row.method === 'complimentary' ? 'text-alert' : ''}`}>
                         {row.method === 'complimentary' ? '- ' : ''}{money(row.total, String(settings.currency_symbol))}
                       </td>
                     </tr>

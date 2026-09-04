@@ -261,7 +261,7 @@ export default function BoatMaintenance({ settings }: { settings: SettingsMap })
                 </thead>
                 <tbody className="divide-y divide-line">
                   {trips.map((trip) => (
-                    <tr key={trip.id} className={trip.trip_type === 'emergency' ? 'bg-coral/[0.04]' : ''}>
+                    <tr key={trip.id} className={trip.trip_type === 'emergency' ? 'bg-alert/[0.04]' : ''}>
                       <td className="px-3.5 py-2.5 tabular">{trip.service_date}</td>
                       <td className="px-3.5 py-2.5 font-semibold text-ink">{trip.boats?.code ?? '—'}</td>
                       <td className="px-3.5 py-2.5">

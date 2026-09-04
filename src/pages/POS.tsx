@@ -455,7 +455,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
               ))}
             </div>
             <div className="mt-2 flex items-center gap-2">
-              <Percent className="h-5 w-5 text-coral" />
+              <Percent className="h-5 w-5 text-alert" />
               <input
                 className={inputClass}
                 type="number"
@@ -474,7 +474,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
             <span>Subtotal</span>
             <span>{money(subtotal, String(settings.currency_symbol))}</span>
           </div>
-          <div className="mt-2 flex justify-between gap-3 font-bold text-coral">
+          <div className="mt-2 flex justify-between gap-3 font-bold text-alert">
             <span>{text('Discount amount', 'Jumlah diskaun')}</span>
             <span>- {money(discount, String(settings.currency_symbol))}</span>
           </div>
@@ -744,7 +744,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
             <div className="rounded-2xl border border-line bg-shell p-3">
               <div className="flex items-center justify-between gap-3">
                 <p className="font-black">Choose beer types</p>
-                <p className={`font-black ${bundleSelectedUnits === bundleRequiredUnits ? 'text-accent' : 'text-coral'}`}>
+                <p className={`font-black ${bundleSelectedUnits === bundleRequiredUnits ? 'text-accent' : 'text-alert'}`}>
                   {bundleSelectedUnits} / {bundleRequiredUnits}
                 </p>
               </div>
@@ -809,7 +809,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
                 <span>Subtotal</span>
                 <span>{money(subtotal, String(settings.currency_symbol))}</span>
               </div>
-              <div className="mt-2 flex justify-between text-sm font-bold text-coral">
+              <div className="mt-2 flex justify-between text-sm font-bold text-alert">
                 <span>{text('Discount amount', 'Jumlah diskaun')}</span>
                 <span>- {money(discount, String(settings.currency_symbol))}</span>
               </div>
@@ -819,7 +819,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
               <span>{money(total, String(settings.currency_symbol))}</span>
             </div>
             {method === 'complimentary' ? (
-              <p className="rounded-2xl bg-shell p-3 text-sm font-black text-coral">Paid amount: {money(0, String(settings.currency_symbol))}. FOC is recorded as cost, not sales.</p>
+              <p className="rounded-2xl bg-shell p-3 text-sm font-black text-alert">Paid amount: {money(0, String(settings.currency_symbol))}. FOC is recorded as cost, not sales.</p>
             ) : null}
             <p className="text-sm font-bold text-accent">{dualMoney(total, String(settings.currency_symbol))}</p>
             <p className="rounded-2xl bg-shell p-3 text-sm font-bold">{text('Order accepted by', 'Diterima oleh')}: {orderTakenBy}</p>

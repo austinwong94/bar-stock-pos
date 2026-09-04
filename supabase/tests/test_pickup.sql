@@ -136,3 +136,56 @@ select pg_temp.check('the copy brings the items with it', count(*)::int, 1)
 from public.purchase_request_items where request_id = :'copy';
 select pg_temp.check('the copy starts as a draft', status, 'draft')
 from public.purchase_requests where id = :'copy';
+
+-- ============ a group is never squeezed into a vehicle too small ============
+reset role;
+insert into public.transport_vehicles (code, name, vehicle_type, capacity_pax, sort_order)
+values ('Tiny 1', 'Kancil', 'car', 3, 9);
+
+set role authenticated;
+select pg_temp.as_user('22222222-2222-2222-2222-222222222222');
+select public.save_booking(
+  jsonb_build_object('service_date','2026-09-14','lead_name','Nine Pax Party','source_type','in_house',
+                     'pickup_hotel_name','Hillview Resort','pickup_latitude',5.395,'pickup_longitude',100.305),
+  (select jsonb_agg(jsonb_build_object('full_name','Big Guest '||g,'age_band','adult')) from generate_series(1,9) g)
+) as big \gset
+
+-- Only the 3 seat car is free on this date if we park the others first.
+reset role;
+insert into public.pickup_groups (service_date, name, vehicle_id, auto_created)
+select '2026-09-14', 'Blocked ' || code, id, false from public.transport_vehicles where code <> 'Tiny 1';
+
+set role authenticated;
+select pg_temp.as_user('22222222-2222-2222-2222-222222222222');
+select public.auto_plan_pickups('2026-09-14') as placed \gset
+select pg_temp.check('a group with no vehicle big enough is left waiting', :'placed'::int, 0);
+select pg_temp.check('and is not quietly put in a car too small', pickup_group_id is null, true)
+from public.bookings where id = :'big';
+
+reset role;
+select pg_temp.check('no run is created without a vehicle', count(*)::int, 0)
+from public.pickup_groups where service_date = '2026-09-14' and vehicle_id is null;
+
+-- ============ the vehicle is sized to the stop, not to the first booking ============
+reset role;
+delete from public.pickup_groups where service_date = '2026-09-15';
+insert into public.transport_vehicles (code, name, vehicle_type, capacity_pax, sort_order) values
+  ('Coach 9', 'Big coach', 'bus', 40, 20),
+  ('Mini 9', 'Small car', 'car', 4, 21)
+on conflict do nothing;
+
+set role authenticated;
+select pg_temp.as_user('22222222-2222-2222-2222-222222222222');
+-- A two pax hotel, far from everything else.
+select public.save_booking(
+  jsonb_build_object('service_date','2026-09-15','lead_name','Quiet Hotel Pair','source_type','in_house',
+                     'pickup_hotel_name','Lonely Cove','pickup_latitude',5.60,'pickup_longitude',100.10),
+  '[{"full_name":"Pair One","age_band":"adult"},{"full_name":"Pair Two","age_band":"adult"}]'::jsonb
+) as pair \gset
+select public.auto_plan_pickups('2026-09-15');
+
+reset role;
+select pg_temp.check('a two pax hotel does not take the coach', v.capacity_pax <= 6, true)
+from public.bookings b join public.pickup_groups g on g.id = b.pickup_group_id
+join public.transport_vehicles v on v.id = g.vehicle_id
+where b.id = :'pair';
