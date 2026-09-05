@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight, Lock, LockOpen, RefreshCw, Ship, Users } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Lock, LockOpen, RefreshCw, Ship, Users, Wand2 } from 'lucide-react';
 import { PageHeader, Stat } from '../../components/Page';
 import { Field, buttonClass, inputClass, secondaryButtonClass } from '../../components/Form';
 import { useToast } from '../../components/Toast';
@@ -23,6 +23,7 @@ export default function BoatBoard() {
   const [guides, setGuides] = useState<Employee[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
 
   function toggleGroup(bookingId: string) {
     setExpanded((current) => {
@@ -147,6 +148,34 @@ export default function BoatBoard() {
     void refresh();
   }
 
+  async function autoSeat() {
+    setBusy(true);
+    const { data, error } = await supabase.rpc('auto_seat_boats', { p_service_date: date });
+    setBusy(false);
+    if (error) { toast.error(error.message); return; }
+    const seated = Number(data ?? 0);
+    toast.success(
+      seated === 0
+        ? 'Everyone who fits is already on a boat.'
+        : `${seated} group(s) seated. Groups stay together — drag to move any of them.`,
+    );
+    void refresh();
+  }
+
+  async function reuseCrew() {
+    setBusy(true);
+    const { data, error } = await supabase.rpc('copy_previous_crew', { p_service_date: date });
+    setBusy(false);
+    if (error) { toast.error(error.message); return; }
+    const filled = Number(data ?? 0);
+    toast.success(
+      filled === 0
+        ? 'No earlier day with a crew to copy, or every boat already has one.'
+        : `Crew copied onto ${filled} boat(s). Change anyone who is off today.`,
+    );
+    void refresh();
+  }
+
   async function toggleLock() {
     const { error } = await supabase.rpc('set_day_locked', { p_service_date: date, p_locked: !locked });
     if (error) { toast.error(error.message); return; }
@@ -164,6 +193,16 @@ export default function BoatBoard() {
             <button type="button" className={secondaryButtonClass} onClick={() => void refresh()}>
               <RefreshCw className="h-4 w-4" /> Refresh
             </button>
+            {canAssign && !locked ? (
+              <>
+                <button type="button" className={secondaryButtonClass} onClick={() => void reuseCrew()} disabled={busy}>
+                  <Users className="h-4 w-4" /> Same crew as last time
+                </button>
+                <button type="button" className={buttonClass} onClick={() => void autoSeat()} disabled={busy}>
+                  <Wand2 className="h-4 w-4" /> Seat everyone
+                </button>
+              </>
+            ) : null}
             {canLock ? (
               <button type="button" className={buttonClass} onClick={toggleLock}>
                 {locked ? <LockOpen className="h-4 w-4" /> : <Lock className="h-4 w-4" />}

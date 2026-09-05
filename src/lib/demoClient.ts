@@ -1457,6 +1457,84 @@ const rpcHandlers: Record<string, (args: any) => any> = {
     return null;
   },
 
+  auto_seat_boats: ({ p_service_date }: any) => {
+    requirePermission('fleet.assign');
+    if (db.boat_assignments.some((row) => row.service_date === p_service_date && row.locked)) {
+      throw new Error('This day is locked. Unlock it before seating boats.');
+    }
+    rpcHandlers.ensure_boat_assignments({ p_service_date });
+
+    const seatedOn = (assignmentId: string) =>
+      db.trip_bookings
+        .filter((row) => row.assignment_id === assignmentId)
+        .reduce((sum, row) => sum + (db.bookings.find((b) => b.id === row.booking_id)?.pax_total ?? 0), 0);
+
+    let seated = 0;
+    db.bookings
+      .filter(
+        (b) =>
+          b.service_date === p_service_date &&
+          b.status !== 'cancelled' &&
+          b.pax_total > 0 &&
+          !db.trip_bookings.some((row) => row.booking_id === b.id),
+      )
+      // Biggest group first: the hardest to place goes while there is still
+      // room to place it.
+      .sort((a, b) => b.pax_total - a.pax_total)
+      .forEach((booking) => {
+        // Best fit: the fullest boat this group still fits on, so the big
+        // boat stays free for the big family.
+        const target = db.boat_assignments
+          .filter((a) => a.service_date === p_service_date && !a.locked && a.status !== 'cancelled')
+          .map((a) => ({ a, boat: db.boats.find((x) => x.id === a.boat_id)!, left: 0 }))
+          .filter((row) => row.boat && row.boat.status === 'active' && row.boat.capacity_pax > 0)
+          .map((row) => ({ ...row, left: row.boat.capacity_pax - seatedOn(row.a.id) }))
+          .filter((row) => row.left >= booking.pax_total)
+          .sort((x, y) => x.left - y.left || (x.boat.sort_order ?? 0) - (y.boat.sort_order ?? 0))[0];
+        // Nothing holds the whole group: leave it in the pool rather than
+        // splitting a family.
+        if (!target) return;
+        db.trip_bookings.push({
+          id: uid(),
+          assignment_id: target.a.id,
+          booking_id: booking.id,
+          assigned_at: new Date().toISOString(),
+        });
+        syncPassengers(target.a.id, booking.id);
+        seated += 1;
+      });
+    return seated;
+  },
+
+  copy_previous_crew: ({ p_service_date }: any) => {
+    requirePermission('fleet.assign');
+    // The most recent earlier day that actually had crew, so a quiet day
+    // does not wipe the pattern.
+    const source = db.boat_assignments
+      .filter((a) => a.service_date < p_service_date && (a.captain_employee_id || a.guide_employee_id))
+      .map((a) => a.service_date)
+      .sort()
+      .pop();
+    if (!source) return 0;
+    rpcHandlers.ensure_boat_assignments({ p_service_date });
+
+    let filled = 0;
+    db.boat_assignments
+      .filter((a) => a.service_date === p_service_date && !a.locked)
+      .forEach((today) => {
+        if (today.captain_employee_id && today.guide_employee_id) return;
+        const prev = db.boat_assignments.find(
+          (a) => a.service_date === source && a.boat_id === today.boat_id && a.trip_no === today.trip_no,
+        );
+        if (!prev || (!prev.captain_employee_id && !prev.guide_employee_id)) return;
+        // Only fills blanks: a crew already chosen for today is kept.
+        today.captain_employee_id = today.captain_employee_id ?? prev.captain_employee_id;
+        today.guide_employee_id = today.guide_employee_id ?? prev.guide_employee_id;
+        filled += 1;
+      });
+    return filled;
+  },
+
   unassign_booking: ({ p_booking_id }: any) => {
     requirePermission('fleet.assign');
     const trip = db.trip_bookings.find((row) => row.booking_id === p_booking_id);

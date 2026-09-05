@@ -312,6 +312,19 @@ per-user "never allow" beats the role.
 - Daily report saves a JSON snapshot and does not change after later data changes unless reopened/admin corrected.
 - Inactive products do not show in POS but remain visible in historical records.
 
+## Seating a day quickly
+
+The boat board has two buttons that do the repetitive part of the morning:
+
+* **Seat everyone** fills the boats in one tap. A group is never split across
+  boats, and each one goes on the fullest boat it still fits in, so the big
+  boat stays free for the big family. Anything too large for any boat stays in
+  the unassigned pool rather than being forced on. Drag afterwards to change
+  anything.
+* **Same crew as last time** copies the captain and guide from the most recent
+  day that had a crew. It only fills blanks, so anyone you have already chosen
+  for today is kept.
+
 ## Colours and theme
 
 Every colour comes from named tokens in `tailwind.config.js`, so the whole

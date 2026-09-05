@@ -30,7 +30,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="no-print fixed inset-x-3 top-3 z-50 flex flex-col gap-2 sm:inset-x-auto sm:right-4 sm:top-4 sm:w-[min(92vw,380px)]">
+      {/* Bottom, not top: every page keeps its buttons in the top right, and a
+          toast landing on them hides the control you just used. Raised clear
+          of the demo bar, and within thumb reach on a phone. */}
+      <div className="no-print fixed inset-x-3 bottom-20 z-50 flex flex-col gap-2 sm:inset-x-auto sm:right-4 sm:w-[min(92vw,380px)]">
         {toasts.map((toast) => (
           <div
             key={toast.id}

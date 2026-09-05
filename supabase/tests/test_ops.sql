@@ -91,3 +91,72 @@ begin
   raise exception 'FAIL captain created a booking';
 exception when sqlstate '42501' then raise notice 'PASS  captain cannot create bookings';
 end $$;
+
+-- ============ one tap seats the whole day ============
+set role authenticated;
+select pg_temp.as_user('22222222-2222-2222-2222-222222222222');
+
+-- A day nobody has touched: one family of 6, one of 2, one of 3.
+select public.save_booking(
+  jsonb_build_object('service_date','2026-10-01','lead_name','Six Party','source_type','in_house'),
+  (select jsonb_agg(jsonb_build_object('full_name','Six '||g,'age_band','adult')) from generate_series(1,6) g)) as s6 \gset
+select public.save_booking(
+  jsonb_build_object('service_date','2026-10-01','lead_name','Two Party','source_type','in_house'),
+  '[{"full_name":"Two A","age_band":"adult"},{"full_name":"Two B","age_band":"adult"}]'::jsonb) as s2 \gset
+select public.save_booking(
+  jsonb_build_object('service_date','2026-10-01','lead_name','Three Party','source_type','in_house'),
+  (select jsonb_agg(jsonb_build_object('full_name','Three '||g,'age_band','adult')) from generate_series(1,3) g)) as s3 \gset
+
+select public.auto_seat_boats('2026-10-01') as seated \gset
+select pg_temp.check('one tap seats every group', :'seated'::int, 3);
+
+reset role;
+select pg_temp.check('nobody is left in the pool', count(*)::int, 0)
+from public.bookings b
+where b.service_date = '2026-10-01'
+  and not exists (select 1 from public.trip_bookings tb where tb.booking_id = b.id);
+
+select pg_temp.check('no boat is overloaded', count(*)::int, 0)
+from (
+  select a.id from public.boat_assignments a
+  join public.boats bo on bo.id = a.boat_id
+  join public.trip_bookings tb on tb.assignment_id = a.id
+  join public.bookings bk on bk.id = tb.booking_id
+  where a.service_date = '2026-10-01'
+  group by a.id, bo.capacity_pax having sum(bk.pax_total) > bo.capacity_pax
+) x;
+
+select pg_temp.check('a group is never split across boats', count(*)::int, 0)
+from (select booking_id from public.trip_bookings group by booking_id having count(*) > 1) x;
+
+-- Running it twice must not double seat anyone.
+set role authenticated;
+select pg_temp.as_user('22222222-2222-2222-2222-222222222222');
+select public.auto_seat_boats('2026-10-01') as again \gset
+select pg_temp.check('running it again seats nobody new', :'again'::int, 0);
+
+-- A group nothing can hold stays visible instead of being forced on.
+select public.save_booking(
+  jsonb_build_object('service_date','2026-10-02','lead_name','Coach Party','source_type','ota'),
+  (select jsonb_agg(jsonb_build_object('full_name','Coach '||g,'age_band','adult')) from generate_series(1,300) g)) as huge \gset
+select public.auto_seat_boats('2026-10-02');
+reset role;
+select pg_temp.check('a group too big for any boat stays in the pool', count(*)::int, 0)
+from public.trip_bookings where booking_id = :'huge';
+
+-- ============ yesterday's crew ============
+reset role;
+update public.boat_assignments set captain_employee_id = (select id from public.employees where job_type = 'captain' limit 1)
+where service_date = '2026-10-01' and captain_employee_id is null;
+
+set role authenticated;
+select pg_temp.as_user('22222222-2222-2222-2222-222222222222');
+select public.copy_previous_crew('2026-10-03') as copied \gset
+select pg_temp.check('yesterday''s crew can be carried forward', :'copied'::int > 0, true);
+
+reset role;
+select pg_temp.check('and every copied boat has its captain', count(*)::int, 0)
+from public.boat_assignments a
+where a.service_date = '2026-10-03' and a.captain_employee_id is null
+  and exists (select 1 from public.boat_assignments p
+              where p.service_date = '2026-10-01' and p.boat_id = a.boat_id and p.captain_employee_id is not null);
