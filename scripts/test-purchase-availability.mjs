@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+const {PGlite}=await import(process.env.PGLITE_MODULE),db=new PGlite();
+try{
+  await db.exec(`create role anon;create role authenticated;create schema auth;
+    create function auth.uid() returns uuid language sql as $$select '00000000-0000-4000-8000-000000000001'::uuid$$;
+    create function require_permission(code text) returns void language plpgsql as $$begin if current_setting('test.permission',true) is distinct from code then raise exception 'Permission denied';end if;end$$;
+    create table purchase_requests(id uuid primary key,status text,completed_at timestamptz,updated_at timestamptz);
+    create table purchase_request_items(id uuid primary key,request_id uuid,item_name text,unit text,quantity numeric,purchase_status text,purchased_quantity numeric,actual_cost numeric,purchased_by uuid,purchased_at timestamptz,supplier text,purchase_note text,updated_at timestamptz);
+    create table purchase_receipts(id uuid primary key default gen_random_uuid(),purchase_item_id uuid);
+    create table audit_logs(id uuid default gen_random_uuid(),actor_id uuid,action text,entity_type text,entity_id uuid,before_json jsonb,after_json jsonb);`);
+  const migration=await readFile('supabase/migrations/202610040055_kitchen_order_tracking.sql','utf8');
+  await db.exec(migration.slice(migration.indexOf('create function public.protect_recorded_purchase()'),migration.indexOf('insert into public.permissions')));
+  await db.exec('create trigger protect_received_purchase before update or delete on purchase_request_items for each row execute function protect_received_purchase()');
+  await db.exec(await readFile('supabase/migrations/202610040061_purchase_availability.sql','utf8'));
+  const request=crypto.randomUUID(),item=crypto.randomUUID();await db.query("insert into purchase_requests values($1,'submitted',null,now())",[request]);
+  await db.query("insert into purchase_request_items(id,request_id,item_name,quantity,purchase_status,updated_at) values($1,$2,'Rice',5,'pending',now())",[item,request]);
+  const row=async()=>(await db.query('select *,updated_at::text as updated_at from purchase_request_items where id=$1',[item])).rows[0];
+  const change=async(version,status,qty=null)=>db.query('select set_purchase_item_status_checked($1,$2,$3,$4)',[item,version,status,qty]);
+  const version=(await row()).updated_at;await db.exec('set role anon');await assert.rejects(()=>change(version,'unavailable'),/permission denied/);
+  await db.exec('reset role;set role authenticated');await assert.rejects(()=>change(version,'unavailable'),/Permission denied/);
+  await db.exec("select set_config('test.permission','purchasing.fulfil',false)");await change(version,'unavailable');await db.exec('reset role');
+  assert.equal((await row()).purchased_quantity,null);assert.equal((await row()).purchase_status,'unavailable');
+  await assert.rejects(()=>change(version,'pending'),/another device/);await change((await row()).updated_at,'pending');
+  assert.equal((await row()).purchased_quantity,null);assert.equal((await row()).purchase_status,'pending');
+  await db.query("update purchase_request_items set purchase_status='unavailable',purchased_quantity=5 where id=$1",[item]);
+  await change((await row()).updated_at,'pending');assert.equal((await row()).purchased_quantity,null,'Legacy unavailable quantity can be corrected without erasing a real purchase');
+  await assert.rejects(()=>change((new Date()).toISOString(),'bought'),/both photos/);await assert.rejects(async()=>change((await row()).updated_at,'unavailable',2),/cannot record quantities/);
+  await db.query("insert into audit_logs(action,entity_id,after_json) values('record_purchase_batch',$1,$2)",[request,JSON.stringify({items:[{id:item,quantity:2}]})]);
+  await assert.rejects(async()=>change((await row()).updated_at,'unavailable'),/cannot be cleared/);
+  await db.exec("delete from audit_logs where action='record_purchase_batch';select set_config('app.purchase_evidence','verified',false)");await db.query("update purchase_request_items set purchase_status='bought',purchased_quantity=2 where id=$1",[item]);
+  await assert.rejects(async()=>change((await row()).updated_at,'pending'),/cannot be cleared/);
+  await db.query('insert into purchase_receipts(purchase_item_id) values($1)',[item]);await assert.rejects(async()=>change((await row()).updated_at,'unavailable'),/cannot be cleared/);
+  assert.equal((await db.query("select count(*)::int n from audit_logs where action='purchase_availability'")).rows[0].n,3);
+  console.log('PASS: unavailable is not purchased, reversible status, legacy recovery, audit trail, stale edits, blocked fake purchases/costs, protected purchase evidence, receipts and permission checks.');
+}finally{await db.close();}

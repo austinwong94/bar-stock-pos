@@ -1,13 +1,20 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { addDays, addMonths, addWeeks, format, parseISO, startOfWeek } from 'date-fns';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { AlertTriangle, ChevronRight } from 'lucide-react';
 import { inputClass } from '../components/Form';
 import { PageHeader } from '../components/Page';
-import { dateInputValue, malaysiaDateInputValue, money, todayInputValue } from '../lib/format';
+import { WorkflowHelp } from '../components/WorkflowHelp';
+import { ViewChoices } from '../components/ViewChoices';
+import { StaffSummary } from '../components/StaffWorkspace';
+import { BarPeriodControl } from '../components/BarPeriodControl';
+import { malaysiaBusinessDateInputValue, money } from '../lib/format';
+import { loadLocalSaleItems, loadLocalSales, loadLocalStockInDrafts, loadLocalStockMovements } from '../lib/localStore';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { useLanguage } from '../lib/language';
-import type { Sale, SaleItem, SettingsMap, StockMovement } from '../lib/types';
+import type { Sale, SaleItem, SettingsMap, StockInDraftRecord, StockMovement } from '../lib/types';
 import StockIn from './StockIn';
+import { useSharedRefresh } from '../lib/useSharedRefresh';
+import { readAllRows } from '../lib/readAllRows';
 
 type Period = 'day' | 'week' | 'month' | 'custom';
 type Mode = 'in' | 'out';
@@ -19,6 +26,7 @@ type StockOutRow = {
   method: string;
   total: number;
   worker: string;
+  status: Sale['status'];
 };
 type StockInRow = {
   date: string;
@@ -30,11 +38,54 @@ type StockInRow = {
   notes: string;
 };
 
-function methodLabel(method: string) {
-  if (method === 'cash') return 'Cash Payment';
-  if (method === 'qr') return 'QR Payment';
+function methodLabel(method: string, translate: (en: string, ms: string) => string) {
+  if (method === 'cash') return translate('Cash Payment', 'Bayaran Tunai');
+  if (method === 'qr') return translate('QR Payment', 'Bayaran QR');
   if (method === 'complimentary') return 'FOC';
   return '-';
+}
+
+function statusLabel(status: Sale['status'], translate: (en: string, ms: string) => string) {
+  return status === 'completed' ? translate('Completed', 'Selesai') : translate('Voided', 'Dibatalkan');
+}
+
+function countLabel(count: number, singular: string, plural: string) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function stockInputLabel(movement: StockMovement) {
+  const quantity = Number(movement.input_quantity ?? Math.abs(Number(movement.quantity_change)));
+  if (movement.unit_input === 'carton') return countLabel(quantity, 'Carton', 'Cartons');
+  return countLabel(quantity, 'Unit', 'Units');
+}
+
+function allocateSaleAmounts(total: number, lineTotals: number[]) {
+  const cents = Math.round(total * 100);
+  const weightTotal = lineTotals.reduce((sum, value) => sum + value, 0);
+  const fallbackWeight = weightTotal > 0 ? 0 : 1 / Math.max(lineTotals.length, 1);
+  let used = 0;
+  return lineTotals.map((lineTotal, index) => {
+    if (index === lineTotals.length - 1) return (cents - used) / 100;
+    const share = weightTotal > 0 ? lineTotal / weightTotal : fallbackWeight;
+    const value = Math.round(cents * share);
+    used += value;
+    return value / 100;
+  });
+}
+
+function rowsFromSale(sale: Sale & { sale_items?: SaleItem[] }, closeTime: SettingsMap[keyof SettingsMap]): StockOutRow[] {
+  const items = sale.sale_items ?? [];
+  const allocatedValues = allocateSaleAmounts(Number(sale.total_amount), items.map((item) => Number(item.line_total)));
+  return items.map((item, index) => ({
+    date: sale.business_date || (sale.created_at ? malaysiaBusinessDateInputValue(sale.created_at, closeTime) : '-'),
+    sale: sale.sale_number,
+    item: item.products?.name ?? item.custom_item_name ?? item.product_id ?? 'Custom Order',
+    qty: item.quantity,
+    method: sale.payment_method,
+    total: allocatedValues[index] ?? 0,
+    worker: sale.order_taken_by ?? '-',
+    status: sale.status,
+  }));
 }
 
 function weekStartFromInput(value: string) {
@@ -43,10 +94,6 @@ function weekStartFromInput(value: string) {
   const week = Number(weekText);
   const weekOne = startOfWeek(new Date(year, 0, 4), { weekStartsOn: 1 });
   return addWeeks(weekOne, Math.max(week - 1, 0));
-}
-
-function currentWeekInput() {
-  return format(new Date(), "RRRR-'W'II");
 }
 
 function inRange(date: string, period: Period, selectedDate: string, selectedWeek: string, selectedMonth: string, customStart: string, customEnd: string) {
@@ -64,62 +111,91 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
   const { text } = useLanguage();
   const [mode, setMode] = useState<Mode>('in');
   const [period, setPeriod] = useState<Period>('day');
-  const today = todayInputValue();
+  const today = malaysiaBusinessDateInputValue(new Date(), settings.business_day_close_time);
   const [selectedDate, setSelectedDate] = useState(today);
-  const [selectedWeek, setSelectedWeek] = useState(currentWeekInput());
+  const [selectedWeek, setSelectedWeek] = useState(() => format(parseISO(today), "RRRR-'W'II"));
   const [selectedMonth, setSelectedMonth] = useState(today.slice(0, 7));
   const [customStart, setCustomStart] = useState(today);
   const [customEnd, setCustomEnd] = useState(today);
   const [stockOutRows, setStockOutRows] = useState<StockOutRow[]>([]);
   const [stockInRows, setStockInRows] = useState<StockInRow[]>([]);
+  const [pendingStockInDrafts, setPendingStockInDrafts] = useState<StockInDraftRecord[]>([]);
+  const [loadError, setLoadError] = useState('');
+  const generation = useRef(0);
 
-  useEffect(() => {
-    async function loadRows() {
+  async function loadRows() {
+    const ticket = ++generation.current;
+    try {
+      setLoadError('');
       if (!isSupabaseConfigured) {
-        setStockOutRows([]);
-        setStockInRows([]);
+        setPendingStockInDrafts(loadLocalStockInDrafts().filter((draft) => draft.status === 'draft'));
+        const localSaleItems = loadLocalSaleItems();
+        setStockOutRows(
+          loadLocalSales().flatMap((sale) =>
+            rowsFromSale(
+              { ...sale, sale_items: localSaleItems.filter((item) => item.sale_id === sale.id) },
+              settings.business_day_close_time,
+            ),
+          ),
+        );
+        setStockInRows(
+          loadLocalStockMovements()
+            .filter((movement) => movement.movement_type === 'stock_in')
+            .map((movement) => ({
+              date: malaysiaBusinessDateInputValue(movement.created_at, settings.business_day_close_time),
+              reference: movement.reason ?? movement.reference_type ?? '-',
+              item: movement.products?.name ?? movement.product_id ?? '-',
+              qty: Math.abs(movement.quantity_change),
+              unit: stockInputLabel(movement),
+              worker: movement.entered_by ?? '-',
+              notes: movement.notes ?? '-',
+            })),
+        );
         return;
       }
 
-      const [{ data: salesData, error: salesError }, { data: movementData, error: movementError }] = await Promise.all([
-        supabase.from('sales').select('*, sale_items(*, products(name))').order('created_at', { ascending: false }),
-        supabase.from('stock_movements').select('*, products(name)').eq('movement_type', 'stock_in').order('created_at', { ascending: false }),
+      const [salesData, movementData, draftData] = await Promise.all([
+        readAllRows<Sale & { sale_items?: SaleItem[] }>((from,to) => supabase.from('sales').select('*, sale_items(*, products(name))').order('created_at', { ascending: false }).order('id').range(from,to)),
+        readAllRows<StockMovement>((from,to) => supabase.from('stock_movements').select('*, products(name)').eq('movement_type', 'stock_in').order('created_at', { ascending: false }).order('id').range(from,to)),
+        readAllRows<StockInDraftRecord>((from,to) => supabase.from('stock_in_drafts').select('*').eq('status', 'draft').order('created_at', { ascending: false }).order('id').range(from,to)),
       ]);
-      if (salesError) console.error(salesError);
-      if (movementError) console.error(movementError);
+      if (ticket !== generation.current) return;
 
       const sales = (salesData ?? []) as Array<Sale & { sale_items?: SaleItem[] }>;
       setStockOutRows(
-        sales.flatMap((sale) =>
-          (sale.sale_items ?? []).map((item) => ({
-            date: malaysiaDateInputValue(sale.created_at),
-            sale: sale.sale_number,
-            item: item.products?.name ?? item.custom_item_name ?? item.product_id ?? 'Custom Order',
-            qty: item.quantity,
-            method: sale.payment_method,
-            total: Number(item.line_total),
-            worker: sale.order_taken_by ?? '-',
-          })),
-        ),
+        sales.flatMap((sale) => rowsFromSale(sale, settings.business_day_close_time)),
       );
 
       setStockInRows(
         ((movementData ?? []) as StockMovement[]).map((movement) => ({
-          date: dateInputValue(movement.created_at),
+          date: malaysiaBusinessDateInputValue(movement.created_at, settings.business_day_close_time),
           reference: movement.reason ?? movement.reference_type ?? '-',
           item: movement.products?.name ?? movement.product_id ?? '-',
           qty: Math.abs(movement.quantity_change),
-          unit: movement.unit_input === 'carton' ? `${movement.input_quantity ?? '-'} ${text('carton', 'karton')}` : `${movement.input_quantity ?? Math.abs(movement.quantity_change)} ${text('unit(s)', 'unit')}`,
+          unit: stockInputLabel(movement),
           worker: movement.entered_by ?? '-',
           notes: movement.notes ?? '-',
         })),
       );
+      setPendingStockInDrafts((draftData ?? []) as StockInDraftRecord[]);
+    } catch {
+      if (ticket !== generation.current) return;
+      setLoadError(text('Stock records could not refresh. Previously loaded figures may be out of date.', 'Rekod stok gagal dikemas kini. Angka yang dimuatkan sebelum ini mungkin tidak terkini.'));
     }
+  }
+
+  useEffect(() => {
     void loadRows();
-  }, [text]);
+  }, [settings.business_day_close_time, text]);
+
+  useSharedRefresh(loadRows, {
+    tables: ['sales', 'sale_items', 'stock_movements', 'stock_in_drafts', 'products', 'inventory_balances'],
+    intervalMs: 15000,
+  });
 
   const filteredOutRows = stockOutRows.filter((row) => inRange(row.date, period, selectedDate, selectedWeek, selectedMonth, customStart, customEnd));
   const filteredInRows = stockInRows.filter((row) => inRange(row.date, period, selectedDate, selectedWeek, selectedMonth, customStart, customEnd));
+  const activeOutRows = filteredOutRows.filter((row) => row.status === 'completed');
 
   function shiftPeriod(direction: -1 | 1) {
     if (period === 'day') {
@@ -137,142 +213,79 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
 
   return (
     <>
-      <PageHeader
-        title={text('Stock Activity', 'Aktiviti Stok')}
-      />
-      <section className="mb-4 grid grid-cols-2 gap-2">
-        <button
-          className={`rounded-2xl border p-3 text-left shadow-soft transition sm:p-4 ${mode === 'in' ? 'border-accent bg-teal-50 ring-2 ring-teal-100' : 'border-line bg-white/85 hover:border-accent'}`}
-          onClick={() => setMode('in')}
-        >
-          <p className="text-xs font-black uppercase tracking-widest text-accent">{text('Record', 'Rekod')}</p>
-          <h2 className="mt-1.5 text-lg font-black sm:text-xl">{text('Stock In', 'Stok Masuk')}</h2>
-        </button>
-        <button
-          className={`rounded-2xl border p-3 text-left shadow-soft transition sm:p-4 ${mode === 'out' ? 'border-accent bg-teal-50 ring-2 ring-teal-100' : 'border-line bg-white/85 hover:border-accent'}`}
-          onClick={() => setMode('out')}
-        >
-          <p className="text-xs font-black uppercase tracking-widest text-coral">{text('History', 'Sejarah')}</p>
-          <h2 className="mt-1.5 text-lg font-black sm:text-xl">{text('Stock Out', 'Stok Keluar')}</h2>
-        </button>
-      </section>
+      <PageHeader title={text('Stock Activity', 'Aktiviti Stok')} actions={<WorkflowHelp area="bar" />} />
+      {loadError ? <p role="alert" className="mb-3 text-sm text-danger">{loadError} <button className="underline" onClick={() => void loadRows()}>{text('Retry', 'Cuba Lagi')}</button></p> : null}
+      <ViewChoices label={text('Stock Direction', 'Arah Stok')} className="bar-stock-mode" value={mode} onChange={value => setMode(value as 'in' | 'out')} items={[
+        { value: 'in', label: text('Stock In', 'Stok Masuk') },
+        { value: 'out', label: text('Stock Out', 'Stok Keluar') },
+      ]} />
 
-      {mode === 'in' ? <div className="mb-5 sm:mb-8"><StockIn settings={settings} embedded /></div> : null}
-      {mode === 'out' ? (
-        <section className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-4">
-          <div className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-5">
-            <p className="text-xs font-black text-neutral-600 sm:text-sm">Quantity Out</p>
-            <p className="mt-1.5 text-lg font-black sm:text-2xl">{filteredOutRows.reduce((sum, row) => sum + row.qty, 0)}</p>
+      {mode === 'out' && pendingStockInDrafts.length > 0 ? (
+        <section className="mb-3 grid gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 shadow-none sm:mb-4 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center sm:rounded-xl sm:p-4">
+          <AlertTriangle className="hidden h-5 w-5 text-amber-700 sm:block" />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold leading-tight text-amber-800 sm:text-base">
+              {pendingStockInDrafts.length} {pendingStockInDrafts.length === 1 ? text('Stock In Draft Waiting', 'Draf Stok Masuk Menunggu') : text('Stock In Drafts Waiting', 'Draf Stok Masuk Menunggu')}
+            </p>
+            <p className="mt-1 text-xs font-bold leading-snug text-amber-700 sm:text-sm">
+              {pendingStockInDrafts[0]?.draft_number} · {pendingStockInDrafts[0]?.entered_by ?? '-'} · +{pendingStockInDrafts[0]?.total_units ?? 0} {text('Units', 'Unit')} · {text('Stock not added yet.', 'Stok belum ditambah.')}
+            </p>
           </div>
-          <div className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-5">
-            <p className="text-xs font-black text-neutral-600 sm:text-sm">Total Revenue</p>
-            <p className="mt-1.5 text-lg font-black sm:text-2xl">{money(filteredOutRows.filter((row) => row.method !== 'complimentary').reduce((sum, row) => sum + row.total, 0), String(settings.currency_symbol))}</p>
-          </div>
-          <div className="rounded-2xl border border-pink-200 bg-pink-50 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-5">
-            <p className="text-xs font-black text-pink-700 sm:text-sm">FOC Cost</p>
-            <p className="mt-1.5 text-lg font-black text-coral sm:text-2xl">- {money(filteredOutRows.filter((row) => row.method === 'complimentary').reduce((sum, row) => sum + row.total, 0), String(settings.currency_symbol))}</p>
-          </div>
+          <button
+            type="button"
+            className="min-h-10 rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm font-semibold text-amber-800 shadow-none sm:rounded-lg"
+            onClick={() => setMode('in')}
+          >
+            {text('Confirm Stock In', 'Sahkan Stok Masuk')}
+          </button>
         </section>
       ) : null}
 
-      <section className="island-panel mb-4 rounded-2xl p-2.5 sm:mb-5 sm:rounded-[2rem] sm:p-4">
-        <h2 className="text-lg font-black sm:text-xl">{mode === 'in' ? text('What was added', 'Apa yang ditambah') : text('What was stocked out', 'Apa yang keluar')}</h2>
-        <div className="mt-2 flex min-w-0 flex-col gap-2 xl:flex-row xl:items-center">
-          <div className="grid w-full min-w-0 grid-cols-4 gap-1 rounded-2xl bg-white/80 p-1 text-xs font-black sm:text-sm xl:w-[430px] xl:shrink-0">
-            {(['day', 'week', 'month', 'custom'] as const).map((item) => (
-              <button
-                key={item}
-                className={`min-h-9 min-w-0 truncate rounded-xl px-1.5 py-1.5 ${period === item ? 'bg-accent text-white' : ''}`}
-                onClick={() => setPeriod(item)}
-              >
-                {item === 'day' ? text('Daily', 'Harian') : item === 'week' ? text('Weekly', 'Mingguan') : item === 'month' ? text('Monthly', 'Bulanan') : text('Selected', 'Pilihan')}
-              </button>
-            ))}
-          </div>
-          <div className={`grid w-full min-w-0 gap-2 ${period === 'custom' ? 'sm:grid-cols-2 xl:flex-1' : 'xl:max-w-md'}`}>
-            {period !== 'custom' ? (
-              <div className="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] gap-2">
-                <button
-                  type="button"
-                  className="grid h-10 w-10 place-items-center rounded-xl border border-line bg-white font-black shadow-soft sm:h-11 sm:w-11 sm:rounded-2xl"
-                  onClick={() => shiftPeriod(-1)}
-                  aria-label="Previous period"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                {period === 'day' ? <input className={`${inputClass} w-full`} type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} /> : null}
-                {period === 'week' ? <input className={`${inputClass} w-full`} type="week" value={selectedWeek} onChange={(event) => setSelectedWeek(event.target.value)} /> : null}
-                {period === 'month' ? <input className={`${inputClass} w-full`} type="month" value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)} /> : null}
-                <button
-                  type="button"
-                  className="grid h-10 w-10 place-items-center rounded-xl border border-line bg-white font-black shadow-soft sm:h-11 sm:w-11 sm:rounded-2xl"
-                  onClick={() => shiftPeriod(1)}
-                  aria-label="Next period"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-            ) : null}
-            {period === 'custom' ? (
-              <>
-                <input className={`${inputClass} w-full`} type="date" value={customStart} onChange={(event) => setCustomStart(event.target.value)} />
-                <input className={`${inputClass} w-full`} type="date" value={customEnd} onChange={(event) => setCustomEnd(event.target.value)} />
-              </>
-            ) : null}
-          </div>
-        </div>
-      </section>
+      {mode === 'in' ? <div className="mb-5 sm:mb-8"><StockIn settings={settings} embedded onSaved={loadRows} /></div> : null}
+      <BarPeriodControl period={period} onPeriod={setPeriod}
+        value={period === 'day' ? selectedDate : period === 'week' ? selectedWeek : selectedMonth}
+        onValue={value => { if (period === 'day') setSelectedDate(value); else if (period === 'week') setSelectedWeek(value); else setSelectedMonth(value); }}
+        onShift={shiftPeriod} custom={{ start: customStart, end: customEnd, onStart: setCustomStart, onEnd: setCustomEnd }} />
+      {mode === 'out' ? <StaffSummary items={[
+        { label: text('Units Out', 'Unit Keluar'), value: activeOutRows.reduce((sum, row) => sum + row.qty, 0) },
+        { label: text('Revenue', 'Hasil'), value: money(activeOutRows.filter(row => row.method !== 'complimentary').reduce((sum, row) => sum + row.total, 0), String(settings.currency_symbol)) },
+        { label: text('FOC Value', 'Nilai FOC'), value: money(activeOutRows.filter(row => row.method === 'complimentary').reduce((sum, row) => sum + row.total, 0), String(settings.currency_symbol)) },
+      ]} /> : null}
 
       {mode === 'in' ? (
         <>
-          <section className="mb-4 grid grid-cols-2 gap-2 sm:gap-4">
-            <div className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-5">
-              <p className="text-xs font-black text-neutral-600 sm:text-sm">Stock-in quantity</p>
-              <p className="mt-1.5 text-lg font-black sm:text-2xl">{filteredInRows.reduce((sum, row) => sum + row.qty, 0)} unit(s)</p>
+          <StaffSummary items={[
+            { label: text('Units Added', 'Unit Ditambah'), value: filteredInRows.reduce((sum, row) => sum + row.qty, 0) },
+            { label: text('Entries', 'Rekod'), value: filteredInRows.length },
+          ]} />
+          <section className="island-panel mt-3 rounded-lg p-2.5 sm:mt-5 sm:rounded-xl sm:p-5">
+            <h2 className="text-base font-semibold sm:text-xl">{text('Stock In Records', 'Rekod Stok Masuk')}</h2>
+            <div className="mt-3 sm:hidden">
+              {filteredInRows.map((row, index) => <div className="bar-record-row" key={`${row.date}-${row.item}-${index}`}>
+                <div><p className="font-semibold">{row.item}</p><p className="bar-caption">{row.date} · {row.worker}</p></div>
+                <strong className="text-accent">+{row.qty} {text('units', 'unit')}</strong>
+                <p className="bar-record-meta">{row.unit} · {row.reference}{row.notes !== '-' ? ' · ' + row.notes : ''}</p>
+              </div>)}
+              {!loadError&&!filteredInRows.length ? <p className="bar-caption py-4">{text('No records for this period.', 'Tiada rekod untuk tempoh ini.')}</p> : null}
             </div>
-            <div className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-5">
-              <p className="text-xs font-black text-neutral-600 sm:text-sm">Entries</p>
-              <p className="mt-1.5 text-lg font-black sm:text-2xl">{filteredInRows.length}</p>
-            </div>
-          </section>
-          <section className="island-panel mt-4 rounded-2xl p-3 sm:mt-5 sm:rounded-[2rem] sm:p-5">
-            <h2 className="text-lg font-black sm:text-xl">Stock In History</h2>
-            <div className="hidden">
-              {filteredInRows.map((row, index) => (
-                <article key={`${row.date}-${row.item}-card-${index}`} className={`rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4 ${index === 0 ? 'ring-2 ring-pink-100' : ''}`}>
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                      <p className="font-black">{row.item}</p>
-                      <p className="text-sm font-bold text-neutral-600">{row.date} · {row.worker}</p>
-                    </div>
-                    <span className="rounded-xl bg-teal-50 px-3 py-1 text-sm font-black text-accent">+{row.qty}</span>
-                  </div>
-                  <div className="mt-2 grid grid-cols-2 gap-1.5 text-xs font-bold sm:mt-3 sm:gap-2 sm:text-sm">
-                    <div className="rounded-2xl bg-shell p-3"><p className="text-neutral-500">Input</p><p>{row.unit}</p></div>
-                    <div className="rounded-2xl bg-shell p-3"><p className="text-neutral-500">Reference</p><p>{row.reference}</p></div>
-                  </div>
-                  {row.notes !== '-' ? <p className="mt-3 text-sm font-bold text-neutral-600">{row.notes}</p> : null}
-                </article>
-              ))}
-            </div>
-            <div className="mt-3 overflow-x-auto">
-              <table className="w-full min-w-[900px] text-left">
+            <div className="clean-scroll mt-3 hidden overflow-x-auto rounded-lg border border-line bg-white/75 sm:block">
+              <table className="dense-table w-full min-w-[680px] text-left text-xs sm:text-sm">
                 <thead className="text-sm">
                   <tr>
-                    <th className="p-3 whitespace-nowrap">Date</th>
-                    <th className="p-3 whitespace-nowrap">Item</th>
-                    <th className="p-3 whitespace-nowrap">Worker</th>
-                    <th className="p-3 whitespace-nowrap">Input</th>
-                    <th className="p-3 whitespace-nowrap">Units added</th>
-                    <th className="p-3 whitespace-nowrap">Reference</th>
-                    <th className="p-3 whitespace-nowrap">Notes</th>
+                    <th className="p-3 whitespace-nowrap">{text('Date', 'Tarikh')}</th>
+                    <th className="p-3 whitespace-nowrap">{text('Item', 'Item')}</th>
+                    <th className="p-3 whitespace-nowrap">{text('Worker', 'Pekerja')}</th>
+                    <th className="p-3 whitespace-nowrap">{text('Input', 'Input')}</th>
+                    <th className="p-3 whitespace-nowrap">{text('Units Added', 'Unit Ditambah')}</th>
+                    <th className="p-3 whitespace-nowrap">{text('Reference', 'Rujukan')}</th>
+                    <th className="p-3 whitespace-nowrap">{text('Notes', 'Nota')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredInRows.map((row, index) => (
-                    <tr key={`${row.date}-${row.item}-${index}`} className={`border-t border-line hover:bg-shell ${index === 0 ? 'bg-pink-50' : ''}`}>
-                      <td className="p-3 font-black whitespace-nowrap">{row.date}</td>
-                      <td className="p-3 font-black whitespace-nowrap">{row.item}</td>
+                    <tr key={`${row.date}-${row.item}-${index}`} className={`border-t border-line hover:bg-shell ${index === 0 ? 'bg-shell' : ''}`}>
+                      <td className="p-3 font-semibold whitespace-nowrap">{row.date}</td>
+                      <td className="p-3 font-semibold whitespace-nowrap">{row.item}</td>
                       <td className="p-3 whitespace-nowrap">{row.worker}</td>
                       <td className="p-3 whitespace-nowrap">{row.unit}</td>
                       <td className="p-3 whitespace-nowrap">{row.qty}</td>
@@ -282,61 +295,61 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
                   ))}
                 </tbody>
               </table>
+              {!loadError&&filteredInRows.length === 0 ? (
+                <div className="border-t border-line p-4 text-center text-sm font-bold text-neutral-600">{text('No records for this period.', 'Tiada rekod untuk tempoh ini.')}</div>
+              ) : null}
             </div>
           </section>
         </>
       ) : (
         <>
-          <section className="island-panel rounded-2xl p-3 sm:rounded-[2rem] sm:p-5">
-            <div className="hidden">
-              {filteredOutRows.map((row, index) => (
-                <article key={`${row.sale}-${row.item}-card-${index}`} className={`rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4 ${index === 0 ? 'ring-2 ring-pink-100' : ''}`}>
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                      <p className="font-black">{row.item}</p>
-                      <p className="text-sm font-bold text-neutral-600">{row.date} · {row.worker}</p>
-                    </div>
-                    <span className={`rounded-xl px-3 py-1 text-sm font-black ${row.method === 'complimentary' ? 'bg-pink-50 text-coral' : 'bg-teal-50 text-accent'}`}>
-                      {methodLabel(row.method)}
-                    </span>
-                  </div>
-                  <div className="mt-2 grid grid-cols-2 gap-1.5 text-xs font-bold sm:mt-3 sm:gap-2 sm:text-sm">
-                    <div className="rounded-2xl bg-shell p-3"><p className="text-neutral-500">Quantity Out</p><p>{row.qty}</p></div>
-                    <div className="rounded-2xl bg-shell p-3"><p className="text-neutral-500">Value</p><p className={row.method === 'complimentary' ? 'text-coral' : ''}>{row.method === 'complimentary' ? '- ' : ''}{money(row.total, String(settings.currency_symbol))}</p></div>
-                  </div>
-                  <p className="mt-3 text-sm font-bold text-neutral-600">{row.sale}</p>
-                </article>
-              ))}
+          <section className="island-panel rounded-lg p-3 sm:rounded-xl sm:p-5">
+            <div className="sm:hidden">
+              {filteredOutRows.map((row, index) => <div className="bar-record-row" key={`${row.sale}-${row.item}-${index}`}>
+                <div><p className="font-semibold">{row.item} <span className="text-muted">x {row.status === 'voided' ? 0 : row.qty}</span></p><p className="bar-caption">{row.date} · {row.worker}</p></div>
+                <div className="text-right"><strong>{row.status === 'voided' ? statusLabel(row.status, text) : money(row.total, String(settings.currency_symbol))}</strong><p className="bar-caption">{methodLabel(row.method, text)}</p></div>
+                <p className="bar-record-meta">{row.sale}</p>
+              </div>)}
+              {!loadError&&!filteredOutRows.length ? <p className="bar-caption py-4">{text('No records for this period.', 'Tiada rekod untuk tempoh ini.')}</p> : null}
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-left">
+            <div className="clean-scroll hidden overflow-x-auto rounded-lg border border-line bg-white/75 sm:block">
+              <table className="dense-table w-full min-w-[680px] text-left text-xs sm:text-sm">
                 <thead className="text-sm">
                   <tr>
-                    <th className="p-3 whitespace-nowrap">Date</th>
-                    <th className="p-3 whitespace-nowrap">Sale</th>
-                    <th className="p-3 whitespace-nowrap">Worker</th>
-                    <th className="p-3 whitespace-nowrap">Item</th>
-                    <th className="p-3 whitespace-nowrap">Quantity Out</th>
-                    <th className="p-3 whitespace-nowrap">Method</th>
-                    <th className="p-3 whitespace-nowrap">Value</th>
+                    <th className="p-3 whitespace-nowrap">{text('Date', 'Tarikh')}</th>
+                    <th className="p-3 whitespace-nowrap">{text('Sale', 'Jualan')}</th>
+                    <th className="p-3 whitespace-nowrap">{text('Worker', 'Pekerja')}</th>
+                    <th className="p-3 whitespace-nowrap">{text('Item', 'Item')}</th>
+                    <th className="p-3 whitespace-nowrap">{text('Quantity Out', 'Kuantiti Keluar')}</th>
+                    <th className="p-3 whitespace-nowrap">{text('Method', 'Kaedah')}</th>
+                    <th className="p-3 whitespace-nowrap">{text('Status', 'Status')}</th>
+                    <th className="p-3 whitespace-nowrap">{text('Value', 'Nilai')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredOutRows.map((row, index) => (
-                    <tr key={`${row.sale}-${row.item}-${index}`} className={`border-t border-line hover:bg-shell ${index === 0 ? 'bg-pink-50' : ''}`}>
-                      <td className="p-3 font-black whitespace-nowrap">{row.date}</td>
+                    <tr key={`${row.sale}-${row.item}-${index}`} className={`border-t border-line hover:bg-shell ${index === 0 ? 'bg-shell' : ''}`}>
+                      <td className="p-3 font-semibold whitespace-nowrap">{row.date}</td>
                       <td className="p-3 whitespace-nowrap">{row.sale}</td>
                       <td className="p-3 whitespace-nowrap">{row.worker}</td>
-                      <td className="p-3 font-black whitespace-nowrap">{row.item}</td>
-                      <td className="p-3 whitespace-nowrap">{row.qty}</td>
-                      <td className="p-3 whitespace-nowrap">{methodLabel(row.method)}</td>
-                      <td className={`p-3 whitespace-nowrap ${row.method === 'complimentary' ? 'text-coral' : ''}`}>
-                        {row.method === 'complimentary' ? '- ' : ''}{money(row.total, String(settings.currency_symbol))}
+                      <td className="p-3 font-semibold whitespace-nowrap">{row.item}</td>
+                      <td className="p-3 whitespace-nowrap">{row.status === 'voided' ? 0 : row.qty}</td>
+                      <td className="p-3 whitespace-nowrap">{methodLabel(row.method, text)}</td>
+                      <td className="p-3 whitespace-nowrap">
+                        <span className={`rounded-xl px-3 py-1 text-xs font-semibold ${row.status === 'completed' ? 'bg-shell text-accent' : 'bg-red-50 text-danger'}`}>
+                          {statusLabel(row.status, text)}
+                        </span>
+                      </td>
+                      <td className={`p-3 whitespace-nowrap ${row.method === 'complimentary' || row.status === 'voided' ? 'text-coral' : ''}`}>
+                        {row.status === 'voided' ? statusLabel(row.status, text) : row.method === 'complimentary' ? '- ' : ''}{row.status === 'voided' ? '' : money(row.total, String(settings.currency_symbol))}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              {!loadError&&filteredOutRows.length === 0 ? (
+                <div className="border-t border-line p-4 text-center text-sm font-bold text-neutral-600">{text('No records for this period.', 'Tiada rekod untuk tempoh ini.')}</div>
+              ) : null}
             </div>
           </section>
         </>

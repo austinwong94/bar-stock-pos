@@ -1,0 +1,31 @@
+.staff-workspace{min-width:0;font-size:14px}
+.staff-workspace h2{font-size:14px;font-weight:700;line-height:1.4}
+.staff-tabs{margin-bottom:16px}
+.staff-warning{margin:12px 0;font-size:13px;overflow-wrap:anywhere}
+.staff-recovery{display:grid;gap:8px;border-left:2px solid #b86a12;padding:8px 12px;margin-bottom:16px}
+.staff-recovery button{justify-self:start}
+.staff-clock{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 0 24px;border-bottom:1px solid var(--color-line,#e6dbe1)}
+.staff-clock h2{font-size:20px;margin:6px 0}
+.staff-clock-button{min-height:48px;flex-shrink:0}
+.staff-section-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:16px 0 8px}
+.staff-month{width:175px;max-width:100%;flex-shrink:0;font-size:14px;padding-left:10px;padding-right:10px}
+.staff-records{display:grid;border-top:1px solid #e6dbe1}
+.staff-records>li{display:grid;min-width:0;gap:7px;padding:14px 0;border-bottom:1px solid #e6dbe1}
+.staff-records small{display:block;color:#71656d;font-size:12px;overflow-wrap:anywhere}
+.staff-row-head{display:flex;align-items:start;justify-content:space-between;gap:12px}
+.staff-status{font-size:12px;font-weight:600;max-width:125px;text-align:right;line-height:1.45;flex-shrink:0}
+.staff-leave-dates{display:flex;flex-wrap:wrap;gap:0 4px}.staff-leave-dates span{white-space:nowrap}
+.staff-row-actions{display:flex;flex-wrap:wrap;gap:8px}
+.staff-empty{padding:20px 0;font-size:13px;color:#71656d}
+.staff-leave-layout{display:grid;gap:20px}
+.staff-leave-form{display:grid;gap:14px;padding-bottom:20px;border-bottom:1px solid #e6dbe1}
+.staff-leave-form .supply-segments button{font-size:12px;padding-left:4px;padding-right:4px}
+.staff-submit{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.staff-team-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;margin-bottom:12px}
+.staff-period{display:grid;grid-template-columns:minmax(0,1fr) 155px;gap:12px;margin-bottom:16px}
+.staff-team-stats{display:flex;flex-wrap:wrap;gap:20px;padding-bottom:14px;font-size:13px}
+.staff-team-stats strong{margin-left:8px}
+.staff-name-list{display:grid;gap:0;font-size:13px}
+.staff-name-list li{padding:9px 0;border-bottom:1px solid #e6dbe1;overflow-wrap:anywhere}
+@media(min-width:900px){.staff-leave-layout{grid-template-columns:minmax(0,400px) minmax(0,1fr);gap:32px}.staff-leave-form{align-self:start;border-bottom:0}.staff-team-toolbar{grid-template-columns:minmax(0,400px) auto}.staff-team-toolbar>button{justify-self:end}.staff-period{grid-template-columns:minmax(0,280px) 165px}}
+@media(max-width:400px){.staff-clock{gap:10px}.staff-clock h2{font-size:18px}.staff-clock-button{max-width:125px;padding:9px}.staff-team-toolbar{grid-template-columns:minmax(0,1fr) 44px;gap:8px}.staff-team-toolbar>button{width:44px;min-height:44px;padding:0;justify-content:center}.staff-team-toolbar>button span{display:none}.staff-period{grid-template-columns:minmax(0,1fr);gap:8px}.staff-period .supply-segments button{font-size:12px;padding:8px 3px}.staff-row-head{gap:8px}.staff-status{max-width:100px}.staff-section-heading{gap:8px}.staff-section-heading h2{font-size:13px}.staff-month{width:166px}}

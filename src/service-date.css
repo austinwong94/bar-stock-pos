@@ -1,0 +1,56 @@
+.service-date-navigation {
+  position: sticky;
+  top: var(--workspace-header-height, 0px);
+  z-index: 15;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  min-width: 0;
+  padding: 4px 0;
+  margin-bottom: 4px;
+  border-bottom: 1px solid #e8e0e5;
+  background: #faf8f9;
+  color: #302430;
+}
+.service-date-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex: 1 0 316px; min-width: 0; }
+.service-date-period { display: flex; padding: 2px; background: #eee8ec; border-radius: 6px; }
+.service-date-navigation .service-date-period button { min-height: 32px; padding: 4px 10px; font-size: 14px; font-weight: 600; border-radius: 4px; }
+.service-date-period button[aria-pressed=true] { background: #fff; color: #9f174b; box-shadow: 0 1px 3px #30243014; }
+.service-date-label { font-size: 14px; font-weight: 600; }
+.service-date-jump { display: flex; align-items: center; gap: 4px; min-width: 0; }
+section.service-date-navigation .service-date-jump input { width: 148px; min-width: 0; height: 36px; min-height: 36px; padding: 4px 8px; border: 1px solid transparent; border-radius: 6px; background: transparent; font-size: 14px; line-height: 20px; font-weight: 400; }
+.service-date-navigation .service-date-today { min-height: 36px; padding: 4px 8px; font-size: 12px; font-weight: 600; color: #9f174b; border-radius: 4px; white-space: nowrap; }
+.service-date-week { display: flex; align-items: stretch; gap: 4px; flex: 2 0 440px; min-width: 0; }
+.service-date-navigation .service-date-icon { display: grid; place-items: center; align-self: stretch; flex: 0 0 32px; width: 32px; min-height: 36px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: #67515e; }
+.service-date-tabs { display: grid; flex: 1; grid-template-columns: repeat(7,minmax(0,1fr)); gap: 4px; min-width: 0; }
+.service-date-navigation .service-date-tabs button { min-width: 0; min-height: 40px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; border: 1px solid transparent; border-radius: 6px; padding: 2px; background: transparent; line-height: 16px; }
+.service-date-tabs button > span { font-size: 12px; color: #786572; }
+.service-date-tabs strong { font-size: 13px; font-weight: 600; white-space: nowrap; }
+.service-date-tabs button[aria-pressed=true] { background: #f9e8f0; border-color: #c6849f; }
+.service-date-tabs button.date-focused { background: #b3164f; border-color: #b3164f; color: #fff; }
+.service-date-tabs button.date-focused > span { color: #fff; }
+.service-date-navigation button:disabled { opacity: .5; cursor: not-allowed; }
+.service-date-navigation button:focus-visible { outline: 2px solid #b3164f; outline-offset: 2px; }
+.service-date-navigation button:not(:disabled):not(.date-focused):hover { box-shadow: inset 0 0 0 1px #b3164f; }
+@media (max-width: 639px) {
+  .service-date-heading, .service-date-week { flex-basis: 100%; }
+  .service-date-heading { gap: 4px; }
+  .service-date-navigation .service-date-period button { min-height: 40px; padding-inline: 8px; }
+  section.service-date-navigation .service-date-jump input { width: 130px; height: 44px; min-height: 44px; font-size: 16px; padding-inline: 2px; }
+  .service-date-navigation .service-date-icon, .service-date-navigation .service-date-today { min-height: 44px; }
+  .service-date-navigation .service-date-today { padding-inline: 4px; }
+  .service-date-navigation .service-date-tabs button { min-height: 44px; }
+  .service-date-tabs strong { font-size: 14px; }
+  .service-date-month { display: none; }
+}
+@media (pointer: coarse) and (min-width: 640px) {
+  .service-date-navigation .service-date-period button { min-height: 40px; }
+  .service-date-navigation .service-date-icon, .service-date-navigation .service-date-tabs button { min-height: 44px; }
+  section.service-date-navigation .service-date-jump input { height: 44px; min-height: 44px; font-size: 16px; }
+}
+@media (max-width:359px) {
+  .service-date-navigation .service-date-period button { padding-inline: 6px; }
+  section.service-date-navigation .service-date-jump input { width: 116px; }
+  .service-date-heading, .service-date-jump { gap: 2px; }
+}

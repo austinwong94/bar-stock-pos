@@ -4,27 +4,35 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:db": "node scripts/test-active-db.mjs",
+    "test:ui": "node scripts/test-bar-financial-ui.mjs",
+    "release:check": "node scripts/release-check.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:demo": "VITE_DEMO_MODE=true tsc -b && VITE_DEMO_MODE=true VITE_SINGLE_FILE=true vite build && node scripts/inline-demo.mjs dist/lovely-paradise-demo.html"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.4",
     "@vitejs/plugin-react": "^4.3.4",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.468.0",
+    "papaparse": "^5.7.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.28.0",
+    "react-router-dom": "^7.18.3",
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/papaparse": "^5.5.2",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "autoprefixer": "^10.4.20",
+    "pg": "^8.23.0",
+    "playwright": "^1.63.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.15",
     "typescript": "^5.6.3",
-    "vite": "^4.5.5"
+    "vite": "^6.4.3"
   }
 }

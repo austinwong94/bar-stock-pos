@@ -1,0 +1,53 @@
+import assert from 'node:assert/strict';
+import {mkdir} from 'node:fs/promises';
+import {resolve} from 'node:path';
+import {chromium} from 'playwright';
+const url=process.env.TEST_URL??'http://127.0.0.1:5177';
+const output=resolve('.qa/screenshots/usage-drafts');await mkdir(output,{recursive:true});
+const browser=await chromium.launch({headless:true}),context=await browser.newContext({viewport:{width:390,height:900}}),page=await context.newPage();
+const errors=[],cloud=[];page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(/supabase\.(co|in)/.test(r.url()))cloud.push(r.url());});
+const guest=()=>page.getByLabel('Number of Guest Meals',{exact:true}),staff=()=>page.getByLabel('Number of Staff Meals',{exact:true});
+const entry=(name,col='Guest',unit='biji')=>page.getByLabel(`${name} ${col} (${unit})`,{exact:true});
+const usageDate=()=>page.getByLabel('Usage Date',{exact:true});
+async function pictures(name){for(const width of [390,768,1440]){await page.setViewportSize({width,height:900});await page.waitForTimeout(250);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),name+' overflows');await page.screenshot({path:output+'/'+name+'-'+width+'.png'});}}
+async function balances(){return page.evaluate(async()=>{const {loadLocalIngredientItems}=await import('/src/lib/localStore.ts');return Object.fromEntries(loadLocalIngredientItems().filter(i=>['timun','jagung','tomato','laici-tin'].includes(i.kitchen_key)).map(i=>[i.kitchen_key,i.ingredient_balances.quantity_on_hand]));});}
+try{
+  await page.goto(url+'/#/kitchen/stock?view=usage');await page.getByRole('button',{name:'Austin (Owner)',exact:true}).click();await page.locator('main').waitFor();await page.goto(url+'/#/kitchen/stock?view=usage');await guest().waitFor();
+  await page.evaluate(async()=>{const {loadLocalIngredientItems,adjustLocalIngredientStock}=await import('/src/lib/localStore.ts');for(const i of loadLocalIngredientItems().filter(i=>['timun','jagung','tomato','laici-tin'].includes(i.kitchen_key)))adjustLocalIngredientStock({ingredientId:i.id,movementType:'count',quantity:50,reason:'Sample opening count',enteredBy:'Sample Only'});});
+  await page.reload();await guest().fill('30');await staff().fill('8');await entry('Timun').fill('10');await entry('Timun','Staff').fill('2');await entry('Jagung').fill('15');await entry('Laici Tin','Guest','tin').fill('1.5');
+  const first=await usageDate().inputValue();
+  await page.reload();assert.equal(await entry('Timun').inputValue(),'10');assert.equal(await entry('Laici Tin','Guest','tin').inputValue(),'1.5');
+  const prior=new Date(first+'T12:00:00');prior.setDate(prior.getDate()-1);const second=prior.toISOString().slice(0,10);
+  await usageDate().fill(second);await guest().fill('20');await staff().fill('0');await entry('Tomato').fill('4');await page.reload();assert.equal(await usageDate().inputValue(),first,'Without a pending submission, default to today while preserving every dated draft.');
+  assert.equal(await entry('Timun').inputValue(),'10');await usageDate().fill(second);assert.equal(await entry('Tomato').inputValue(),'4');await usageDate().fill(first);assert.equal(await entry('Timun').inputValue(),'10');
+  await page.evaluate(()=>{document.activeElement?.blur();scrollTo(0,0);});await pictures('usage');
+  await page.setViewportSize({width:390,height:900});await page.evaluate(()=>scrollTo(0,500));await page.waitForTimeout(250);await page.screenshot({path:output+'/usage-entry-390.png'});
+  await page.getByRole('button',{name:'Review Stock Out',exact:true}).click();let dlg=page.getByRole('dialog');assert(await dlg.getByRole('button',{name:'Confirm Stock Out',exact:true}).isDisabled());await pictures('confirm');
+  await page.goto(url+'/#/kitchen/stock?view=count');await page.getByLabel('Actual Count Timun (biji)',{exact:true}).waitFor();assert.equal(await page.getByRole('dialog').count(),0,'A pending usage must not cover Stock Check.');
+  await page.getByRole('button',{name:'Record Usage',exact:true}).click();dlg=page.getByRole('dialog');await dlg.getByRole('button',{name:'Back',exact:true}).click();assert.equal(await entry('Timun').inputValue(),'10');assert.equal(await guest().inputValue(),'30');
+  assert.deepEqual(await balances(),{timun:50,jagung:50,tomato:50,'laici-tin':50},'Drafts and Back must not deduct stock.');
+  await page.evaluate(async()=>{const {supabase}=await import('/src/lib/supabase.ts');const rpc=supabase.rpc.bind(supabase);let once=true;supabase.rpc=async(name,args)=>{const r=await rpc(name,args);if(name==='save_daily_kitchen_usage'&&once&&!r.error){once=false;return {data:null,error:{message:'Connection interrupted after saving'}};}return r;};});
+  await page.getByRole('button',{name:'Review Stock Out',exact:true}).click();dlg=page.getByRole('dialog');await dlg.getByRole('checkbox').check();await dlg.getByRole('button',{name:'Confirm Stock Out',exact:true}).click();await dlg.getByRole('alert').getByText('Connection interrupted after saving',{exact:true}).waitFor();assert(await dlg.getByRole('button',{name:'Back',exact:true}).isDisabled());
+  await page.reload();dlg=page.getByRole('dialog');await dlg.getByRole('checkbox').check();await dlg.getByRole('button',{name:'Check Confirmation',exact:true}).click();await page.getByRole('button',{name:'Correct Record',exact:true}).waitFor();
+  assert.deepEqual(await balances(),{timun:38,jagung:35,tomato:50,'laici-tin':48.5},'Retry after a lost response deducts only once.');
+  assert.equal(await page.evaluate(day=>Object.keys(localStorage).filter(k=>k.startsWith('daily-kitchen-pending:')&&!k.includes(':draft:')).length,first),0);
+  await page.getByRole('button',{name:'Correct Record',exact:true}).click();await entry('Timun').fill('9');await page.getByLabel('Correction Reason',{exact:true}).fill('Corrected sample total');await page.getByRole('button',{name:'Review Stock Out',exact:true}).click();dlg=page.getByRole('dialog');await dlg.getByRole('checkbox').check();await dlg.getByRole('button',{name:'Confirm Stock Out',exact:true}).click();await page.getByRole('button',{name:'Correct Record',exact:true}).waitFor();assert.equal((await balances()).timun,39,'Correction applies only the difference.');
+  await usageDate().fill(second);await entry('Tomato').waitFor();assert.equal(await entry('Tomato').inputValue(),'4');
+  const tab2=await context.newPage();await tab2.goto(url+'/#/kitchen/stock?view=usage');await tab2.getByLabel('Usage Date',{exact:true}).fill(second);await tab2.getByLabel('Tomato Guest (biji)',{exact:true}).fill('5');
+  await page.getByText(/^This usage changed in another tab\./).waitFor();assert(await entry('Tomato').isDisabled());await tab2.close();await page.getByRole('button',{name:'Reload Day',exact:true}).click();await page.waitForTimeout(250);assert.equal(await entry('Tomato').inputValue(),'5');
+  await page.getByRole('button',{name:'Discard Usage Draft',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'Keep Draft',exact:true}).click();assert.equal(await entry('Tomato').inputValue(),'5');
+  await page.getByRole('button',{name:'Discard Usage Draft',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'Discard Draft',exact:true}).click();await page.waitForTimeout(250);assert.equal(await entry('Tomato').inputValue(),'');
+  await guest().fill('20');await staff().fill('0');await entry('Tomato').fill('4');
+  await page.evaluate(async()=>{const {supabase}=await import('/src/lib/supabase.ts');const d=JSON.parse(localStorage.getItem(Object.keys(localStorage).find(k=>k.startsWith('daily-kitchen-pending:')&&k.includes(':draft:'))));const r=await supabase.rpc('save_daily_kitchen_usage',{p_record:{business_date:d.date,guest_meals:0,staff_meals:0,template_ids:[],lines:[],notes:'Another device'},p_expected_updated_at:null,p_operation_id:crypto.randomUUID()});if(r.error)throw r.error;});
+  await page.reload();await usageDate().fill(second);await page.getByText(/^This day was updated after your draft/).waitFor();assert(await entry('Tomato').isDisabled());
+  await page.getByRole('button',{name:'Discard Usage Draft',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'Discard Draft',exact:true}).click();await page.getByRole('button',{name:'Correct Record',exact:true}).waitFor();
+  await page.getByRole('button',{name:'Correct Record',exact:true}).click();await page.getByRole('button',{name:'All Ingredients',exact:true}).click();await guest().fill('20');await entry('Timun').fill('1');
+  const snapshot=await page.evaluate(()=>{const key=Object.keys(localStorage).find(k=>k.startsWith('daily-kitchen-pending:')&&k.includes(':draft:'));return {key,draft:JSON.parse(localStorage.getItem(key))};});
+  await page.evaluate(async()=>{const {loadLocalIngredientItems,saveLocalIngredientItem}=await import('/src/lib/localStore.ts');const i=loadLocalIngredientItems().find(i=>i.kitchen_key==='timun');saveLocalIngredientItem({...i,name:i.name+' Updated'});});
+  await page.reload();await usageDate().fill(second);await entry('Timun','Staff').fill('1');
+  const after=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)),snapshot.key);assert.equal(Object.values(after.entries)[0].version,Object.values(snapshot.draft.entries)[0].version,'Typing another column must not replace the original unit snapshot.');
+  await staff().fill('5');await page.getByLabel('Correction Reason',{exact:true}).fill('Sample correction');await page.getByRole('button',{name:'Review Stock Out',exact:true}).click();await page.getByText(/^Item setup changed/).waitFor();
+  await entry('Timun').fill('');await entry('Timun','Staff').fill('');await entry('Timun').fill('1');await entry('Timun','Staff').fill('1');await page.getByRole('button',{name:'Review Stock Out',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'Back',exact:true}).click();
+  await page.getByRole('button',{name:'BM',exact:true}).click();await page.setViewportSize({width:390,height:900});await page.evaluate(()=>scrollTo(0,0));await page.waitForTimeout(250);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await page.screenshot({path:output+'/usage-malay-390.png'});
+  assert.deepEqual(errors,[]);assert.deepEqual(cloud,[]);console.log('PASS: dated draft recovery, hidden-tab safety, Back preservation, confirmation checkbox, lost-response replay, net corrections, cross-tab edits, discard, stale-day rejection, original unit snapshots and English/Malay responsive layouts.');console.log(output);
+}catch(e){await page.screenshot({path:output+'/failure.png',fullPage:true});console.error(await page.locator('body').innerText());throw e;}finally{await browser.close();}

@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {build} from 'esbuild';
+const result=await build({entryPoints:['src/lib/purchaseEntry.ts'],bundle:true,write:false,platform:'node',format:'cjs'});
+const module={exports:{}};new Function('module','exports',result.outputFiles[0].text)(module,module.exports);
+const {purchaseEntryIssues:issues,hasPurchaseEntry}=module.exports;
+assert.equal(module.exports.fillVisiblePurchaseQuantities,undefined,'Requested quantities cannot populate actually bought amounts');
+assert.deepEqual(issues({quantity:'',cost:''},10),{quantity:null,cost:false});
+assert.equal(hasPurchaseEntry({quantity:' ',cost:''}),false);
+assert.equal(hasPurchaseEntry({quantity:'',cost:'0'}),true);
+for(const quantity of ['0','-1','abc','1.234','1e2','Infinity',''])assert.equal(issues({quantity,cost:'3'},10).quantity,'invalid');
+assert.equal(issues({quantity:'11',cost:''},10).quantity,'exceeds');
+assert.equal(issues({quantity:'0.01',cost:'0'},10).quantity,null);
+assert.equal(issues({quantity:'10.00',cost:'12.30'},10).cost,false);
+for(const cost of ['-1','1.234','abc'])assert.equal(issues({quantity:'1',cost},10).cost,true);
+console.log('PASS: No quantity-copy export, empty/zero entries, decimal and remaining-quantity validation.');

@@ -15,7 +15,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const push = useCallback((type: Toast['type'], message: string) => {
     const id = Date.now() + Math.random();
-    setToasts((items) => [...items, { id, type, message }]);
+    setToasts((items) => [...items.filter((item) => item.type !== type || item.message !== message), { id, type, message }]);
     window.setTimeout(() => setToasts((items) => items.filter((item) => item.id !== id)), 4500);
   }, []);
 
@@ -30,18 +30,25 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="fixed right-4 top-4 z-50 flex w-[min(92vw,380px)] flex-col gap-3">
+      {/* Bottom, not top: every page keeps its buttons in the top right, and a
+          toast landing on them hides the control you just used. Raised clear
+          of the demo bar, and within thumb reach on a phone. */}
+      <div className="no-print fixed inset-x-3 bottom-20 z-50 flex flex-col gap-2 sm:inset-x-auto sm:right-4 sm:w-[min(92vw,380px)]">
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className="flex items-start gap-3 border border-line bg-white p-4 shadow-soft"
+            data-toast={toast.type}
+            role={toast.type === 'error' ? 'alert' : 'status'}
+            className={`flex items-start gap-2.5 rounded-lg border bg-surface px-3.5 py-3 shadow-pop ${
+              toast.type === 'success' ? 'border-accent/30' : 'border-danger/35'
+            }`}
           >
             {toast.type === 'success' ? (
-              <CheckCircle2 className="mt-0.5 h-5 w-5 text-accent" />
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
             ) : (
-              <XCircle className="mt-0.5 h-5 w-5 text-danger" />
+              <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
             )}
-            <p className="text-sm font-medium">{toast.message}</p>
+            <p className="min-w-0 flex-1 text-sm font-medium leading-snug text-ink [overflow-wrap:anywhere]">{toast.message}</p>
           </div>
         ))}
       </div>

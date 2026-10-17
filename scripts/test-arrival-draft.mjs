@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import {build} from 'esbuild';
+const b=await build({entryPoints:['src/lib/kitchenArrivalDraft.ts'],bundle:true,write:false,platform:'node',format:'cjs'});
+const m={exports:{}};new Function('module','exports',b.outputFiles[0].text)(m,m.exports);
+const {readArrivalDraft,readPendingArrival,arrivalDraftFromPending,writeArrivalStorage,arrivalDate}=m.exports;
+const map=new Map(),storage={getItem:k=>map.get(k)??null,setItem:(k,v)=>map.set(k,v),removeItem:k=>map.delete(k)};
+const draft={date:'2026-10-04',supplier:'99 Speedmart',reference:'R-100',updatedAt:new Date().toISOString(),entries:{sugar:{value:'0.',name:'Gula',unit:'pack',baseUnit:'unit',factor:1,version:'v1'}}};
+let raw=writeArrivalStorage(storage,'alice:draft',draft,null);assert.deepEqual(readArrivalDraft(raw),draft);assert.equal(readArrivalDraft(storage.getItem('bob:draft')),null);
+const next=writeArrivalStorage(storage,'alice:draft',{...draft,reference:'R-101'},raw);
+assert.throws(()=>writeArrivalStorage(storage,'alice:draft',draft,raw),/another tab/);assert.throws(()=>writeArrivalStorage(storage,'alice:draft',null,raw),/another tab/);
+assert.throws(()=>writeArrivalStorage({...storage,setItem:()=>{}},'alice:draft',draft,next),/not saved/);
+for(const broken of ['{',JSON.stringify({...draft,entries:[]}),JSON.stringify({...draft,entries:{sugar:{...draft.entries.sugar,factor:0}}}),JSON.stringify({...draft,entries:{sugar:{...draft.entries.sugar,value:4}}})])assert.throws(()=>readArrivalDraft(broken));
+const pending={id:'operation-id',attempted:false,record:{date:'2026-10-03',supplier:'AEON',reference:'R-100',lines:[{ingredient_id:'sugar',name:'Gula',quantity:2500,entered_quantity:2.5,display_unit:'kg',unit:'g',expected_version:'v1'}]}};
+assert.deepEqual(readPendingArrival(JSON.stringify(pending)),pending);const restored=arrivalDraftFromPending(pending);assert.equal(restored.date,'2026-10-03');assert.equal(restored.entries.sugar.value,'2.5');assert.equal(restored.entries.sugar.factor,1000);assert.equal(restored.entries.sugar.version,'v1');
+for(const p of [{...pending,attempted:'yes'},{...pending,record:{...pending.record,date:'2026-02-30'}},{...pending,record:{...pending.record,lines:[...pending.record.lines,...pending.record.lines]}},{...pending,record:{...pending.record,lines:[{...pending.record.lines[0],quantity:null}]}}])assert.throws(()=>readPendingArrival(JSON.stringify(p)));
+assert.equal(arrivalDate('2026-02-30'),false);assert.equal(arrivalDate('2028-02-29'),true);assert.equal(writeArrivalStorage(storage,'alice:draft',null,next),null);
+console.log('PASS: incomplete typing, per-account keys, exact-value conflict guards, storage failures, malformed input, legacy pending restoration, preserved dates/unit snapshots and invalid pending rejection.');

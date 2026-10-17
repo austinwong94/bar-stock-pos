@@ -3,17 +3,26 @@ import { PageHeader } from '../components/Page';
 import { Link } from 'react-router-dom';
 import { secondaryButtonClass } from '../components/Form';
 import { loadProducts } from '../lib/data';
-import { cansAndCartons } from '../lib/format';
 import type { ProductWithStock, SettingsMap } from '../lib/types';
 import { useLanguage } from '../lib/language';
+import { useSharedRefresh } from '../lib/useSharedRefresh';
 
 export default function Inventory({ settings }: { settings: SettingsMap }) {
   const { text } = useLanguage();
   const [products, setProducts] = useState<ProductWithStock[]>([]);
 
+  async function refreshInventory() {
+    setProducts(await loadProducts(true));
+  }
+
   useEffect(() => {
-    loadProducts(true).then(setProducts).catch(console.error);
+    void refreshInventory();
   }, []);
+
+  useSharedRefresh(refreshInventory, {
+    tables: ['products', 'inventory_balances', 'categories', 'stock_movements'],
+    intervalMs: 15000,
+  });
 
   return (
     <>
@@ -26,38 +35,51 @@ export default function Inventory({ settings }: { settings: SettingsMap }) {
           </>
         }
       />
-      <div className="hidden">
+      <div className="overflow-hidden rounded-lg border border-line bg-white/80 shadow-none sm:hidden">
+        <table className="dense-table w-full table-fixed text-left text-[11px]">
+          <thead className="bg-paper">
+            <tr>
+              <th className="w-[42%] p-2">{text('Product', 'Produk')}</th>
+              <th className="w-[24%] p-2">{text('Balance', 'Baki')}</th>
+              <th className="w-[34%] p-2">{text('Low Alert (Units)', 'Amaran Rendah (Unit)')}</th>
+            </tr>
+          </thead>
+          <tbody>
         {products.map((product) => {
           const stock = product.inventory_balances?.quantity_on_hand ?? 0;
           const low = stock <= product.low_stock_threshold;
           return (
-            <article key={product.id} className="rounded-2xl border border-line bg-white/85 p-3 shadow-soft sm:rounded-[1.5rem] sm:p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="font-black">{product.name}</h2>
-                  <p className="text-sm font-bold text-neutral-600">{product.categories?.name ?? 'Others'}</p>
-                </div>
-                <span className={`rounded-full px-3 py-1 text-xs font-black ${low ? 'bg-amber-100 text-warning' : 'bg-teal-50 text-accent'}`}>
-                  {low ? 'Low' : product.active ? 'Active' : 'Inactive'}
+            <tr key={product.id} className="border-t border-line">
+              <td className="p-2 align-top">
+                <p className="truncate font-semibold">{product.name}</p>
+                <p className="mt-0.5 truncate text-[10px] font-bold text-neutral-600">{product.categories?.name === 'Other' ? 'Others' : product.categories?.name ?? 'Others'}</p>
+              </td>
+              <td className={`p-2 align-top font-semibold leading-tight ${low ? 'text-warning' : ''}`}>
+                {stock}
+                <span className="block text-[10px] font-bold text-neutral-600">{text('Units', 'Unit')}</span>
+              </td>
+              <td className="p-2 align-top leading-tight">
+                <span className="font-semibold">{product.low_stock_threshold}</span>
+                <span className="ml-1 text-[10px] font-bold text-neutral-600">{text('Units', 'Unit')}</span>
+                <span className={`mt-1 inline-flex max-w-full rounded-lg px-1.5 py-0.5 text-[9px] font-semibold ${low ? 'bg-amber-100 text-warning' : product.active ? 'bg-shell text-accent' : 'bg-neutral-100 text-neutral-600'}`}>
+                  {low ? text('Low', 'Rendah') : product.active ? text('Active', 'Aktif') : text('Inactive', 'Tidak aktif')}
                 </span>
-              </div>
-              <div className="mt-2 grid grid-cols-2 gap-1.5 text-xs font-bold sm:mt-3 sm:gap-2 sm:text-sm">
-                <div className="rounded-xl bg-shell p-2 sm:rounded-2xl sm:p-3"><p className="text-neutral-500">On hand</p><p className={low ? 'text-warning' : ''}>{cansAndCartons(stock, product.carton_size)}</p></div>
-                <div className="rounded-xl bg-shell p-2 sm:rounded-2xl sm:p-3"><p className="text-neutral-500">Low alert at</p><p>{product.low_stock_threshold} cans</p></div>
-              </div>
-            </article>
+              </td>
+            </tr>
           );
         })}
+          </tbody>
+        </table>
       </div>
-      <div className="overflow-x-auto rounded-2xl border border-line bg-white/80 shadow-soft sm:rounded-[2rem]">
-        <table className="w-full min-w-[680px] text-left">
+      <div className="clean-scroll hidden overflow-x-auto rounded-lg border border-line bg-white/80 shadow-none sm:block sm:rounded-xl">
+        <table className="dense-table w-full min-w-[640px] text-left text-xs sm:text-sm">
           <thead className="bg-paper text-sm">
             <tr>
-              <th className="p-3">Product</th>
-              <th className="p-3">Category</th>
-              <th className="p-3">On hand</th>
-              <th className="p-3">Low alert at</th>
-              <th className="p-3">Status</th>
+              <th className="p-3">{text('Product', 'Produk')}</th>
+              <th className="p-3">{text('Category', 'Kategori')}</th>
+              <th className="p-3">{text('Balance', 'Baki')}</th>
+              <th className="p-3">{text('Low Alert (Individual Units)', 'Amaran Rendah (Unit Individu)')}</th>
+              <th className="p-3">{text('Status', 'Status')}</th>
             </tr>
           </thead>
           <tbody>
@@ -69,17 +91,16 @@ export default function Inventory({ settings }: { settings: SettingsMap }) {
                   <td className="p-3 font-bold">{product.name}</td>
                   <td className="p-3">{product.categories?.name === 'Other' ? 'Others' : product.categories?.name ?? 'Others'}</td>
                   <td className={`p-3 font-bold ${low ? 'text-warning' : ''}`}>
-                    {cansAndCartons(stock, product.carton_size)}
+                    {stock} {text('Units', 'Unit')}
                   </td>
-                  <td className="p-3">{product.low_stock_threshold} cans</td>
-                  <td className="p-3">{product.active ? 'Active' : 'Inactive'}</td>
+                  <td className="p-3">{product.low_stock_threshold} {text('Units', 'Unit')}</td>
+                  <td className="p-3">{low ? text('Low Stock (Units)', 'Stok Rendah (Unit)') : product.active ? text('Active', 'Aktif') : text('Inactive', 'Tidak aktif')}</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
-      <p className="mt-4 text-sm text-neutral-600">Currency: {String(settings.currency_symbol)}</p>
     </>
   );
 }

@@ -50,4 +50,4 @@ values
   ('beer_bundle_units_per_set', '4'::jsonb),
   ('beer_bundle_price', '40'::jsonb),
   ('receipt_footer_text', '""'::jsonb)
-on conflict (key) do update set value = excluded.value;
+on conflict (key) do nothing;

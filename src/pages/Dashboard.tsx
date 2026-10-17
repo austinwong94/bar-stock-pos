@@ -1,14 +1,18 @@
-import { useEffect, useState } from 'react';
-import { addDays, addMonths, addWeeks, format, startOfWeek } from 'date-fns';
-import { AlertTriangle, ChevronLeft, ChevronRight, PackageCheck, Sparkles } from 'lucide-react';
-import { PageHeader } from '../components/Page';
+import { useEffect, useRef, useState } from 'react';
+import { addDays, addMonths, addWeeks, endOfMonth, format, startOfWeek } from 'date-fns';
+import { AlertTriangle, PackageCheck, RefreshCw } from 'lucide-react';
+import { Badge, PageHeader } from '../components/Page';
+import { WorkflowHelp } from '../components/WorkflowHelp';
 import { loadProducts } from '../lib/data';
-import { loadLocalSaleItems, loadLocalSales } from '../lib/localStore';
-import { dualMoney, malaysiaDateInputValue, money } from '../lib/format';
+import { loadLocalRecipeIngredients, loadLocalSaleItems, loadLocalSales } from '../lib/localStore';
+import { malaysiaBusinessDateInputValue, money } from '../lib/format';
 import { supabase } from '../lib/supabase';
 import { isSupabaseConfigured } from '../lib/supabase';
 import type { ProductWithStock, SettingsMap } from '../lib/types';
 import { useLanguage } from '../lib/language';
+import { useSharedRefresh } from '../lib/useSharedRefresh';
+import { BarPeriodControl } from '../components/BarPeriodControl';
+import { iconButtonClass } from '../components/Form';
 
 type DashboardSale = {
   payment_method: string;
@@ -20,46 +24,67 @@ type DashboardSale = {
 };
 
 export default function Dashboard({ settings }: { settings: SettingsMap }) {
+  const businessToday = malaysiaBusinessDateInputValue(new Date(), settings.business_day_close_time);
   const [products, setProducts] = useState<ProductWithStock[]>([]);
   const [period, setPeriod] = useState<'day' | 'week' | 'month'>('day');
-  const [selectedDate, setSelectedDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
-  const [selectedWeek, setSelectedWeek] = useState(() => format(new Date(), "RRRR-'W'II"));
-  const [selectedMonth, setSelectedMonth] = useState(() => format(new Date(), 'yyyy-MM'));
+  const [selectedDate, setSelectedDate] = useState(() => businessToday);
+  const [selectedWeek, setSelectedWeek] = useState(() => format(new Date(businessToday + 'T00:00:00'), "RRRR-'W'II"));
+  const [selectedMonth, setSelectedMonth] = useState(() => businessToday.slice(0, 7));
   const [totals, setTotals] = useState({ cash: 0, qr: 0, focCost: 0, tx: 0, paidRevenue: 0 });
-  const [soldTodayByProduct, setSoldTodayByProduct] = useState<Record<string, number>>({});
+  const [stockOutTodayByProduct, setStockOutTodayByProduct] = useState<Record<string, number>>({});
   const { text } = useLanguage();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [recipeIds, setRecipeIds] = useState<Set<string>>(new Set());
+  const generation = useRef(0);
 
-  useEffect(() => {
-    async function load() {
+  async function refreshDashboard() {
+    const ticket = ++generation.current;
+    try {
       const loadedProducts = await loadProducts(true);
-      const sales = isSupabaseConfigured
-        ? (((await supabase
-            .from('sales')
-            .select('payment_method,total_amount,paid_amount,business_date,created_at,sale_items(product_id,quantity)')
-            .eq('status', 'completed')).data ?? []) as DashboardSale[])
-        : loadLocalSales()
+      const recipes = isSupabaseConfigured
+        ? await supabase.from('recipe_ingredients').select('product_id')
+        : { data: loadLocalRecipeIngredients(), error: null };
+      if (recipes.error) throw recipes.error;
+      if (isSupabaseConfigured) {
+        const from = period === 'day' ? selectedDate : period === 'week' ? format(weekStartFromInput(selectedWeek), 'yyyy-MM-dd') : `${selectedMonth}-01`;
+        const to = period === 'day' ? from : period === 'week' ? format(addDays(weekStartFromInput(selectedWeek), 6), 'yyyy-MM-dd') : format(endOfMonth(new Date(`${from}T00:00:00`)), 'yyyy-MM-dd');
+        const { data, error: readError } = await supabase.rpc('read_bar_overview', { p_from: from, p_to: to, p_today: businessToday });
+        if (readError) throw readError;
+        if (!data?.totals || !data.soldToday) throw new Error('Overview response was incomplete.');
+        if (ticket !== generation.current) return;
+        setProducts(loadedProducts);
+        setRecipeIds(new Set((recipes.data ?? []).map((row: { product_id: string }) => row.product_id)));
+        setTotals(data.totals);
+        setStockOutTodayByProduct(data.soldToday);
+        setError('');
+        return;
+      }
+      const sales: DashboardSale[] = loadLocalSales()
             .filter((sale) => sale.status === 'completed')
             .map((sale) => ({
               ...sale,
               sale_items: loadLocalSaleItems().filter((item) => item.sale_id === sale.id),
             }));
       const filteredSales = sales.filter((sale) => {
-        const saleDate = sale.created_at ? malaysiaDateInputValue(sale.created_at) : sale.business_date;
+        const saleDate = sale.business_date ?? (sale.created_at ? malaysiaBusinessDateInputValue(sale.created_at, settings.business_day_close_time) : undefined);
         if (period === 'day') return saleDate === selectedDate;
         if (period === 'month') return saleDate?.startsWith(selectedMonth);
         return saleDate ? format(new Date(`${saleDate}T00:00:00`), "RRRR-'W'II") === selectedWeek : false;
       });
-      const today = malaysiaDateInputValue(new Date());
-      const nextSoldToday = sales
-        .filter((sale) => sale.payment_method !== 'complimentary' && (sale.created_at ? malaysiaDateInputValue(sale.created_at) : sale.business_date) === today)
+      const today = businessToday;
+      const nextStockOutToday = sales
+        .filter((sale) => (sale.business_date ?? (sale.created_at ? malaysiaBusinessDateInputValue(sale.created_at, settings.business_day_close_time) : undefined)) === today)
         .flatMap((sale) => sale.sale_items ?? [])
         .reduce<Record<string, number>>((sum, item) => {
           if (!item.product_id) return sum;
           sum[item.product_id] = (sum[item.product_id] ?? 0) + Number(item.quantity);
           return sum;
         }, {});
+      if (ticket !== generation.current) return;
       setProducts(loadedProducts);
-      setSoldTodayByProduct(nextSoldToday);
+      setRecipeIds(new Set((recipes.data ?? []).map((row: { product_id: string }) => row.product_id)));
+      setStockOutTodayByProduct(nextStockOutToday);
       setTotals(
         filteredSales.reduce(
           (sum: { cash: number; qr: number; focCost: number; tx: number; paidRevenue: number }, sale) => ({
@@ -72,17 +97,32 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
           { cash: 0, qr: 0, focCost: 0, tx: 0, paidRevenue: 0 },
         ),
       );
+      setError('');
+    } catch {
+      if (ticket === generation.current) setError(text('Could not refresh sales. Do not use these figures until refresh succeeds.', 'Jualan tidak dapat dikemas kini. Jangan guna angka ini sehingga muat semula berjaya.'));
+    } finally {
+      if (ticket === generation.current) setLoading(false);
     }
-    void load();
-  }, [period, selectedDate, selectedWeek, selectedMonth]);
+  }
+
+  useEffect(() => {
+    setLoading(true);
+    void refreshDashboard();
+    return () => { generation.current++; };
+  }, [period, selectedDate, selectedWeek, selectedMonth, businessToday, settings.business_day_close_time]);
+
+  useSharedRefresh(refreshDashboard, {
+    tables: ['sales', 'sale_items', 'products', 'inventory_balances', 'daily_reports', 'stock_movements'],
+    intervalMs: 15000,
+  });
 
   const lowStock = products.filter(
     (product) =>
-      product.active &&
+      product.active && !recipeIds.has(product.id) && product.categories?.name !== 'Cocktail' &&
       (product.inventory_balances?.quantity_on_hand ?? 0) <= product.low_stock_threshold,
   );
   const activeProducts = products.filter((product) => product.active);
-  const totalCans = activeProducts.reduce((sum, product) => sum + (product.inventory_balances?.quantity_on_hand ?? 0), 0);
+  const totalUnits = activeProducts.filter(product => !recipeIds.has(product.id) && product.categories?.name !== 'Cocktail').reduce((sum, product) => sum + (product.inventory_balances?.quantity_on_hand ?? 0), 0);
   const selectedDateObject = new Date(`${selectedDate}T00:00:00`);
   const selectedDayLabel = format(selectedDateObject, 'EEE, d MMM yyyy');
   const selectedWeekStart = weekStartFromInput(selectedWeek);
@@ -103,159 +143,63 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
   }
 
   return (
-    <>
-      <PageHeader
-        title={
-          <>
-            <span className="lg:hidden">{text('Dashboard', 'Dashboard')}</span>
-            <span className="hidden lg:inline">{text('Island Sales Dashboard', 'Papan Jualan Island')}</span>
-          </>
-        }
-      />
-      <section className="island-panel mb-4 rounded-[1.5rem] p-2 sm:p-3">
-        <div className="grid min-w-0 grid-cols-[minmax(132px,0.82fr)_minmax(0,1fr)] items-center gap-2 sm:grid-cols-[minmax(220px,360px)_minmax(0,1fr)]">
-          <div className="grid grid-cols-3 gap-1 rounded-2xl bg-white/80 p-1 font-black">
-            {(['day', 'week', 'month'] as const).map((item) => (
-              <button key={item} className={`min-h-9 whitespace-nowrap rounded-xl px-1.5 py-1.5 text-[0.72rem] sm:min-h-10 sm:px-2 sm:py-2 sm:text-sm ${period === item ? 'bg-accent text-white' : ''}`} onClick={() => setPeriod(item)}>
-                {item === 'day' ? text('Day', 'Hari') : item === 'week' ? text('Week', 'Minggu') : text('Month', 'Bulan')}
-              </button>
-            ))}
-          </div>
-          <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] gap-1.5 sm:gap-2">
-            <button type="button" className="grid h-9 w-8 place-items-center rounded-xl border border-line bg-white font-black shadow-soft sm:h-10 sm:w-10 sm:rounded-2xl" onClick={() => shiftPeriod(-1)} aria-label="Previous period">
-              <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5" />
-            </button>
-            {period === 'day' ? <input className="min-h-9 min-w-0 w-full rounded-xl border border-line bg-white px-2 py-1.5 text-xs font-bold sm:min-h-10 sm:rounded-2xl sm:px-3 sm:py-2 sm:text-sm" type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} /> : null}
-            {period === 'week' ? <input className="min-h-9 min-w-0 w-full rounded-xl border border-line bg-white px-2 py-1.5 text-xs font-bold sm:min-h-10 sm:rounded-2xl sm:px-3 sm:py-2 sm:text-sm" type="week" value={selectedWeek} onChange={(e) => setSelectedWeek(e.target.value)} /> : null}
-            {period === 'month' ? <input className="min-h-9 min-w-0 w-full rounded-xl border border-line bg-white px-2 py-1.5 text-xs font-bold sm:min-h-10 sm:rounded-2xl sm:px-3 sm:py-2 sm:text-sm" type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} /> : null}
-            <button type="button" className="grid h-9 w-8 place-items-center rounded-xl border border-line bg-white font-black shadow-soft sm:h-10 sm:w-10 sm:rounded-2xl" onClick={() => shiftPeriod(1)} aria-label="Next period">
-              <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
-            </button>
-          </div>
+    <div className="bar-dashboard">
+      <PageHeader title={text('Bar Overview', 'Ringkasan Bar')}
+        actions={<><button type="button" className={iconButtonClass} aria-label={text('Refresh Overview', 'Muat Semula Ringkasan')} title={text('Refresh', 'Muat Semula')} onClick={() => void refreshDashboard()}><RefreshCw size={16} /></button><WorkflowHelp area="bar" /></>} />
+      <BarPeriodControl period={period} onPeriod={setPeriod}
+        value={period === 'day' ? selectedDate : period === 'week' ? selectedWeek : selectedMonth}
+        onValue={value => { if (period === 'day') setSelectedDate(value); else if (period === 'week') setSelectedWeek(value); else setSelectedMonth(value); }}
+        onShift={shiftPeriod} />
+      {error ? <p role="alert" className="bar-notice">{error}</p> : null}
+      <section className="bar-revenue" aria-busy={loading}>
+        <div>
+          <p className="bar-caption">{periodTitle}</p>
+          <p className="bar-revenue-label">{text('Total Revenue', 'Jumlah Hasil')}</p>
+          <p className="bar-revenue-value">{loading ? '...' : money(totals.paidRevenue, String(settings.currency_symbol))}</p>
         </div>
+        <dl className="bar-revenue-breakdown">
+          {[
+            [text('Cash', 'Tunai'), money(totals.cash, String(settings.currency_symbol))],
+            [text('QR Payment', 'Bayaran QR'), money(totals.qr, String(settings.currency_symbol))],
+            [text('FOC Value', 'Nilai FOC'), money(totals.focCost, String(settings.currency_symbol))],
+            [text('Transactions', 'Transaksi'), totals.tx],
+          ].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{loading ? '...' : value}</dd></div>)}
+        </dl>
       </section>
-      <section className="mb-4 rounded-2xl border border-line bg-gradient-to-br from-pink-100 via-rose-200 to-teal-100 p-3 text-ink shadow-glow sm:rounded-[1.5rem] sm:p-4">
-        <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(260px,380px)] lg:items-end">
-          <div className="min-w-0">
-            <p className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-accent sm:text-sm"><Sparkles className="h-4 w-4" /> {period.toUpperCase()}</p>
-            <p className="mt-1.5 text-lg font-black text-ink sm:text-xl">{periodTitle}</p>
-            <h2 className="mt-2 break-words text-2xl font-black leading-tight sm:text-3xl lg:text-4xl">{money(totals.paidRevenue, String(settings.currency_symbol))}</h2>
-            <p className="mt-1.5 text-xs font-bold text-neutral-700 sm:text-sm">{text('Total Revenue excludes FOC. FOC Cost is tracked separately.', 'Total Revenue tidak termasuk FOC. FOC Cost direkod berasingan.')}</p>
-            <p className="mt-1 text-xs font-bold text-neutral-700 sm:text-sm">{dualMoney(totals.paidRevenue, String(settings.currency_symbol))}</p>
-          </div>
-          <div className="grid min-w-0 grid-cols-2 gap-2 lg:grid-cols-1 min-[1450px]:grid-cols-2">
-            <div className="min-w-0 rounded-2xl bg-white/70 p-3 shadow-soft backdrop-blur">
-              <p className="text-xs font-bold text-neutral-600 sm:text-sm">Total Revenue</p>
-              <p className="break-words text-lg font-black sm:text-xl">{money(totals.paidRevenue, String(settings.currency_symbol))}</p>
-            </div>
-            <div className="min-w-0 rounded-2xl bg-white/70 p-3 shadow-soft backdrop-blur">
-              <p className="text-xs font-bold text-neutral-600 sm:text-sm">FOC Cost 🎁</p>
-              <p className="break-words text-lg font-black text-coral sm:text-xl">- {money(totals.focCost, String(settings.currency_symbol))}</p>
-            </div>
-          </div>
-        </div>
+      <section className="bar-stock-section" aria-label={text('Stock Hub', 'Hab Stok')}>
+        <header className="bar-section-heading">
+          <h2><PackageCheck size={18} />{text('Stock Hub', 'Hab Stok')}</h2>
+          <dl className="bar-inline-stats">
+            <div><dt>{text('Products', 'Produk')}</dt><dd>{activeProducts.length}</dd></div>
+            <div><dt>{text('Units', 'Unit')}</dt><dd>{totalUnits}</dd></div>
+            <div><dt>{text('Low Stock', 'Stok Rendah')}</dt><dd className={lowStock.length ? 'text-warning' : ''}>{lowStock.length}</dd></div>
+          </dl>
+        </header>
+        <table className="bar-stock-table">
+          <thead><tr>
+            <th>{text('Product', 'Produk')}</th>
+            <th>{text('Sold Today', 'Jual Hari Ini')}</th>
+            <th>{text('Balance', 'Baki')}</th>
+            <th>{text('Status', 'Status')}</th>
+          </tr></thead>
+          <tbody>
+            {activeProducts.map(product => {
+              const recipe = recipeIds.has(product.id) || product.categories?.name === 'Cocktail';
+              const stock = product.inventory_balances?.quantity_on_hand ?? 0;
+              const low = !recipe && stock <= product.low_stock_threshold;
+              return <tr key={product.id}>
+                <td><strong>{product.name}</strong><span className="bar-caption">{product.categories?.name ?? text('Other', 'Lain')}</span></td>
+                <td>{stockOutTodayByProduct[product.id] ?? 0}</td>
+                <td>{recipe ? <span className="bar-caption">{text('Ingredients', 'Bahan')}</span> : <>{stock}<span className="bar-unit"> {text('units', 'unit')}</span></>}</td>
+                <td><Badge tone={low ? 'warn' : 'neutral'}>{recipe ? text('Recipe', 'Resipi') : low ? text('Low', 'Rendah') : 'OK'}</Badge></td>
+              </tr>;
+            })}
+            {!activeProducts.length ? <tr><td colSpan={4}>{loading ? text('Loading stock...', 'Memuatkan stok...') : text('No products yet.', 'Belum ada produk.')}</td></tr> : null}
+          </tbody>
+        </table>
+        {lowStock.length > 0 ? <p className="bar-stock-warning"><AlertTriangle size={16} /><span>{lowStock.map(product => product.name).join(', ')} · {text('Low Stock', 'Stok Rendah')}</span></p> : null}
       </section>
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-3 min-[1450px]:grid-cols-5">
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 shadow-soft sm:p-4"><p className="text-xs font-black text-emerald-700 sm:text-sm">{text('Cash Payment', 'Bayaran tunai')} 💵</p><p className="mt-1.5 text-lg font-black sm:text-xl">{money(totals.cash, String(settings.currency_symbol))}</p></div>
-        <div className="rounded-2xl border border-sky-200 bg-sky-50 p-3 shadow-soft sm:p-4"><p className="text-xs font-black text-sky-700 sm:text-sm">{text('QR Payment', 'Bayaran QR')} 📱</p><p className="mt-1.5 text-lg font-black sm:text-xl">{money(totals.qr, String(settings.currency_symbol))}</p></div>
-        <div className="rounded-2xl border border-pink-200 bg-pink-50 p-3 shadow-soft sm:p-4"><p className="text-xs font-black text-pink-700 sm:text-sm">FOC Cost 🎁</p><p className="mt-1.5 text-lg font-black text-coral sm:text-xl">- {money(totals.focCost, String(settings.currency_symbol))}</p></div>
-        <div className="rounded-2xl border border-violet-200 bg-violet-50 p-3 shadow-soft sm:p-4"><p className="text-xs font-black text-violet-700 sm:text-sm">Total Revenue</p><p className="mt-1.5 text-lg font-black sm:text-xl">{money(totals.paidRevenue, String(settings.currency_symbol))}</p></div>
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 shadow-soft sm:p-4"><p className="text-xs font-black text-amber-700 sm:text-sm">{text('Transactions', 'Transaksi')}</p><p className="mt-1.5 text-lg font-black sm:text-xl">{totals.tx}</p></div>
-      </div>
-      <section className="island-panel mt-4 rounded-2xl p-3 sm:mt-5 sm:rounded-[2rem] sm:p-5">
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)] lg:items-end">
-          <div className="min-w-0">
-            <h2 className="flex items-center gap-2 text-xl font-black"><PackageCheck className="h-5 w-5 text-accent" /> {text('Stock Hub', 'Hab Stok')}</h2>
-          </div>
-          <div className="grid grid-cols-3 gap-2 text-center text-sm font-black">
-            <div className="grid min-h-16 place-items-center rounded-2xl border border-line bg-white/80 px-3 py-2">
-              <p className="text-neutral-500">Items</p>
-              <p className="text-xl text-ink">{activeProducts.length}</p>
-            </div>
-            <div className="grid min-h-16 place-items-center rounded-2xl border border-line bg-white/80 px-3 py-2">
-              <p className="text-neutral-500">Balance</p>
-              <p className="text-xl text-ink">{totalCans}</p>
-            </div>
-            <div className="grid min-h-16 place-items-center rounded-2xl border border-warning bg-amber-50 px-3 py-2">
-              <p className="text-warning">Low</p>
-              <p className="text-xl text-ink">{lowStock.length}</p>
-            </div>
-          </div>
-        </div>
-        <div className="hidden">
-          {activeProducts.map((product) => {
-            const stock = product.inventory_balances?.quantity_on_hand ?? 0;
-            const low = stock <= product.low_stock_threshold;
-            const soldToday = soldTodayByProduct[product.id] ?? 0;
-            return (
-              <article key={product.id} className="rounded-[1.5rem] border border-line bg-white/85 p-4 shadow-soft">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="font-black">{product.name}</p>
-                    <p className="text-sm font-bold text-neutral-600">{product.categories?.name === 'Other' ? 'Others' : product.categories?.name ?? 'Others'}</p>
-                  </div>
-                  <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-black ${low ? 'bg-amber-100 text-warning' : 'bg-teal-50 text-accent'}`}>
-                    {low ? 'Low' : 'OK'}
-                  </span>
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 text-sm font-bold">
-                  <div className="rounded-2xl bg-shell p-3"><p className="text-neutral-500">Sold Today</p><p>{soldToday} units</p></div>
-                  <div className="rounded-2xl bg-shell p-3"><p className="text-neutral-500">Balance</p><p className={low ? 'text-warning' : 'text-ink'}>{stock} units</p></div>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-        <div className="mt-4 overflow-x-auto rounded-2xl border border-line bg-white/75">
-          <table className="w-full min-w-[720px] table-fixed text-left">
-            <thead className="bg-shell text-sm">
-              <tr>
-                <th className="w-[30%] p-3">Product</th>
-                <th className="w-[18%] p-3">Category</th>
-                <th className="w-[18%] p-3">Sold Today</th>
-                <th className="w-[18%] p-3">Balance</th>
-                <th className="w-[16%] p-3">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {activeProducts.map((product) => {
-                const stock = product.inventory_balances?.quantity_on_hand ?? 0;
-                const low = stock <= product.low_stock_threshold;
-                const soldToday = soldTodayByProduct[product.id] ?? 0;
-                return (
-                  <tr key={product.id} className="border-t border-line">
-                    <td className="p-3 font-black">{product.name}</td>
-                    <td className="p-3">{product.categories?.name === 'Other' ? 'Others' : product.categories?.name ?? 'Others'}</td>
-                    <td className="p-3 font-bold">{soldToday} units</td>
-                    <td className={`p-3 font-bold ${low ? 'text-warning' : ''}`}>{stock} units</td>
-                    <td className="p-3">
-                      <span className={`rounded-full px-3 py-1 text-xs font-black ${low ? 'bg-amber-100 text-warning' : 'bg-teal-50 text-accent'}`}>
-                        {low ? 'Low stock' : 'OK'}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        <div className="mt-4 rounded-2xl border border-line bg-white/80 p-4">
-          <h3 className="flex items-center gap-2 text-sm font-black text-warning"><AlertTriangle className="h-4 w-4" /> Low stock warnings</h3>
-          <div className="mt-2 grid gap-2">
-            {lowStock.length === 0 ? (
-              <p className="text-sm font-bold text-neutral-600">No low stock warnings.</p>
-            ) : (
-              lowStock.map((product) => (
-                <div key={product.id} className="flex justify-between gap-3 text-sm">
-                  <span className="font-bold">{product.name}</span>
-                  <span>{product.inventory_balances?.quantity_on_hand ?? 0} units</span>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </section>
-    </>
+    </div>
   );
 }
 

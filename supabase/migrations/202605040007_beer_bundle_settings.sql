@@ -68,6 +68,9 @@ begin
   if p_payment_method = 'qr' and require_qr_ref and nullif(trim(coalesce(p_qr_reference, '')), '') is null then
     raise exception 'QR reference is required.';
   end if;
+  if p_payment_method = 'qr' and nullif(trim(coalesce(p_qr_receipt_image_path, '')), '') is null then
+    raise exception 'QR receipt photo is required.';
+  end if;
 
   if p_idempotency_key is not null then
     select * into existing_sale from public.sales where idempotency_key = p_idempotency_key;

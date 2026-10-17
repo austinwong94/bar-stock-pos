@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { isSupabaseConfigured } from './supabase';
 import { loadLocalProducts, loadLocalSettings } from './localStore';
 import type { ProductWithStock, SettingsMap } from './types';
+import { readAllRows } from './readAllRows';
 
 const categoryOrder = ['Beer', 'Soft Drink', 'Food', 'Cocktail', 'Others'];
 const productOrder = ['1602 Lager', '1602 Pale Ale', '1602 Extra Dark', 'Coke', '7Up', 'Fanta'];
@@ -37,12 +38,18 @@ export const defaultSettings: SettingsMap = {
   beer_bundle_units_per_set: 4,
   beer_bundle_price: 40,
   receipt_footer_text: '',
+  platform_name: 'Lovely Paradise Operations',
+  allow_access_code_login: true,
+  access_code_role: 'bar_staff',
+  pickup_group_radius_km: 1.5,
+  default_departure_time: '09:00',
 };
 
 export async function loadSettings(): Promise<SettingsMap> {
   if (!isSupabaseConfigured) return loadLocalSettings();
   const { data, error } = await supabase.from('app_settings').select('key,value');
   if (error) throw error;
+  if(!Array.isArray(data)||!data.length)throw new Error('Business settings are missing. Ask the administrator to finish database setup.');
   const rows = (data ?? []) as Array<{ key: keyof SettingsMap; value: SettingsMap[keyof SettingsMap] }>;
   return rows.reduce(
     (settings: SettingsMap, row) => ({ ...settings, [row.key]: row.value }),
@@ -59,20 +66,10 @@ export async function loadProducts(includeInactive = false): Promise<ProductWith
     .select(
       '*, categories(id,name,sort_order), inventory_balances(quantity_on_hand)',
     )
-    .order('name');
+    .order('name').order('id');
 
   if (!includeInactive) query = query.eq('active', true);
-  const { data, error } = await query;
-  if (error) throw error;
-  return (data ?? []) as ProductWithStock[];
-}
-
-export function roleAtLeast(
-  role: string | null | undefined,
-  minimum: 'cashier' | 'manager' | 'admin',
-) {
-  const ranks = { cashier: 1, manager: 2, admin: 3 };
-  return Boolean(role && ranks[role as keyof typeof ranks] >= ranks[minimum]);
+  return await readAllRows<ProductWithStock>((from,to)=>query.range(from,to));
 }
 
 export function groupByCategory(products: ProductWithStock[]) {

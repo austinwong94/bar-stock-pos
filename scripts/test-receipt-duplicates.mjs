@@ -1,0 +1,92 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { build } from 'esbuild';
+async function load(path) { const b=await build({entryPoints:[path],bundle:true,write:false,platform:'node',format:'cjs'});const m={exports:{}};new Function('module','exports',b.outputFiles[0].text)(m,m.exports);return m.exports; }
+const {receiptMatches,receiptMatchReason}=await load('src/lib/receiptDuplicates.ts');
+const {receiptChanges}=await load('src/lib/receiptHistory.ts');
+const {blankReceiptData,blankReceiptLine}=await load('src/lib/receiptReview.ts');
+assert.equal(receiptMatchReason({supplier:' AEON ',receipt_no:' Ab-1 ',receipt_hash:'a'},{supplier:'aeon',receipt_no:'ab-1',receipt_hash:'b'}),'number');
+assert.equal(receiptMatchReason({supplier:'',receipt_no:'',receipt_hash:'a'},{supplier:'Other',receipt_no:'other',receipt_hash:'a'}),'photo');
+assert.equal(receiptMatchReason({supplier:'AEON',receipt_no:'',receipt_hash:''},{supplier:'AEON',receipt_no:'',receipt_hash:''}),null);
+assert.equal(receiptMatchReason({supplier:'Other Branch',receipt_no:'AB-1',receipt_hash:'b'},{supplier:'AEON',receipt_no:'AB-1',receipt_hash:'a'}),null);
+const identity={supplier:'QA Supplier',receipt_no:'QA-1',receipt_hash:'a'.repeat(64)},stamp=new Date().toISOString();
+const model={expense_receipts:[{...identity,id:'expense',status:'void',created_at:stamp}],audit_logs:[{id:'request',action:'record_purchase_batch',created_at:stamp,after_json:{supplier:identity.supplier,reference:identity.receipt_no,confirmed_by_name:'Buyer',evidence:{receipt_hash:'b'.repeat(64)}}}],receipt_reviews:[{id:'mine',status:'pending',created_at:stamp,data:{...identity,total_cost:'unfinished'}},{id:'other',status:'pending',created_at:stamp,data:{...identity,total_cost:'20'}},{id:'removed',status:'deleted',data:identity}]};
+const matches=receiptMatches(model,identity,'mine');assert.equal(matches.length,2);assert.equal(matches[0].source,'request');assert.equal(matches[1].total_cost,20);assert(!matches.some(r=>r.id==='mine'||r.id==='removed'||r.id==='expense'));
+const line={...blankReceiptLine(),name:'Rice',quantity:'2',unit:'pack',amount:'40',category:'Rice & Dry Goods'};
+const before={...blankReceiptData(),total_cost:'40',lines:[line]},after={...before,total_cost:'60',lines:[{...line,quantity:'3',amount:'60'}]};
+assert.deepEqual(receiptChanges({action:'edited',before_json:before,after_json:after}).map(c=>[c.field,c.before,c.after]),[['total_cost','40','60'],['quantity','2','3'],['amount','40','60']]);
+assert.equal(receiptChanges({action:'edited',before_json:after,after_json:{...after,lines:[]}})[0].field,'line');
+assert.equal(receiptChanges({action:'edited',before_json:before,after_json:JSON.parse(JSON.stringify(before))}).length,0);
+console.log('PASS: cross-screen match normalization, empty/other-branch exclusions, pending/self/void handling, exact field and line audit changes.');
+
+export async function testReceiptDuplicateGuards(db) {
+  await db.exec(`reset role;
+    create table permissions(code text primary key,department_code text,name text,sensitive boolean);
+    create table access_role_permissions(role_code text,permission_code text,primary key(role_code,permission_code));
+    create function user_has_permission(uuid,text) returns boolean language sql stable as $$select true$$;
+    create table ingredient_items(id uuid primary key default gen_random_uuid(),name text,category text,base_unit text,default_pack_size numeric,pack_label text,active boolean);
+    grant usage on schema auth to authenticated;
+    insert into auth.users values('99999999-9999-4999-8999-999999999999');
+    insert into profiles values('99999999-9999-4999-8999-999999999999','Second Purchaser');
+    create or replace function auth.uid() returns uuid language sql stable as $$select coalesce(nullif(current_setting('test.actor',true),''),'11111111-1111-4111-8111-111111111111')::uuid$$;`);
+  for(const file of ['202609280053_simple_kitchen_purchasing.sql','202610040062_receipt_review_workflow.sql','202610040063_receipt_duplicate_checks.sql'])await db.exec(await readFile('supabase/migrations/'+file,'utf8'));
+  const rpc=async(name,args=[],types=[]) => (await db.query(`select ${name}(${args.map((_,i)=>'$'+(i+1)+(types[i]?'::'+types[i]:'')).join(',')}) r`,args.map(a=>typeof a==='object'&&a!==null?JSON.stringify(a):a))).rows[0].r;
+  const check=(supplier,no,hash='',exclude=null)=>rpc('check_purchase_receipt_duplicates',[supplier,no,hash,exclude],['text','text','text','uuid']);
+  let n=20;
+  async function draft(supplier,no,actor='11111111-1111-4111-8111-111111111111') {
+    const id=crypto.randomUUID(),prefix=actor+'/'+id+'/';
+    await db.exec('reset role');await db.query("select set_config('test.actor',$1,false)",[actor]);
+    await db.query("insert into storage.objects values('purchase-evidence',$1),('purchase-evidence',$2)",[prefix+'receipt.png',prefix+'items.png']);
+    await db.exec('set role authenticated');
+    const data={...blankReceiptData(),purpose:'guest_meals',supplier,receipt_no:no,address:'QA Branch',tax_id:'QA-TAX',purchase_date:'2026-09-28',total_cost:'20',review_note:'Checked original. Receipt total only.',receipt:{path:prefix+'receipt.png',hash:(++n).toString(16).padStart(64,'0')},items:{path:prefix+'items.png',hash:(++n).toString(16).padStart(64,'0')}};
+    return rpc('save_receipt_review',[id,0,data],['uuid','integer','jsonb']);
+  }
+  await db.exec('set role authenticated');
+  assert.equal((await check(' Supplier ',' test-1 '))[0].source,'request','Find request-linked receipt even with a different photo');
+  assert.equal((await check('Other Supplier','OTHER','a'.repeat(64)))[0].match,'photo','Exact photos match independently of manual labels');
+  assert.equal((await check('','')).length,0);assert.equal((await check('Other Supplier','TEST-1')).length,0);
+  await assert.rejects(()=>rpc('receipt_duplicate_matches',['Supplier','TEST-1','']),/permission denied/);
+  await db.exec("select set_config('test.deny','purchasing.cost.view',false)");await assert.rejects(()=>check('Supplier','TEST-1'),/Permission denied/);await db.exec("select set_config('test.deny','',false)");
+  const duplicate=await draft(' supplier ',' TEST-1 ');
+  await assert.rejects(()=>rpc('confirm_receipt_review',[duplicate.id,duplicate.version,true]),e=>e.code==='23505');
+  assert.equal((await rpc('read_receipt_reviews',['pending',duplicate.id])).status,'pending');
+  assert(!(await rpc('read_receipt_review_events',[duplicate.id])).some(e=>e.action==='confirmed'));
+  const first=await draft('QA Market','NEW-1'),result=await rpc('confirm_receipt_review',[first.id,first.version,true]);
+  assert.equal((await rpc('confirm_receipt_review',[first.id,0,false])).id,result.id,'Lost-reply replay is not a duplicate');
+  assert.equal((await check('QA Market','NEW-1'))[0].source,'receipt');
+  // Both actual purchase entry points share the guard; no requested quantity changes on rejection.
+  const recordArgs=['22222222-2222-4222-8222-222222222222',[], ' qa market ',' new-1 ',crypto.randomUUID(),{purpose:'bar',receipt_hash:'f'.repeat(64)}];
+  await assert.rejects(()=>rpc('record_purchase_batch_checked',recordArgs,['uuid','jsonb','text','text','uuid','jsonb']),e=>e.code==='23505');
+  await db.exec('reset role');assert.equal(Number((await db.query('select purchased_quantity from purchase_request_items limit 1')).rows[0].purchased_quantity),2);
+  await db.exec('set role authenticated');
+  const a=await draft('Concurrent Supplier','SAME'),b=await draft('Concurrent Supplier','SAME','99999999-9999-4999-8999-999999999999');
+  assert.equal((await check('Concurrent Supplier','SAME','',b.id))[0].status,'pending');
+  await rpc('confirm_receipt_review',[b.id,b.version,true]);
+  await db.query("select set_config('test.actor',$1,false)",[a.created_by]);
+  await assert.rejects(()=>rpc('confirm_receipt_review',[a.id,a.version,true]),e=>e.code==='23505');
+  assert.equal((await rpc('read_receipt_reviews',['pending',a.id])).status,'pending','Second purchaser entry survives a competing confirmation');
+  const distinct=await draft('Concurrent Supplier','DIFFERENT');await rpc('confirm_receipt_review',[distinct.id,distinct.version,true]);
+  await rpc('void_expense_receipt',[result.id,'QA incorrect receipt']);assert.equal((await check('QA Market','NEW-1')).length,0);
+  const replacement=await draft('QA Market','NEW-1');await rpc('confirm_receipt_review',[replacement.id,replacement.version,true]);
+  await rpc('delete_receipt_review',[a.id,a.version,'Duplicate, first verified purchase retained']);
+  assert(!(await check('Concurrent Supplier','SAME')).some(r=>r.id===a.id));
+  await assert.rejects(()=>rpc('save_expense_receipt',[{},crypto.randomUUID()],['jsonb','uuid']),/permission denied/);
+  await assert.rejects(()=>rpc('save_expense_receipt_before_duplicate_check',[{},crypto.randomUUID()],['jsonb','uuid']),/permission denied/);
+  await assert.rejects(()=>rpc('record_purchase_batch_before_duplicate_check',recordArgs,['uuid','jsonb','text','text','uuid','jsonb']),/permission denied/);
+  // Exercise a current request-linked purchase and its lost-response retry after the migration.
+  const requestId=crypto.randomUUID(),itemId=crypto.randomUUID(),token=crypto.randomUUID(),prefix='11111111-1111-4111-8111-111111111111/'+token+'/';
+  await db.exec('reset role');
+  await db.query("insert into purchase_requests values($1,'PR-REPLAY','submitted')",[requestId]);
+  await db.query("insert into purchase_request_items(id,request_id,item_name,unit,quantity,purchase_status,updated_at,sort_order) values($1,$2,'Rice','pack',3,'pending','2026-09-28T00:00:00Z',1)",[itemId,requestId]);
+  await db.query("insert into storage.objects values('purchase-evidence',$1),('purchase-evidence',$2)",[prefix+'receipt.png',prefix+'items.png']);
+  const proof={purpose:'guest_meals',purchase_date:'2026-09-28',total_cost:30,receipt_path:prefix+'receipt.png',items_path:prefix+'items.png',receipt_hash:'e'.repeat(64),items_hash:'d'.repeat(64)};
+  const batchArgs=[requestId,[{id:itemId,quantity:3,actual_cost:30,expected_updated_at:'2026-09-28T00:00:00Z'}],'QA Batch Supplier','BATCH-NEW',token,proof],batchTypes=['uuid','jsonb','text','text','uuid','jsonb'];
+  await db.exec('set role authenticated');const batch=await rpc('record_purchase_batch_checked',batchArgs,batchTypes);
+  assert.equal((await rpc('record_purchase_batch_checked',batchArgs,batchTypes)).id,batch.id);
+  await assert.rejects(()=>rpc('record_purchase_batch_checked',[...batchArgs.slice(0,4),crypto.randomUUID(),{...proof,receipt_hash:'f'.repeat(64)}],batchTypes),e=>e.code==='23505');
+  await assert.rejects(()=>rpc('record_purchase_batch_checked',[...batchArgs.slice(0,5),{...proof,total_cost:31}],batchTypes),/different details/);
+  await db.exec('reset role');
+  assert.equal(Number((await db.query("select count(*) n from expense_receipts where supplier='Concurrent Supplier' and receipt_no='SAME'")).rows[0].n),1);
+  for(const fn of ['save_expense_receipt(jsonb,uuid)','record_purchase_batch_checked(uuid,jsonb,text,text,uuid,jsonb)'])assert.match((await db.query('select pg_get_functiondef($1::regprocedure) d',[fn])).rows[0].d,/pg_advisory_xact_lock\(73081,1\)/);
+  console.log('PASS: SQL cross-route duplicate number/photo guards, permissions, pending exclusion, first verified winner across two actors, retained rejected entries, idempotent replay, void/replacement, no quantity change on rejected purchase.');
+}

@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict';
+import {build} from 'esbuild';
+async function load(file){const b=await build({entryPoints:[file],bundle:true,write:false,format:'cjs',platform:'node'}),m={exports:{}};new Function('module','exports',b.outputFiles[0].text)(m,m.exports);return m.exports;}
+const {recentUsageRange,recentIngredientList,kitchenChoicesKey,readKitchenChoices,rememberKitchenChoice,preferredMeasure}=await load('src/lib/kitchenQuickEntry.ts');
+const {readUsageDraft}=await load('src/lib/dailyUsageDraft.ts');
+const day='2026-03-01',rice={id:'rice',active:true,name:'Rice',base_unit:'g',kitchen_key:'rice',kitchen_unit:'pack',kitchen_factor:5000},eggs={...rice,id:'eggs',name:'Eggs',base_unit:'unit',kitchen_unit:'biji',kitchen_factor:1};
+assert.deepEqual(recentUsageRange(day),{from:'2026-02-01',to:'2026-02-28'});assert.deepEqual(recentUsageRange('2028-03-01'),{from:'2028-02-02',to:'2028-02-29'});
+const row=(date='2026-02-28')=>({business_date:date,guest_meals:999,staff_meals:99,lines:[{ingredient_id:'rice',name:'Rice',unit:'g',guest_quantity:5000,staff_quantity:1000,unit_cost:300},{ingredient_id:'eggs',name:'Eggs',unit:'unit',guest_quantity:20,staff_quantity:0}]});
+const last=recentIngredientList([row('2026-02-27'),row()],day,[rice,eggs]);assert.deepEqual(last,{date:'2026-02-28',ids:['rice','eggs'],unavailable:[]});assert(!JSON.stringify(last).includes('quantity'));assert(!JSON.stringify(last).includes('cost'));
+assert.deepEqual(recentIngredientList([row()],day,[{...rice,base_unit:'unit'},eggs]),{date:'2026-02-28',ids:['eggs'],unavailable:['Rice']});
+assert.equal(recentIngredientList([],day,[rice]),null);assert.equal(recentIngredientList([{...row(),lines:[]}],day,[rice]),null);
+for(const data of [null,[row(),row()],[row(day)],[row('2026-01-31')],[{...row(),lines:[row().lines[0],row().lines[0]]}],[{...row(),lines:[{...row().lines[0],guest_quantity:null}]}]])assert.throws(()=>recentIngredientList(data,day,[rice,eggs]));
+const map=new Map(),store={getItem:k=>map.get(k)??null,setItem:(k,v)=>map.set(k,v)},key=kitchenChoicesKey(undefined,'worker');
+const choices=rememberKitchenChoice(store,key,rice,'kg');assert.equal(preferredMeasure(rice,choices),'kg');assert.equal(preferredMeasure({...rice,base_unit:'unit'},choices),undefined);assert.equal(preferredMeasure(eggs,choices),undefined);
+assert.notEqual(key,kitchenChoicesKey(undefined,'boss'));assert.notEqual(key,kitchenChoicesKey('other-project','worker'));assert.deepEqual(readKitchenChoices(store.getItem(kitchenChoicesKey(undefined,'boss'))),{});
+const arrivalKey=kitchenChoicesKey(undefined,'worker','arrival'),countKey=kitchenChoicesKey(undefined,'worker','count');
+assert.notEqual(arrivalKey,key);assert.notEqual(countKey,key);assert.notEqual(countKey,arrivalKey);
+rememberKitchenChoice(store,arrivalKey,rice,'g');rememberKitchenChoice(store,countKey,rice,'pack');
+assert.equal(preferredMeasure(rice,readKitchenChoices(store.getItem(key))),'kg');assert.equal(preferredMeasure(rice,readKitchenChoices(store.getItem(arrivalKey))),'g');assert.equal(preferredMeasure(rice,readKitchenChoices(store.getItem(countKey))),undefined);
+assert.throws(()=>rememberKitchenChoice(store,key,rice,'L'));assert.throws(()=>rememberKitchenChoice({...store,setItem:()=>{}},key,rice,'g'));map.set(key,'corrupt');assert.throws(()=>rememberKitchenChoice(store,key,rice,'g'));assert.equal(map.get(key),'corrupt');
+const draft={date:day,entries:{rice:{guest:'',staff:'',unit:'pack',factor:5000,version:'v1',measure:'kg'}},guests:'',staff:'',notes:'',selected:[],all:false,expected:null,updatedAt:new Date().toISOString(),ingredientList:{date:last.date,ids:last.ids}};
+assert.deepEqual(readUsageDraft(JSON.stringify(draft),day),draft);assert.throws(()=>readUsageDraft(JSON.stringify({...draft,ingredientList:{date:day,ids:['rice']}}),day));assert.throws(()=>readUsageDraft(JSON.stringify({...draft,ingredientList:{date:last.date,ids:['rice','rice']}}),day));
+console.log('PASS: last ingredient names only, no copied quantities/meal counts/costs, date boundaries, failed/inconsistent history, unavailable or rebased ingredients, actor/project-scoped units, corrupt/quota storage and legacy-compatible blank draft recovery.');

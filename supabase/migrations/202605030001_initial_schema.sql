@@ -461,6 +461,9 @@ begin
   if p_payment_method = 'qr' and require_qr_ref and nullif(trim(coalesce(p_qr_reference, '')), '') is null then
     raise exception 'QR reference is required.';
   end if;
+  if p_payment_method = 'qr' and nullif(trim(coalesce(p_qr_receipt_image_path, '')), '') is null then
+    raise exception 'QR receipt photo is required.';
+  end if;
 
   if p_idempotency_key is not null then
     select * into existing_sale from public.sales where idempotency_key = p_idempotency_key;
@@ -671,6 +674,14 @@ begin
   if found and existing.status = 'closed' then
     raise exception 'Daily report is already closed.';
   end if;
+
+  if p_business_date is null then
+    raise exception 'Business date is required.';
+  end if;
+
+  if p_actual_cash_counted is null or p_actual_cash_counted < 0 then
+    raise exception 'Actual cash counted must be 0 or more.';
+  end if;
   if exists (
     select 1 from public.sales
     where business_date = p_business_date
@@ -708,6 +719,7 @@ begin
     'voided_sales', (select coalesce(jsonb_agg(to_jsonb(s)), '[]'::jsonb) from public.sales s where business_date = p_business_date and status = 'voided'),
     'qr_pending_total', (select coalesce(sum(paid_amount),0) from public.sales where business_date = p_business_date and payment_method = 'qr' and qr_status = 'pending' and status = 'completed'),
     'qr_verified_total', (select coalesce(sum(paid_amount),0) from public.sales where business_date = p_business_date and payment_method = 'qr' and qr_status = 'verified' and status = 'completed'),
+    'qr_mismatch_total', (select coalesce(sum(paid_amount),0) from public.sales where business_date = p_business_date and payment_method = 'qr' and qr_status = 'mismatch' and status = 'completed'),
     'sales_by_product', (
       select coalesce(jsonb_agg(row_to_json(x)), '[]'::jsonb)
       from (
@@ -752,28 +764,59 @@ begin
     'opening_stock', (
       select coalesce(jsonb_agg(row_to_json(x)), '[]'::jsonb)
       from (
-        select p.name, ib.quantity_on_hand - coalesce(sum(sm.quantity_change) filter (where (sm.created_at at time zone 'Asia/Kuala_Lumpur')::date = p_business_date), 0) as quantity
-        from public.products p
-        left join public.inventory_balances ib on ib.product_id = p.id
-        left join public.stock_movements sm on sm.product_id = p.id
-        group by p.name, ib.quantity_on_hand
+        with stock_as_of as (
+          select p.id,
+                 p.name,
+                 coalesce(ib.quantity_on_hand, 0)
+                   - coalesce(sum(sm.quantity_change) filter (where (sm.created_at at time zone 'Asia/Kuala_Lumpur')::date > p_business_date), 0) as closing_quantity,
+                 coalesce(sum(sm.quantity_change) filter (where (sm.created_at at time zone 'Asia/Kuala_Lumpur')::date = p_business_date), 0) as day_change
+          from public.products p
+          left join public.inventory_balances ib on ib.product_id = p.id
+          left join public.stock_movements sm on sm.product_id = p.id
+          group by p.id, p.name, ib.quantity_on_hand
+        )
+        select name, closing_quantity - day_change as quantity
+        from stock_as_of
+        order by name
       ) x
     ),
     'closing_stock', (
       select coalesce(jsonb_agg(row_to_json(x)), '[]'::jsonb)
       from (
-        select p.name, coalesce(ib.quantity_on_hand, 0) quantity_on_hand
-        from public.products p left join public.inventory_balances ib on ib.product_id = p.id
-        order by p.name
+        with stock_as_of as (
+          select p.id,
+                 p.name,
+                 coalesce(ib.quantity_on_hand, 0)
+                   - coalesce(sum(sm.quantity_change) filter (where (sm.created_at at time zone 'Asia/Kuala_Lumpur')::date > p_business_date), 0) as quantity_on_hand
+          from public.products p
+          left join public.inventory_balances ib on ib.product_id = p.id
+          left join public.stock_movements sm on sm.product_id = p.id
+          group by p.id, p.name, ib.quantity_on_hand
+        )
+        select name, quantity_on_hand
+        from stock_as_of
+        order by name
       ) x
     ),
     'low_stock_items', (
       select coalesce(jsonb_agg(row_to_json(x)), '[]'::jsonb)
       from (
-        select p.name, coalesce(ib.quantity_on_hand,0) quantity_on_hand, p.low_stock_threshold
-        from public.products p left join public.inventory_balances ib on ib.product_id = p.id
-        where p.active and coalesce(ib.quantity_on_hand,0) <= p.low_stock_threshold
-        order by p.name
+        with stock_as_of as (
+          select p.id,
+                 p.name,
+                 p.active,
+                 p.low_stock_threshold,
+                 coalesce(ib.quantity_on_hand, 0)
+                   - coalesce(sum(sm.quantity_change) filter (where (sm.created_at at time zone 'Asia/Kuala_Lumpur')::date > p_business_date), 0) as quantity_on_hand
+          from public.products p
+          left join public.inventory_balances ib on ib.product_id = p.id
+          left join public.stock_movements sm on sm.product_id = p.id
+          group by p.id, p.name, p.active, p.low_stock_threshold, ib.quantity_on_hand
+        )
+        select name, quantity_on_hand, low_stock_threshold
+        from stock_as_of
+        where active and quantity_on_hand <= low_stock_threshold
+        order by name
       ) x
     ),
     'actual_cash_counted', p_actual_cash_counted,
@@ -886,6 +929,7 @@ create policy "settings admin write" on public.app_settings for all to authentic
 create policy "audit admin read" on public.audit_logs for select to authenticated using (public.current_user_role() = 'admin');
 create policy "payment receipt upload authenticated" on storage.objects for insert to authenticated with check (bucket_id = 'payment-receipts');
 create policy "payment receipt read manager" on storage.objects for select to authenticated using (bucket_id = 'payment-receipts' and public.current_user_role() in ('manager','admin'));
+create policy "payment receipt delete own upload" on storage.objects for delete to authenticated using (bucket_id = 'payment-receipts' and owner = auth.uid());
 
 grant usage on schema public to authenticated;
 grant select on public.categories, public.products, public.inventory_balances, public.app_settings to authenticated;

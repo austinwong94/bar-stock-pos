@@ -1,38 +1,59 @@
-name: Deploy to GitHub Pages
-
+name: Deploy Qualified Cloud Build to GitHub Pages
 on:
   push:
     branches: [main]
   workflow_dispatch:
-
 permissions:
   contents: read
   pages: write
   id-token: write
-
 concurrency:
   group: pages
   cancel-in-progress: false
-
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      GITHUB_PAGES: "true"
+      VITE_SUPABASE_URL: https://ymplcgbzwddbssdhedrw.supabase.co
+      VITE_SUPABASE_ANON_KEY: sb_publishable_CHjuZT8kokGwQPu4ZClzHw_MHxna3yP
+      TEST_PG_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version: 24
+          cache: npm
       - uses: actions/configure-pages@v5
-      - run: npm install
-      - run: npm run build
-        env:
-          GITHUB_PAGES: "true"
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      - run: npm ci
+      - name: Verify the existing cloud schema contract
+        run: node scripts/verify-cloud-schema.mjs
+      - run: npx playwright install --with-deps chromium
+      - run: npm run release:check
+      - name: Refuse sample-mode publication
+        run: node -e "const fs=require('node:fs');const r=JSON.parse(fs.readFileSync('.qa/release/receipt.json'));if(r.status!=='LOCALLY QUALIFIED'||r.buildMode!=='cloud')process.exit(1)"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-evidence
+          path: |
+            .qa/release/receipt.json
+            .qa/screenshots
       - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
-
   deploy:
     environment:
       name: github-pages

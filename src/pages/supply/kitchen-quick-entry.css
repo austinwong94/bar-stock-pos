@@ -1,0 +1,13 @@
+.supply-template-options.usage-list-options{display:block}.usage-list-options button{max-width:100%;overflow-wrap:anywhere}.usage-default-lists{display:grid;grid-template-columns:auto auto minmax(44px,1fr);gap:6px;align-items:start}.usage-list-options .usage-template-settings{width:44px;min-width:44px;padding:0;justify-content:center;justify-self:end}.usage-template-lists{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.usage-quick-tools{display:grid;grid-template-columns:minmax(0,1fr) 150px;gap:8px;align-items:center;margin-bottom:12px}.usage-quick-tools>input{grid-column:1;grid-row:1;min-height:44px}.usage-quick-tools .supply-segments{grid-column:2;grid-row:1;min-width:0}.usage-quick-tools .supply-segments button{min-height:44px;font-size:13px;padding:6px}
+.usage-list-source{margin:0 0 12px;font-size:12px;line-height:1.5;color:var(--color-muted,#75626b);overflow-wrap:anywhere}.usage-list-source.text-danger{color:var(--color-danger,#b91c1c)}
+@media(max-width:359px){.usage-default-lists{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 44px}.usage-quick-tools{grid-template-columns:minmax(0,1fr)}.usage-quick-tools .supply-segments{grid-column:1;grid-row:2}}
+@media(min-width:640px){.usage-quick-tools{grid-template-columns:minmax(0,1fr) 200px}}
+.usage-entry-error{grid-column:1/-1;margin:0 0 12px;font-size:12px;line-height:1.5;font-weight:400;color:#b91c1c;overflow-wrap:anywhere}
+.supply-usage-grid .usage-entry-error{margin:0}
+.usage-draft-error{display:grid;justify-items:start;gap:8px}
+.usage-draft-error button{min-height:44px}
+.usage-column-labels{position:sticky;top:var(--workspace-header-height,0px);z-index:6;background:#faf8f9;min-height:36px}
+[data-sidebar-hidden="true"] main[data-mobile-title="true"] .usage-column-labels{top:calc(var(--workspace-header-height,0px) + var(--usage-nav-height,0px))}
+.supply-workspace:has(input[data-usage-field="guest"]:focus) .usage-column-labels>span:nth-child(2),.supply-workspace:has(input[data-usage-field="staff"]:focus) .usage-column-labels>span:nth-child(3){color:#9f174b}
+.supply-workspace input[data-usage-target][aria-invalid="true"],.supply-workspace input[data-usage-item][aria-invalid="true"]{border-color:#b91c1c}

@@ -1,19 +1,27 @@
-import { useEffect, useMemo, useState } from 'react';
-import { format } from 'date-fns';
-import { Camera, Minus, PackagePlus, Percent, Plus, ShoppingCart, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { format, parseISO } from 'date-fns';
+import { AlertTriangle, Banknote, Gift, Camera, Minus, PackagePlus, Plus, ShoppingCart, Trash2 } from 'lucide-react';
 import { z } from 'zod';
 import { Field, buttonClass, dangerButtonClass, inputClass, secondaryButtonClass } from '../components/Form';
 import { Modal } from '../components/Modal';
 import { PageHeader } from '../components/Page';
+import { WorkflowHelp } from '../components/WorkflowHelp';
 import { useToast } from '../components/Toast';
 import { groupByCategory, loadProducts } from '../lib/data';
-import { dualMoney, money } from '../lib/format';
-import { supabase } from '../lib/supabase';
+import { malaysiaBusinessDateInputValue, money } from '../lib/format';
+import { cartDiscount } from '../lib/posDiscount';
+import { supabase, isDemoMode } from '../lib/supabase';
 import { isSupabaseConfigured } from '../lib/supabase';
-import { saveLocalSale } from '../lib/localStore';
-import type { PaymentMethod, ProductWithStock, SettingsMap } from '../lib/types';
+import { loadLocalIngredientItems, loadLocalRecipeIngredients, saveLocalSale } from '../lib/localStore';
+import type { IngredientWithBalance, PaymentMethod, ProductWithStock, RecipeIngredient, SettingsMap } from '../lib/types';
 import { useLanguage } from '../lib/language';
 import { assetPath } from '../lib/assets';
+import { hasAdminAccess, unlockAdminAccess } from '../lib/adminAccess';
+import { useSharedRefresh } from '../lib/useSharedRefresh';
+import { useAccess } from '../lib/access';
+import { definitiveSaveFailure } from '../lib/saveAttempt';
+import { clearPendingSale, persistPendingSale, readPendingSale, submitPendingSale, type PendingSale } from '../lib/pendingSale';
+import { readAllRows } from '../lib/readAllRows';
 
 type BundleComponent = { product: ProductWithStock; quantity: number };
 type CartItem = {
@@ -26,6 +34,34 @@ type CartItem = {
 };
 const qrPaymentTypes = ['WeChat Pay', 'AliPay', 'TnGo', 'Grab', 'Others'] as const;
 type QrPaymentType = (typeof qrPaymentTypes)[number];
+
+function countLabel(count: number, singular: string, plural: string) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function safeStorageFileName(name: string) {
+  const clean = name.trim().replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/-+/g, '-').slice(0, 90);
+  return clean || 'qr-payment-receipt.jpg';
+}
+
+function friendlySaleError(message: string) {
+  const lower = message.toLowerCase();
+  if (lower.includes('complete_sale_with_qr_type') || lower.includes('function') || lower.includes('column')) {
+    return 'Ask the administrator to apply the latest database migrations, then reload this device.';
+  }
+  if (lower.includes('payment-receipts') || lower.includes('bucket')) {
+    return 'QR receipt storage is not ready. Create or repair the private Supabase Storage bucket named payment-receipts.';
+  }
+  if (lower.includes('row-level security') || lower.includes('permission denied') || lower.includes('policy')) {
+    return 'Your account cannot complete this payment. Ask a manager to check your access.';
+  }
+  return message;
+}
+
+function shouldRefreshProductsAfterSaleError(message: string) {
+  const lower = message.toLowerCase();
+  return lower.includes('stock') || lower.includes('ingredient') || lower.includes('insufficient') || lower.includes('short') || lower.includes('price') || lower.includes('bundle');
+}
 
 function parseStaffNames(settings: SettingsMap) {
   return String(settings.staff_names || 'Chloe, Happy, Elle, NekoMiao')
@@ -43,6 +79,21 @@ function settingNumber(value: SettingsMap[keyof SettingsMap], fallback: number) 
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function ingredientOnHand(item: IngredientWithBalance) {
+  const balance = item.ingredient_balances;
+  if (Array.isArray(balance)) return Number(balance[0]?.quantity_on_hand ?? 0);
+  return Number(balance?.quantity_on_hand ?? 0);
+}
+
+function formatIngredientAmount(value: number, unit: string) {
+  const rounded = unit === 'unit' ? Math.ceil(value).toString() : value.toFixed(value % 1 === 0 ? 0 : 2);
+  return `${rounded} ${unit}`;
+}
+
+function positiveInt(value: number, fallback = 1) {
+  return Number.isFinite(value) ? Math.max(1, Math.floor(value)) : fallback;
+}
+
 function localDrinkFallback(product: ProductWithStock) {
   const name = product.name.toLowerCase();
   if (name.includes('pale')) return assetPath('assets/beer-pale-ale.svg');
@@ -54,49 +105,156 @@ function localDrinkFallback(product: ProductWithStock) {
   return assetPath('assets/custom-order.svg');
 }
 
+function cartKindLabel(item: CartItem, text: (english: string, malay: string) => string) {
+  if (item.kind === 'bundle') return text('Beer Set', 'Set Bir');
+  if (item.kind === 'custom') return text('Custom Order', 'Pesanan Khas');
+  if (item.product.categories?.name === 'Beer') return text('Single Beer', 'Bir Individu');
+  if (item.product.categories?.name === 'Cocktail') return text('Cocktail', 'Koktel');
+  return text('Single Drink', 'Minuman Individu');
+}
+
+function cartUnitCount(item: CartItem) {
+  if (item.kind === 'bundle') {
+    return (item.components ?? []).reduce((sum, component) => sum + component.quantity, 0);
+  }
+  return item.quantity;
+}
+
+function cartPreviewLabel(item: CartItem, text: (english: string, malay: string) => string) {
+  if (item.kind === 'bundle') return item.product.name + ' x ' + item.quantity + ' ' + text('bundle set', 'set bundle');
+  if (item.kind === 'custom') return item.product.name + ' x ' + item.quantity + ' ' + text('custom order', 'pesanan khas');
+  if (item.product.categories?.name === 'Beer') return item.product.name + ' x ' + item.quantity + ' ' + text('single beer', 'bir individu');
+  return item.product.name + ' x ' + item.quantity + ' ' + text('single unit', 'unit individu');
+}
+
+function cartQuantityLine(item: CartItem, currency: string, text: (english: string, malay: string) => string) {
+  const price = money(item.customPrice ?? item.product.price_per_unit, currency);
+  if (item.kind === 'bundle') {
+    return countLabel(item.quantity, text('Bundle Set', 'Set Bundle'), text('Bundle Sets', 'Set Bundle')) + ' x ' + price + ' · ' + countLabel(cartUnitCount(item), text('Beer Unit', 'Unit Bir'), text('Beer Units', 'Unit Bir'));
+  }
+  if (item.kind === 'custom') return countLabel(item.quantity, text('Custom Order', 'Pesanan Khas'), text('Custom Orders', 'Pesanan Khas')) + ' x ' + price;
+  if (item.product.categories?.name === 'Beer') return countLabel(item.quantity, text('Beer Unit', 'Unit Bir'), text('Beer Units', 'Unit Bir')) + ' x ' + price;
+  return countLabel(item.quantity, text('Unit', 'Unit'), text('Units', 'Unit')) + ' x ' + price;
+}
+
+function cartKindBadgeClass(kind: CartItem['kind']) {
+  if (kind === 'bundle') return 'border-accent bg-accent/5 text-accent';
+  if (kind === 'custom') return 'border-accent bg-shell text-accent';
+  return 'border-line bg-white text-neutral-700';
+}
+
 const confirmationSchema = z.object({
   method: z.enum(['cash', 'qr', 'complimentary']),
   qrReference: z.string().optional(),
   qrPaymentType: z.string().optional(),
   complimentaryReason: z.string().optional(),
+  tableNumber: z.string().optional(),
 });
 
 export default function POS({ settings }: { settings: SettingsMap }) {
+  const { profile } = useAccess();
+  return <POSTerminal key={profile?.id ?? 'signed-out'} settings={settings} />;
+}
+
+function POSTerminal({ settings }: { settings: SettingsMap }) {
   const toast = useToast();
   const { text } = useLanguage();
+  const { profile,can } = useAccess();
+  const pendingKey = `pos-pending:${import.meta.env.VITE_SUPABASE_URL ?? 'preview'}:${profile?.id}`;
+  const [recovery] = useState(() => {
+    try { return { sale: readPendingSale(localStorage, pendingKey), error: '' }; }
+    catch (e) { return { sale: null, error: (e as Error).message }; }
+  });
+  const [pendingSale, setPendingSale] = useState<PendingSale | null>(recovery.sale);
+  const [paymentError, setPaymentError] = useState(recovery.error);
+  const paymentBusy = useRef(false);
   const [products, setProducts] = useState<ProductWithStock[]>([]);
+  const [recipeProductIds, setRecipeProductIds] = useState<Set<string>>(() => new Set());
+  const [recipeIngredients, setRecipeIngredients] = useState<RecipeIngredient[]>([]);
+  const [ingredientBalances, setIngredientBalances] = useState<IngredientWithBalance[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [catalogView, setCatalogView] = useState('all');
   const [method, setMethod] = useState<PaymentMethod | null>(null);
   const [qrReference, setQrReference] = useState('');
   const [qrPaymentType, setQrPaymentType] = useState<QrPaymentType | ''>('');
   const [qrReceipt, setQrReceipt] = useState<File | null>(null);
+  const [tableNumber, setTableNumber] = useState('');
   const [complimentaryReason, setComplimentaryReason] = useState('');
+  const [focApprovalPin, setFocApprovalPin] = useState('');
+  const [focApproved, setFocApproved] = useState(false);
+  const [focApprovalBusy, setFocApprovalBusy] = useState(false);
   const [orderTakenBy, setOrderTakenBy] = useState(parseStaffNames(settings)[0] ?? 'Chloe');
-  const [discount, setDiscount] = useState(0);
+  const [catalogueError,setCatalogueError]=useState('');
+  const catalogueGeneration=useRef(0);
+  const [discountRate, setDiscountRate] = useState<number | null>(0);
   const [customName, setCustomName] = useState('Custom Order');
   const [customPrice, setCustomPrice] = useState('');
   const [customDiscount, setCustomDiscount] = useState('');
+  useEffect(() => {
+    if (!cart.length && !pendingSale) { setDiscountRate(0); setCustomDiscount(''); }
+  }, [cart.length, pendingSale]);
   const [bundleModalOpen, setBundleModalOpen] = useState(false);
   const [bundleSets, setBundleSets] = useState(1);
   const [bundleSelections, setBundleSelections] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
+  const [saleIdempotencyKey, setSaleIdempotencyKey] = useState('');
   const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
   const cameraInputId = 'qr-receipt-camera';
   const staffUsers = useMemo(() => parseStaffNames(settings), [settings]);
-  const todayLabel = format(new Date(), 'EEE, d MMM yyyy');
+  const [clock, setClock] = useState(() => new Date());
+  useEffect(() => { const timer = window.setInterval(() => setClock(new Date()), 30000); return () => clearInterval(timer); }, []);
+  const todayLabel = format(parseISO(malaysiaBusinessDateInputValue(clock, settings.business_day_close_time)), 'EEE, d MMM yyyy');
   const bundleEnabled = settingEnabled(settings.beer_bundle_enabled);
   const allowNegativeStock = settingEnabled(settings.allow_negative_stock);
   const bundleName = String(settings.beer_bundle_name || 'Beer Bundle');
-  const bundleUnits = Math.max(1, Math.floor(settingNumber(settings.beer_bundle_units_per_set, 4)));
+  const bundleUnits = positiveInt(settingNumber(settings.beer_bundle_units_per_set, 4), 4);
   const bundlePrice = Math.max(0, settingNumber(settings.beer_bundle_price, 40));
+  const requireFocApproval = settingEnabled(settings.require_manager_approval_for_complimentary);
 
-  async function refreshProducts() {
-    setProducts(await loadProducts(false));
+  async function refreshProducts(updateOrderPrices = false) {
+    const generation=++catalogueGeneration.current;
+    try {
+    const nextProducts = await loadProducts(false);
+    if (!isSupabaseConfigured) {
+      setProducts(nextProducts);setCatalogueError('');
+      const localRecipes = loadLocalRecipeIngredients();
+      setRecipeIngredients(localRecipes);
+      setIngredientBalances(loadLocalIngredientItems(true));
+      setRecipeProductIds(new Set(localRecipes.map((item) => item.product_id)));
+      return;
+    }
+    const [recipes,ingredients] = await Promise.all([
+      readAllRows<RecipeIngredient>((from,to)=>supabase
+        .from('recipe_ingredients')
+        .select('id, product_id, ingredient_id, quantity_per_unit, unit, created_at, ingredient_items(id, name, category, base_unit)')
+        .order('id').range(from,to)),
+      readAllRows<IngredientWithBalance>((from,to)=>supabase
+        .from('ingredient_items')
+        .select('*, ingredient_balances(quantity_on_hand)')
+        .eq('active', true)
+        .order('name').order('id').range(from,to)),
+    ]);
+    if(generation!==catalogueGeneration.current)return;
+    setProducts(nextProducts);setCatalogueError('');
+    setRecipeIngredients(recipes);
+    setIngredientBalances(ingredients);
+    setRecipeProductIds(new Set(recipes.map((item) => item.product_id)));
+    if(updateOrderPrices){
+      setCart(current=>current.filter(item=>item.kind!=='bundle').map(item=>item.kind==='product'?{...item,product:nextProducts.find(p=>p.id===item.product.id)??item.product}:item));
+      window.dispatchEvent(new Event('business-settings-refresh'));
+    }
+    } catch(e){if(generation===catalogueGeneration.current)setCatalogueError((e as Error).message||text('Stock could not be updated. Retry before taking payment.','Stok tidak dapat dikemas kini. Cuba lagi sebelum menerima bayaran.'));throw e;}
   }
 
   useEffect(() => {
-    void refreshProducts();
+    void refreshProducts().catch(()=>{});
+    return()=>{catalogueGeneration.current++;};
   }, []);
+
+  useSharedRefresh(refreshProducts, {
+    tables: ['products', 'inventory_balances', 'categories', 'app_settings', 'recipe_ingredients', 'ingredient_items', 'ingredient_balances'],
+    intervalMs: 12000,
+  });
 
   useEffect(() => {
     if (staffUsers.length > 0 && !staffUsers.includes(orderTakenBy)) {
@@ -107,44 +265,134 @@ export default function POS({ settings }: { settings: SettingsMap }) {
   const groups = useMemo(() => groupByCategory(products), [products]);
   const beerProducts = groups.Beer ?? [];
   const subtotal = cart.reduce((sum, item) => sum + item.quantity * Number(item.customPrice ?? item.product.price_per_unit), 0);
+  const discount = cartDiscount(subtotal, discountRate, customDiscount);
   const total = Math.max(0, subtotal - discount);
-  const cartQuantity = cart.reduce((sum, item) => sum + (item.kind === 'bundle' ? (item.components ?? []).reduce((unitSum, component) => unitSum + component.quantity, 0) : item.quantity), 0);
+  const cartQuantity = cart.reduce((sum, item) => sum + cartUnitCount(item), 0);
+  const hasBundleInCart = cart.some((item) => item.kind === 'bundle');
   const regularGroups = Object.entries(groups).filter(([category]) => category !== 'Others');
+
+  function categoryDomId(category: string) {
+    return `pos-category-${category.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+  }
+
+
+  function isRecipeProduct(productId: string) {
+    return recipeProductIds.has(productId);
+  }
+
+  function productNeedsRecipe(product: ProductWithStock) {
+    return product.categories?.name === 'Cocktail' && !isRecipeProduct(product.id);
+  }
+
+  const ingredientById = useMemo(() => new Map(ingredientBalances.map((item) => [item.id, item])), [ingredientBalances]);
+
+  function recipeAvailability(productId: string, quantity = 1) {
+    const recipeLines = recipeIngredients.filter((recipe) => recipe.product_id === productId);
+    const grouped = new Map<string, { name: string; unit: string; perUnit: number; required: number; balance: number }>();
+    recipeLines.forEach((recipe) => {
+      const ingredient = ingredientById.get(recipe.ingredient_id);
+      const unit = ingredient?.base_unit ?? recipe.ingredient_items?.base_unit ?? recipe.unit ?? 'unit';
+      const current = grouped.get(recipe.ingredient_id) ?? {
+        name: ingredient?.name ?? recipe.ingredient_items?.name ?? 'Ingredient',
+        unit,
+        perUnit: 0,
+        required: 0,
+        balance: ingredient ? ingredientOnHand(ingredient) : 0,
+      };
+      current.perUnit += Number(recipe.quantity_per_unit || 0);
+      current.required += Number(recipe.quantity_per_unit || 0) * quantity;
+      grouped.set(recipe.ingredient_id, current);
+    });
+    const lines = Array.from(grouped.values()).filter((line) => line.perUnit > 0);
+    const shortages = lines
+      .filter((line) => line.balance + 0.0001 < line.required)
+      .map((line) => ({ ...line, shortage: line.required - line.balance }));
+    const maxMake = lines.length > 0 ? Math.min(...lines.map((line) => Math.floor(line.balance / line.perUnit))) : 0;
+    return {
+      hasRecipe: recipeLines.length > 0,
+      canMake: recipeLines.length > 0 && shortages.length === 0,
+      maxMake: Number.isFinite(maxMake) ? Math.max(0, maxMake) : 0,
+      shortages,
+    };
+  }
+
+  function recipeCartIngredientShortages(items = cart) {
+    const required = new Map<string, { name: string; unit: string; required: number; balance: number }>();
+    items.forEach((item) => {
+      if (item.kind !== 'product' || !isRecipeProduct(item.product.id)) return;
+      recipeIngredients
+        .filter((recipe) => recipe.product_id === item.product.id)
+        .forEach((recipe) => {
+          const ingredient = ingredientById.get(recipe.ingredient_id);
+          const unit = ingredient?.base_unit ?? recipe.ingredient_items?.base_unit ?? recipe.unit ?? 'unit';
+          const current = required.get(recipe.ingredient_id) ?? {
+            name: ingredient?.name ?? recipe.ingredient_items?.name ?? 'Ingredient',
+            unit,
+            required: 0,
+            balance: ingredient ? ingredientOnHand(ingredient) : 0,
+          };
+          current.required += Number(recipe.quantity_per_unit || 0) * item.quantity;
+          required.set(recipe.ingredient_id, current);
+        });
+    });
+    return Array.from(required.values())
+      .filter((line) => line.balance + 0.0001 < line.required)
+      .map((line) => ({ ...line, shortage: line.required - line.balance }));
+  }
+
+  function recipeShortageMessage(shortages: ReturnType<typeof recipeCartIngredientShortages>) {
+    const first = shortages[0];
+    if (!first) return '';
+    return `${first.name} ${text('is short by', 'kurang')} ${formatIngredientAmount(first.shortage, first.unit)}.`;
+  }
+
   const bundleRequiredUnits = bundleUnits * bundleSets;
   const bundleSelectedUnits = Object.values(bundleSelections).reduce((sum, quantity) => sum + quantity, 0);
+  const bundleMissingUnits = Math.max(0, bundleRequiredUnits - bundleSelectedUnits);
+  const bundleUnitProgress = bundleRequiredUnits > 0 ? Math.min(100, (bundleSelectedUnits / bundleRequiredUnits) * 100) : 0;
+
+  function updateBundleSets(nextValue: number) {
+    setBundleSets(positiveInt(nextValue, 1));
+    setBundleSelections({});
+  }
+
+  function cartSingleProductQuantity(productId: string) {
+    return cart.reduce((sum, item) => sum + (item.kind === 'product' && item.product.id === productId ? item.quantity : 0), 0);
+  }
+
+  function cartBundleProductQuantity(productId: string) {
+    return cart.reduce((sum, item) => {
+      if (item.kind !== 'bundle') return sum;
+      return sum + (item.components ?? []).reduce((unitSum, component) => unitSum + (component.product.id === productId ? component.quantity : 0), 0);
+    }, 0);
+  }
 
   function cartProductQuantity(productId: string) {
-    return cart.reduce((sum, item) => {
-      if (item.kind === 'bundle') {
-        return sum + (item.components ?? []).reduce((unitSum, component) => unitSum + (component.product.id === productId ? component.quantity : 0), 0);
-      }
-      return sum + (item.product.id === productId ? item.quantity : 0);
-    }, 0);
+    return cartSingleProductQuantity(productId) + cartBundleProductQuantity(productId);
   }
 
   function linePrice(item: CartItem) {
     return item.quantity * Number(item.customPrice ?? item.product.price_per_unit);
   }
 
-  function add(product: ProductWithStock) {
-    const stock = product.inventory_balances?.quantity_on_hand ?? 0;
-    const existing = cartProductQuantity(product.id);
-    if (!allowNegativeStock && existing + 1 > stock) {
-      toast.error(`${product.name} does not have enough stock.`);
-      return;
+  function nextCartWithProduct(product: ProductWithStock) {
+    const found = cart.find((item) => item.kind === 'product' && item.product.id === product.id);
+    if (found) {
+      return cart.map((item) =>
+        item.kind === 'product' && item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item,
+      );
     }
-    setCart((items) => {
-      const found = items.find((item) => item.kind === 'product' && item.product.id === product.id);
-      if (found) {
-        return items.map((item) =>
-          item.kind === 'product' && item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item,
-        );
-      }
-      return [...items, { product, quantity: 1, kind: 'product' }];
-    });
+    return [...cart, { product, quantity: 1, kind: 'product' } as CartItem];
+  }
+
+  function add(product: ProductWithStock) {
+    const nextItems = nextCartWithProduct(product);
+    if (!validateCartStock(nextItems)) return;
+    setCart(nextItems);
   }
 
   function addCustomOrder() {
+    if(!can('bar.pos.custom'))return;
     const price = Number(customPrice);
     if (!Number.isFinite(price) || price <= 0) {
       toast.error('Enter a custom price first.');
@@ -170,11 +418,11 @@ export default function POS({ settings }: { settings: SettingsMap }) {
 
   function openBundleModal() {
     if (!bundleEnabled) {
-      toast.error('Beer bundle is disabled in Settings.');
+      toast.error('Beer bundle is disabled in Admin > Products.');
       return;
     }
     if (bundlePrice <= 0) {
-      toast.error('Set the beer bundle price in Settings first.');
+      toast.error('Set the beer bundle price in Admin > Products first.');
       return;
     }
     if (beerProducts.length === 0) {
@@ -192,13 +440,13 @@ export default function POS({ settings }: { settings: SettingsMap }) {
       const nextQuantity = Math.max(0, currentQuantity + delta);
       const nextTotal = Object.entries(current).reduce((sum, [productId, quantity]) => sum + (productId === product.id ? nextQuantity : quantity), 0);
       if (delta > 0 && nextTotal > bundleRequiredUnits) {
-        toast.error(`Select exactly ${bundleRequiredUnits} beer unit(s) for this bundle.`);
+        toast.error(text('Select exactly', 'Pilih tepat') + ` ${bundleRequiredUnits} ` + text('beer units for this bundle.', 'unit bir untuk set ini.'));
         return current;
       }
       const stock = product.inventory_balances?.quantity_on_hand ?? 0;
       const alreadyInCart = cartProductQuantity(product.id);
       if (!allowNegativeStock && alreadyInCart + nextQuantity > stock) {
-        toast.error(`${product.name} does not have enough stock.`);
+        toast.error(`${product.name} ${text('does not have enough individual units left.', 'tidak mempunyai unit individu yang cukup.')}`);
         return current;
       }
       const next = { ...current, [product.id]: nextQuantity };
@@ -209,7 +457,7 @@ export default function POS({ settings }: { settings: SettingsMap }) {
 
   function addBundleToCart() {
     if (bundleSelectedUnits !== bundleRequiredUnits) {
-      toast.error(`Select exactly ${bundleRequiredUnits} beer unit(s).`);
+      toast.error(text('Select exactly', 'Pilih tepat') + ` ${bundleRequiredUnits} ` + text('beer units.', 'unit bir.'));
       return;
     }
     const components = beerProducts
@@ -239,30 +487,100 @@ export default function POS({ settings }: { settings: SettingsMap }) {
   }
 
   function choosePayment(nextMethod: PaymentMethod) {
+    if (!validateCartStock()) return;
     setCartDrawerOpen(false);
     setMethod(nextMethod);
     setQrReference('');
     setQrPaymentType('');
+    setTableNumber('');
     setQrReceipt(null);
     setComplimentaryReason('');
+    setFocApprovalPin('');
+    setFocApproved(nextMethod === 'complimentary' ? !requireFocApproval || hasAdminAccess() : false);
+    setSaleIdempotencyKey(crypto.randomUUID());
     if (nextMethod === 'qr') {
       window.setTimeout(() => document.getElementById(cameraInputId)?.click(), 50);
     }
   }
 
+  async function approveFoc() {
+    if (focApprovalBusy) return;
+    setFocApprovalBusy(true);
+    try {
+      const result = await unlockAdminAccess(focApprovalPin);
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      setFocApproved(true);
+      setFocApprovalPin('');
+      toast.success(text('FOC approval accepted.', 'Kelulusan FOC diterima.'));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : text('Could not approve FOC.', 'Tidak dapat luluskan FOC.'));
+    } finally {
+      setFocApprovalBusy(false);
+    }
+  }
+
   function applyDiscountPercent(percent: number) {
     setCustomDiscount('');
-    setDiscount(Number((subtotal * percent).toFixed(2)));
+    setDiscountRate(percent);
+  }
+
+  function cartStockIssue(items = cart) {
+    if (allowNegativeStock) return null;
+    const missingRecipe = items.find((item) => item.kind === 'product' && productNeedsRecipe(item.product));
+    if (missingRecipe) {
+      return `${missingRecipe.product.name} ${text('needs a cocktail recipe before it can be sold.', 'memerlukan resipi koktel sebelum boleh dijual.')}`;
+    }
+    const ingredientShortages = recipeCartIngredientShortages(items);
+    if (ingredientShortages.length > 0) {
+      return recipeShortageMessage(ingredientShortages) || text('Cocktail ingredient stock is insufficient.', 'Stok bahan koktel tidak mencukupi.');
+    }
+
+    const stockNeeded = new Map<string, { product: ProductWithStock; quantity: number }>();
+    items.forEach((item) => {
+      if (item.kind === 'custom') return;
+      if (item.kind === 'bundle') {
+        (item.components ?? []).forEach((component) => {
+          const current = stockNeeded.get(component.product.id) ?? { product: component.product, quantity: 0 };
+          current.quantity += component.quantity;
+          stockNeeded.set(component.product.id, current);
+        });
+        return;
+      }
+      if (isRecipeProduct(item.product.id)) return;
+      const current = stockNeeded.get(item.product.id) ?? { product: item.product, quantity: 0 };
+      current.quantity += item.quantity;
+      stockNeeded.set(item.product.id, current);
+    });
+
+    for (const { product, quantity } of stockNeeded.values()) {
+      const stock = product.inventory_balances?.quantity_on_hand ?? 0;
+      if (quantity > stock) {
+        return `${product.name} ${text('only has', 'hanya ada')} ${countLabel(stock, text('unit available.', 'unit tersedia.'), text('units available.', 'unit tersedia.'))}`;
+      }
+    }
+    return null;
+  }
+
+  function validateCartStock(items = cart) {
+    const issue = cartStockIssue(items);
+    if (issue) {
+      toast.error(issue);
+      return false;
+    }
+    return true;
   }
 
   function change(productId: string, delta: number) {
-    setCart((items) =>
-      items
-        .map((item) =>
-          item.kind !== 'bundle' && item.product.id === productId ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item,
-        )
-        .filter((item) => item.quantity > 0),
-    );
+    const nextItems = cart
+      .map((item) =>
+        item.kind !== 'bundle' && item.product.id === productId ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item,
+      )
+      .filter((item) => item.quantity > 0);
+    if (delta > 0 && !validateCartStock(nextItems)) return;
+    setCart(nextItems);
   }
 
   function removeCartItem(productId: string) {
@@ -294,6 +612,16 @@ export default function POS({ settings }: { settings: SettingsMap }) {
     });
   }
 
+  function fileToDataUrl(file: File) {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? ''));
+      reader.onerror = () => reject(reader.error ?? new Error('Could not read QR Payment receipt image.'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+
   function rpcSaleItems() {
     return cart.map((item) => {
       if (item.kind === 'bundle') {
@@ -303,6 +631,8 @@ export default function POS({ settings }: { settings: SettingsMap }) {
           name: item.product.name,
           quantity: item.quantity,
           custom_price: null,
+          expected_bundle_price: Number(item.product.price_per_unit),
+          expected_bundle_units: item.bundleUnits,
           components: (item.components ?? []).map((component) => ({
             product_id: component.product.id,
             quantity: component.quantity,
@@ -314,19 +644,62 @@ export default function POS({ settings }: { settings: SettingsMap }) {
         name: item.product.name,
         quantity: item.quantity,
         custom_price: item.kind === 'custom' ? item.customPrice ?? null : null,
+        expected_unit_price: item.kind === 'custom' ? null : Number(item.product.price_per_unit),
       };
     });
   }
 
   async function confirmSale() {
-    if (!method) return;
-    const parsed = confirmationSchema.safeParse({ method, qrReference, qrPaymentType, complimentaryReason });
+    if (!method || saving || paymentBusy.current || pendingSale || catalogueError) return;
+    if (!validateCartStock()) return;
+    if (discount > subtotal) {
+      toast.error('Discount cannot be more than subtotal.');
+      return;
+    }
+    if (method === 'qr') {
+      if (!qrPaymentType) {
+        toast.error(text('Select a QR Payment type before confirming.', 'Pilih jenis Bayaran QR sebelum sahkan.'));
+        return;
+      }
+      if (settingEnabled(settings.require_qr_reference) && qrReference.trim().length === 0) {
+        toast.error(text('Enter the QR Payment reference before confirming.', 'Masukkan rujukan Bayaran QR sebelum sahkan.'));
+        return;
+      }
+      if (!qrReceipt) {
+        toast.error(text('Take a QR Payment receipt photo before confirming.', 'Ambil gambar resit Bayaran QR sebelum sahkan.'));
+        window.setTimeout(() => document.getElementById(cameraInputId)?.click(), 50);
+        return;
+      }
+    }
+    if (method === 'complimentary' && complimentaryReason.trim().length === 0) {
+      toast.error(text('Enter the Complimentary (FOC) reason before confirming.', 'Masukkan sebab Percuma (FOC) sebelum sahkan.'));
+      return;
+    }
+    if (method === 'complimentary' && requireFocApproval && !focApproved) {
+      toast.error(text('Manager approval is required before confirming FOC.', 'Kelulusan pengurus diperlukan sebelum sahkan FOC.'));
+      return;
+    }
+    const idempotencyKey = saleIdempotencyKey || crypto.randomUUID();
+    if (!saleIdempotencyKey) setSaleIdempotencyKey(idempotencyKey);
+    const parsed = confirmationSchema.safeParse({ method, qrReference, qrPaymentType, complimentaryReason, tableNumber });
     if (!parsed.success) {
       toast.error('Check the confirmation fields.');
       return;
     }
     setSaving(true);
+    paymentBusy.current = true;
+    try {
     if (!isSupabaseConfigured) {
+      let qrReceiptDataUrl: string | null = null;
+      if (method === 'qr' && qrReceipt) {
+        try {
+          qrReceiptDataUrl = await fileToDataUrl(qrReceipt);
+        } catch (error) {
+          setSaving(false);
+          toast.error(error instanceof Error ? error.message : text('Could not save QR Payment receipt image locally.', 'Tidak dapat simpan gambar resit Bayaran QR pada peranti ini.'));
+          return;
+        }
+      }
       const savedSale = saveLocalSale({
         items: localSaleItems(),
         paymentMethod: method,
@@ -334,34 +707,46 @@ export default function POS({ settings }: { settings: SettingsMap }) {
         paidAmount: method === 'complimentary' ? 0 : total,
         discountAmount: discount,
         orderTakenBy,
+        tableNumber: tableNumber.trim() || null,
         qrReference: qrReference || null,
         qrPaymentType: method === 'qr' ? qrPaymentType : null,
         qrReceiptName: qrReceipt?.name ?? null,
+        qrReceiptDataUrl,
         complimentaryReason: complimentaryReason || null,
+        businessCloseTime: settings.business_day_close_time,
+        idempotencyKey,
       });
       setSaving(false);
       setCart([]);
+      setDiscountRate(0);
+      setCustomDiscount('');
       setMethod(null);
       setQrReference('');
       setQrPaymentType('');
+      setTableNumber('');
       setQrReceipt(null);
       setComplimentaryReason('');
+      setFocApprovalPin('');
+      setFocApproved(false);
+      setSaleIdempotencyKey('');
       await refreshProducts();
-      toast.success(`Sale ${savedSale.sale_number} saved by ${orderTakenBy}. Total ${dualMoney(total, String(settings.currency_symbol))}.`);
+      toast.success(`Sale ${savedSale.sale_number} saved by ${orderTakenBy}. Total ${money(total, String(settings.currency_symbol))}.`);
       return;
     }
     let qrReceiptPath: string | null = null;
     if (method === 'qr' && qrReceipt) {
-      const path = `qr-receipts/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}-${qrReceipt.name}`;
+      const path = `qr-receipts/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}-${safeStorageFileName(qrReceipt.name)}`;
       const upload = await supabase.storage.from('payment-receipts').upload(path, qrReceipt);
       if (upload.error) {
         setSaving(false);
-        toast.error(upload.error.message);
+        toast.error(friendlySaleError(upload.error.message));
         return;
       }
       qrReceiptPath = upload.data.path;
     }
-    const { data, error } = await supabase.rpc('complete_sale_with_qr_type', {
+    const attempt: PendingSale = { version: 1, createdAt: new Date().toISOString(), summary: {
+      items: cart.map(item => cartPreviewLabel(item, text)), total, staff: orderTakenBy, method, table: tableNumber.trim(),
+    }, payload: {
       p_items: rpcSaleItems(),
       p_payment_method: method,
       p_qr_reference: qrReference || null,
@@ -370,92 +755,134 @@ export default function POS({ settings }: { settings: SettingsMap }) {
       p_complimentary_reason: complimentaryReason || null,
       p_discount_amount: discount,
       p_order_taken_by: orderTakenBy,
-      p_idempotency_key: crypto.randomUUID(),
-    });
-    setSaving(false);
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    if (!data) {
-      toast.error('Sale did not return a confirmation.');
-      return;
-    }
-    setCart([]);
+      p_table_number: tableNumber.trim() || null,
+      p_idempotency_key: idempotencyKey,
+    }};
+    persistPendingSale(localStorage, pendingKey, attempt);
+    setPendingSale(attempt);
     setMethod(null);
-    setQrReference('');
-    setQrPaymentType('');
-    setQrReceipt(null);
-    setComplimentaryReason('');
-    await refreshProducts();
-    toast.success(`Sale ${data.sale_number} saved. Total ${money(data.total_amount, String(settings.currency_symbol))}.`);
+    setCartDrawerOpen(false);
+    await resolvePayment(attempt);
+    } catch (error) {
+      toast.error(friendlySaleError((error as Error).message || 'Could not prepare payment.'));
+    } finally { paymentBusy.current = false; setSaving(false); }
   }
 
+  async function resolvePayment(attempt: PendingSale) {
+    setPaymentError('');
+    let confirmed = false;
+    try {
+      // The same immutable request recovers a committed sale when its response was lost.
+      const data = await submitPendingSale(supabase, attempt);
+      confirmed = true;
+      clearPendingSale(localStorage, pendingKey, attempt);
+      setPendingSale(readPendingSale(localStorage, pendingKey));
+      setCart([]); setMethod(null); setDiscountRate(0); setCustomDiscount(''); setTableNumber('');
+      setQrReference(''); setQrPaymentType(''); setQrReceipt(null);
+      setComplimentaryReason(''); setFocApprovalPin(''); setFocApproved(false); setSaleIdempotencyKey('');
+      if (data.status === 'voided') toast.error(text(`Sale ${data.sale_number} was recorded and later voided. It has not been charged again. Check Sales.`, `Jualan ${data.sale_number} telah direkod dan kemudian dibatalkan. Tiada caj semula. Semak Jualan.`));
+      else toast.success(`Sale ${data.sale_number} saved. Total ${money(data.total_amount, String(settings.currency_symbol))}.`);
+      try { await refreshProducts(); } catch { toast.error(text('Payment saved. Stock refresh failed; refresh before the next order.', 'Bayaran disimpan. Muat semula stok sebelum pesanan seterusnya.')); }
+    } catch (error) {
+      if (!confirmed && definitiveSaveFailure(error)) {
+        clearPendingSale(localStorage, pendingKey, attempt);
+        setPendingSale(readPendingSale(localStorage, pendingKey));
+        setSaleIdempotencyKey('');
+        toast.error(text('Payment not completed. ', 'Bayaran tidak diselesaikan. ') + friendlySaleError((error as Error).message));
+        // Receipts are retained: a lost earlier response is not proof that a file is unused.
+        if (shouldRefreshProductsAfterSaleError((error as Error).message)) void refreshProducts((error as Error).message.toLowerCase().includes('price')).catch(() => {});
+      } else setPaymentError((error as { code?: string }).code === 'LP001'
+        ? (error as Error).message
+        : text('Confirmation pending. Do not take payment again. Check this payment to retrieve the saved result or safely finish the original request.', 'Pengesahan belum diterima. Jangan ambil bayaran lagi. Semak bayaran ini untuk mendapatkan hasil atau menyelesaikan permintaan asal.'));
+    }
+  }
+
+  async function checkPayment() {
+    if (!pendingSale || paymentBusy.current) return;
+    paymentBusy.current = true; setSaving(true);
+    try { await resolvePayment(pendingSale); }
+    finally { paymentBusy.current = false; setSaving(false); }
+  }
+
+  const cartIngredientShortages = useMemo(() => (!allowNegativeStock ? recipeCartIngredientShortages(cart) : []), [allowNegativeStock, cart, ingredientById, recipeIngredients]);
+
   const confirmDisabled =
+    !!catalogueError ||
     saving ||
     cart.length === 0 ||
     !orderTakenBy ||
     discount > subtotal ||
+    cartStockIssue() !== null ||
     (method === 'qr' && !qrPaymentType) ||
     (method === 'qr' && !qrReceipt) ||
-    (method === 'qr' && Boolean(settings.require_qr_reference) && qrReference.trim().length === 0) ||
-    (method === 'complimentary' && complimentaryReason.trim().length === 0);
+    (method === 'qr' && settingEnabled(settings.require_qr_reference) && qrReference.trim().length === 0) ||
+    (method === 'complimentary' && complimentaryReason.trim().length === 0) ||
+    (method === 'complimentary' && requireFocApproval && !focApproved);
 
   function renderCartPanel(inDrawer = false) {
     return (
       <>
-        {!inDrawer ? <h2 className="text-xl font-black sm:text-2xl">{text('Order Cart', 'Bakul')}</h2> : null}
+        {!inDrawer ? <h2 className="text-base font-semibold">{text('Order Cart', 'Bakul')}</h2> : null}
         <p className="mt-1 text-sm font-bold text-accent">{text('Accepted by', 'Diterima oleh')} {orderTakenBy}</p>
-        <div className="mt-3 grid gap-2 sm:mt-4 sm:gap-3">
-          {cart.length === 0 ? <p className="text-neutral-600">{text('No items selected.', 'Tiada item dipilih.')}</p> : null}
+        <div className="bar-cart-lines">
+          {cart.length === 0 ? <p className="text-muted">{text('No items selected.', 'Tiada item dipilih.')}</p> : null}
+          {cartIngredientShortages.length > 0 ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs font-bold text-warning sm:rounded-lg sm:p-3 sm:text-sm">
+              <p className="font-semibold">{text('Cocktail ingredient shortage', 'Bahan koktel tidak cukup')}</p>
+              <p>{recipeShortageMessage(cartIngredientShortages)} {text('Receive ingredient stock or reduce the cocktail quantity.', 'Masukkan stok bahan atau kurangkan kuantiti koktel.')}</p>
+            </div>
+          ) : null}
           {cart.map((item) => (
-            <div key={item.product.id} className="rounded-xl border border-line bg-white/85 p-2.5 sm:rounded-2xl sm:p-3">
-              <div className="flex justify-between gap-3">
-                <strong>{item.product.name}</strong>
-                <span>{money(linePrice(item), String(settings.currency_symbol))}</span>
+            <div key={item.product.id} className="bar-cart-line">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <strong className="block break-words">{item.product.name}</strong>
+                  <span className="bar-cart-kind">
+                    {cartKindLabel(item, text)}
+                  </span>
+                </div>
+                <span className="shrink-0 text-right">{money(linePrice(item), String(settings.currency_symbol))}</span>
               </div>
-              <p className="mt-1 text-sm text-neutral-600">
-                {item.kind === 'bundle'
-                  ? `${item.quantity} set(s) x ${money(item.customPrice ?? item.product.price_per_unit, String(settings.currency_symbol))}`
-                  : `${item.quantity} x ${money(item.customPrice ?? item.product.price_per_unit, String(settings.currency_symbol))}`}
+              <p className="mt-1 text-sm text-muted">
+                {cartQuantityLine(item, String(settings.currency_symbol), text)}
               </p>
               {item.kind === 'bundle' ? (
-                <p className="mt-1 text-xs font-bold text-neutral-600">
-                  {(item.components ?? []).map((component) => `${component.product.name} x ${component.quantity}`).join(', ')}
+                <p className="mt-1 text-xs font-bold text-muted">
+                  {text('Beer stock reduced as', 'Stok bir ditolak sebagai')}: {(item.components ?? []).map((component) => `${component.product.name} x ${component.quantity}`).join(', ')}
                 </p>
               ) : null}
               <div className="mt-2 flex gap-2 sm:mt-3">
                 {item.kind !== 'bundle' ? (
                   <>
-                    <button className={`${secondaryButtonClass} w-10 px-0 sm:w-12`} onClick={() => change(item.product.id, -1)} aria-label="Decrease">
+                    <button className={`${secondaryButtonClass} w-10 !p-0 sm:w-12`} onClick={() => change(item.product.id, -1)} aria-label="Decrease">
                       <Minus className="h-4 w-4" />
                     </button>
-                    <button className={`${secondaryButtonClass} w-10 px-0 sm:w-12`} onClick={() => change(item.product.id, 1)} aria-label="Increase">
+                    <button className={`${secondaryButtonClass} w-10 !p-0 sm:w-12`} onClick={() => change(item.product.id, 1)} aria-label="Increase">
                       <Plus className="h-4 w-4" />
                     </button>
                   </>
                 ) : null}
-                <button className={`${dangerButtonClass} w-10 px-0 sm:w-12`} onClick={() => removeCartItem(item.product.id)} aria-label="Remove">
+                <button className={`${dangerButtonClass} w-10 !p-0 sm:w-12`} onClick={() => removeCartItem(item.product.id)} aria-label="Remove">
                   <Trash2 className="h-4 w-4" />
                 </button>
               </div>
             </div>
           ))}
         </div>
-        <div className="mt-4 rounded-2xl bg-shell p-3 sm:mt-5 sm:rounded-[1.5rem] sm:p-4">
+        <div className="bar-cart-summary">
           <Field label={text('Discount', 'Diskaun')}>
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-              <button type="button" className={`${secondaryButtonClass} px-2`} onClick={() => { setCustomDiscount(''); setDiscount(0); }}>
+            <div className="bar-discounts">
+              <button type="button" aria-label="0%" aria-pressed={discountRate === 0} className={`${secondaryButtonClass} px-2`} onClick={() => { setCustomDiscount(''); setDiscountRate(0); }}>
                 0%
               </button>
               {[0.05, 0.1, 0.15, 0.2].map((rate) => (
-                <button key={rate} type="button" className={`${secondaryButtonClass} px-2`} onClick={() => applyDiscountPercent(rate)}>
+                <button key={rate} type="button" aria-pressed={discountRate === rate} className={`${secondaryButtonClass} px-2`} onClick={() => applyDiscountPercent(rate)}>
                   {Math.round(rate * 100)}%
                 </button>
               ))}
             </div>
             <div className="mt-2 flex items-center gap-2">
-              <Percent className="h-5 w-5 text-coral" />
+              <span className="text-sm font-semibold text-accent">RM</span>
               <input
                 className={inputClass}
                 type="number"
@@ -464,35 +891,35 @@ export default function POS({ settings }: { settings: SettingsMap }) {
                 value={customDiscount}
                 onChange={(e) => {
                   setCustomDiscount(e.target.value);
-                  setDiscount(Number(e.target.value || 0));
+                  setDiscountRate(null);
                 }}
-                placeholder={text('Custom discount amount', 'Jumlah diskaun khas')}
+                aria-label={text('Discount Amount (RM)', 'Jumlah Diskaun (RM)')}
+                placeholder={text('Discount Amount (RM)', 'Jumlah Diskaun (RM)')}
               />
             </div>
           </Field>
           <div className="mt-3 flex justify-between gap-3 font-bold sm:mt-4">
-            <span>Subtotal</span>
+            <span>{text('Subtotal', 'Subtotal')}</span>
             <span>{money(subtotal, String(settings.currency_symbol))}</span>
           </div>
-          <div className="mt-2 flex justify-between gap-3 font-bold text-coral">
+          <div className="mt-2 flex justify-between gap-3 font-bold text-accent">
             <span>{text('Discount amount', 'Jumlah diskaun')}</span>
             <span>- {money(discount, String(settings.currency_symbol))}</span>
           </div>
-          <div className="mt-2 flex justify-between gap-3 text-xl font-black sm:text-2xl">
-            <span>Total</span>
+          <div className="mt-2 flex justify-between gap-3 text-xl font-semibold sm:text-2xl">
+            <span>{text('Total', 'Jumlah')}</span>
             <span>{money(total, String(settings.currency_symbol))}</span>
           </div>
-          <p className="mt-1 text-sm font-bold text-accent">{dualMoney(total, String(settings.currency_symbol))}</p>
-          <div className="mt-4 grid gap-3">
-            <button className={buttonClass} disabled={cart.length === 0} onClick={() => choosePayment('cash')}>
-              {text('Cash Payment', 'Bayaran tunai')} 💵
+          <div className="bar-payment-actions">
+            <button className={buttonClass} aria-label={text('Cash Payment', 'Bayaran Tunai')} disabled={cart.length === 0} onClick={() => choosePayment('cash')}>
+              <Banknote className="h-4 w-4" />{text('Cash', 'Tunai')}
             </button>
-            <button className={buttonClass} disabled={cart.length === 0} onClick={() => choosePayment('qr')}>
+            <button className={buttonClass} aria-label={text('QR Payment', 'Bayaran QR')} disabled={cart.length === 0} onClick={() => choosePayment('qr')}>
               <Camera className="h-5 w-5" />
-              {text('QR Payment', 'Bayaran QR')} 📱
+              QR
             </button>
             <button className={secondaryButtonClass} disabled={cart.length === 0} onClick={() => choosePayment('complimentary')}>
-              Complimentary (FOC) 🎁
+              <Gift className="h-4 w-4" />{text('Complimentary (FOC)', 'Percuma (FOC)')}
             </button>
           </div>
         </div>
@@ -503,41 +930,50 @@ export default function POS({ settings }: { settings: SettingsMap }) {
   function renderLiveCartPanel() {
     if (cart.length === 0) return null;
     return (
-      <section className="island-panel sticky top-[6.25rem] z-20 max-h-[48vh] overflow-y-auto rounded-2xl p-2.5 2xl:hidden">
+      <section className="bar-live-cart" aria-label={text('Selected Order', 'Pesanan Dipilih')}>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-base font-black">Selected order</h2>
-            <p className="text-xs font-bold text-accent">Accepted by {orderTakenBy}</p>
+            <h2 className="text-base font-semibold">{text('Selected Order', 'Pesanan Dipilih')}</h2>
           </div>
           <div className="text-right">
-            <p className="text-xs font-black uppercase tracking-widest text-neutral-500">{cartQuantity} item(s)</p>
-            <p className="text-base font-black">{money(total, String(settings.currency_symbol))}</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted">{countLabel(cartQuantity, text('Unit', 'Unit'), text('Units', 'Unit'))}</p>
+            <p className="text-base font-semibold">{money(total, String(settings.currency_symbol))}</p>
           </div>
         </div>
-        <div className="mt-2 grid gap-2">
+        {cartIngredientShortages.length > 0 ? (
+          <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs font-semibold text-warning">
+            {recipeShortageMessage(cartIngredientShortages)}
+          </p>
+        ) : null}
+        <div className="bar-live-cart-list mt-2">
           {cart.map((item) => (
-            <div key={item.product.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-xl border border-line bg-white/85 p-2">
+            <div key={item.product.id} className="bar-live-cart-row">
               <div className="min-w-0">
-                <p className="truncate text-sm font-black">{item.product.name}</p>
-                <p className="text-xs font-bold text-neutral-600">
+                <div className="flex min-w-0 flex-wrap items-center gap-1">
+                  <p className="break-words text-sm font-semibold">{item.product.name}</p>
+                  <span className="bar-cart-kind">
+                  {cartKindLabel(item, text)}
+                  </span>
+                </div>
+                <p className="text-xs font-bold text-muted">
                   {item.kind === 'bundle'
-                    ? `${item.quantity} set(s) · ${(item.components ?? []).map((component) => `${component.product.name} x ${component.quantity}`).join(', ')}`
-                    : `${item.quantity} x ${money(item.customPrice ?? item.product.price_per_unit, String(settings.currency_symbol))}`}
+                    ? countLabel(item.quantity, text('Bundle Set', 'Set Bundle'), text('Bundle Sets', 'Set Bundle')) + ' · ' + text('stock mix', 'campuran stok') + ': ' + (item.components ?? []).map((component) => component.product.name + ' x ' + component.quantity).join(', ')
+                    : cartQuantityLine(item, String(settings.currency_symbol), text)}
                 </p>
               </div>
               <div className="flex items-center gap-1">
                 {item.kind !== 'bundle' ? (
                   <>
-                    <button className={`${secondaryButtonClass} h-9 min-h-9 w-9 px-0`} onClick={() => change(item.product.id, -1)} aria-label="Decrease">
+                    <button className={`${secondaryButtonClass} h-9 min-h-9 w-9 !p-0`} onClick={() => change(item.product.id, -1)} aria-label="Decrease">
                       <Minus className="h-4 w-4" />
                     </button>
-                    <span className="grid h-9 min-w-9 place-items-center rounded-xl bg-teal-50 px-2 text-sm font-black text-accent">{item.quantity}</span>
-                    <button className={`${secondaryButtonClass} h-9 min-h-9 w-9 px-0`} onClick={() => change(item.product.id, 1)} aria-label="Increase">
+                    <span className="grid h-9 min-w-9 place-items-center rounded-lg bg-accent/5 px-2 text-sm font-semibold text-accent">{item.quantity}</span>
+                    <button className={`${secondaryButtonClass} h-9 min-h-9 w-9 !p-0`} onClick={() => change(item.product.id, 1)} aria-label="Increase">
                       <Plus className="h-4 w-4" />
                     </button>
                   </>
                 ) : (
-                  <button className={`${dangerButtonClass} h-9 min-h-9 w-9 px-0`} onClick={() => removeCartItem(item.product.id)} aria-label="Remove">
+                  <button className={`${dangerButtonClass} h-9 min-h-9 w-9 !p-0`} onClick={() => removeCartItem(item.product.id)} aria-label="Remove">
                     <Trash2 className="h-4 w-4" />
                   </button>
                 )}
@@ -549,15 +985,27 @@ export default function POS({ settings }: { settings: SettingsMap }) {
     );
   }
 
+  if (pendingSale || recovery.error) return <div className="space-y-4">
+    <PageHeader title={text('Payment Confirmation', 'Pengesahan Bayaran')} actions={<WorkflowHelp area="bar" />} />
+    <section className="border-y border-line py-4" aria-live="polite">
+      <h2 className="text-base font-semibold">{saving ? text('Checking Payment...', 'Menyemak Bayaran...') : text('Confirmation Pending', 'Menunggu Pengesahan')}</h2>
+      <p className="mt-2 text-sm">{paymentError || text('Keep this order until its payment is confirmed. Do not collect payment again.', 'Simpan pesanan ini sehingga bayaran disahkan. Jangan kutip bayaran lagi.')}</p>
+      {pendingSale ? <>
+        <p className="my-3 text-sm">{pendingSale.summary.staff} · {pendingSale.summary.method.toUpperCase()}{pendingSale.summary.table ? ` · ${text('Table', 'Meja')} ${pendingSale.summary.table}` : ''}</p>
+        <ul className="divide-y divide-line">{pendingSale.summary.items.map((item, index) => <li key={index} className="py-2 text-sm">{item}</li>)}</ul>
+        <p className="my-3 font-semibold">{money(pendingSale.summary.total, String(settings.currency_symbol))}</p>
+        <button type="button" className={buttonClass} disabled={saving} onClick={() => void checkPayment()}>{saving ? text('Checking...', 'Menyemak...') : text('Check Payment', 'Semak Bayaran')}</button>
+      </> : null}
+    </section>
+  </div>;
+
   return (
     <>
       <PageHeader
         title={text('POS', 'Jualan')}
+        actions={<><span className="text-sm font-medium text-muted">{todayLabel}</span><WorkflowHelp area="bar" /></>}
       />
-      <section className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-pink-200 bg-gradient-to-r from-pink-50 via-white to-teal-50 p-2.5 shadow-soft sm:mb-5 sm:rounded-[1.75rem] sm:p-4">
-        <p className="text-xs font-black uppercase tracking-widest text-accent">{text('Today', 'Hari ini')}</p>
-        <p className="text-base font-black text-ink sm:text-xl lg:text-2xl">{todayLabel}</p>
-      </section>
+      {catalogueError?<p role="alert" className="mb-3 text-sm text-danger">{catalogueError} <button className={secondaryButtonClass} onClick={()=>void refreshProducts().catch(()=>{})}>{text('Retry','Cuba Lagi')}</button></p>:null}
       <input
         id={cameraInputId}
         className="hidden"
@@ -566,79 +1014,65 @@ export default function POS({ settings }: { settings: SettingsMap }) {
         capture="environment"
         onChange={(event) => setQrReceipt(event.target.files?.[0] ?? null)}
       />
-      <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
-        <section className="grid min-w-0 content-start gap-4">
-          <section className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-2xl border border-line bg-white/90 p-2 shadow-soft backdrop-blur sm:p-2.5 lg:sticky lg:top-4 lg:z-10 2xl:static">
-            <p className="text-xs font-black leading-tight sm:text-sm">{text('Order taken by', 'Diterima oleh')}</p>
-            <div className="grid min-w-0 grid-cols-4 gap-1.5">
-              {staffUsers.map((user) => (
-                <button
-                  key={user}
-                  type="button"
-                  onClick={() => setOrderTakenBy(user)}
-                  className={`min-w-0 truncate rounded-xl border px-1.5 py-2 text-center text-xs font-black shadow-soft transition sm:px-3 sm:text-sm ${
-                    orderTakenBy === user
-                      ? 'border-accent bg-accent text-white'
-                      : 'border-line bg-white text-ink hover:border-accent'
-                  }`}
-                >
-                  {user}
-                </button>
-              ))}
+      <div className={`bar-pos-layout ${cart.length ? 'pb-24' : ''}`}>
+        <section className="bar-pos-catalog">
+          <div className="bar-staff">
+            <p>{text('Staff', 'Staf')}</p>
+            <div role="group" aria-label={text('Order Taken By', 'Diterima Oleh')}>
+              {staffUsers.map(user => <button key={user} type="button" aria-pressed={orderTakenBy === user} onClick={() => setOrderTakenBy(user)}>{user}</button>)}
             </div>
-          </section>
+          </div>
+          <div className="bar-categories" role="group" aria-label={text('Product Categories', 'Kategori Produk')}>
+            {[
+              { value: 'all', label: text('All', 'Semua') },
+              ...(bundleEnabled && beerProducts.length ? [{ value: 'bundle', label: text('Beer Sets', 'Set Bir') }] : []),
+              ...regularGroups.map(([category]) => ({ value: category, label: category === 'Beer' ? text('Single Beers', 'Bir Satu') : category === 'Cocktail' ? text('Cocktails', 'Koktel') : category === 'Soft Drink' ? text('Soft Drinks', 'Minuman') : category })),
+              ...(can('bar.pos.custom')?[{ value: 'custom', label: text('Custom', 'Khas') }]:[]),
+            ].map(item => <button type="button" key={item.value} aria-pressed={catalogView === item.value} onClick={() => setCatalogView(item.value)}>{item.label}</button>)}
+          </div>
           {renderLiveCartPanel()}
-          {regularGroups.map(([category, items]) => (
-            <div key={category}>
-              <h2 className="mb-2 text-lg font-black sm:mb-3 sm:text-xl">{text(category, category === 'Soft Drink' ? 'Minuman Ringan' : category === 'Beer' ? 'Bir' : 'Lain-lain')}</h2>
-              {category === 'Beer' && bundleEnabled ? (
-                <button
-                  type="button"
-                  className="mb-3 grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border border-accent bg-gradient-to-r from-teal-50 via-white to-pink-50 p-3 text-left shadow-soft transition hover:-translate-y-0.5"
-                  onClick={openBundleModal}
-                >
-                  <span className="grid h-11 w-11 place-items-center rounded-2xl bg-accent text-white">
-                    <PackagePlus className="h-5 w-5" />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-base font-black text-ink">{bundleName}</span>
-                    <span className="block text-sm font-bold text-neutral-600">
-                      1 set = {bundleUnits} beer unit(s)
-                    </span>
-                  </span>
-                  <span className="text-right text-base font-black text-accent">{money(bundlePrice, String(settings.currency_symbol))}</span>
-                </button>
-              ) : null}
-              <div className="grid min-w-0 grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3">
+          {bundleEnabled && beerProducts.length > 0 && ['all', 'bundle'].includes(catalogView) ? (
+            <section className="bar-bundle" aria-label={text('Beer Sets', 'Set Bir')}>
+              <PackagePlus size={24} />
+              <div><h2>{bundleName}</h2><p className="bar-caption">{bundleUnits} {text('beers per set', 'bir setiap set')}</p><p className="bar-bundle-price">{money(bundlePrice, String(settings.currency_symbol))}</p></div>
+              <button type="button" className={buttonClass} onClick={openBundleModal}><Plus size={16} />{text('Choose Beers', 'Pilih Bir')}</button>
+            </section>
+          ) : null}
+          {regularGroups.filter(([category]) => catalogView === 'all' || catalogView === category).map(([category, items]) => (
+            <div key={category} id={categoryDomId(category)}>
+              <div className="bar-catalog-heading">
+                <h2>{category === 'Beer' ? text('Single Beers', 'Bir Satu') : category === 'Cocktail' ? text('Cocktails', 'Koktel') : text(category, category === 'Soft Drink' ? 'Minuman Ringan' : category)}</h2>
+                <span className="bar-caption">{text('Price per drink', 'Harga setiap minuman')}</span>
+              </div>
+              <div className="bar-product-grid">
                 {items.map((product) => {
                   const stock = product.inventory_balances?.quantity_on_hand ?? 0;
-                  const low = stock <= product.low_stock_threshold;
-                  const disabled = stock <= 0 && !allowNegativeStock;
-                  const selectedQuantity = cartProductQuantity(product.id);
+                  const recipeTracked = isRecipeProduct(product.id);
+                  const needsRecipe = productNeedsRecipe(product);
+                  const recipeInfo = recipeTracked ? recipeAvailability(product.id, 1) : null;
+                  const low = !recipeTracked && stock <= product.low_stock_threshold;
+                  const singleSelected = cartSingleProductQuantity(product.id);
+                  const bundleSelected = cartBundleProductQuantity(product.id);
+                  const selectedQuantity = singleSelected + bundleSelected;
+                  const availableAfterCart = Math.max(0, stock - selectedQuantity);
+                  const addIssue = cartStockIssue(nextCartWithProduct(product));
+                  const disabled = Boolean(addIssue);
                   return (
                     <button
                       key={product.id}
                       type="button"
                       disabled={disabled}
                       onClick={() => add(product)}
-                      className={`relative min-h-28 overflow-hidden rounded-2xl border p-0 text-left shadow-soft transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-32 sm:rounded-[1.25rem] lg:min-h-36 ${
-                        selectedQuantity > 0
-                          ? 'border-accent bg-teal-50 ring-4 ring-teal-100'
-                          : low
-                            ? 'border-warning bg-amber-50'
-                            : 'border-line bg-white/90'
-                      }`}
+                      className="bar-product"
+                      data-selected={singleSelected > 0}
+                      aria-label={`${product.name} · ${money(product.price_per_unit, String(settings.currency_symbol))} · ${category === 'Beer' ? text('1 beer', '1 bir') : text('1 drink', '1 minuman')}`}
                     >
-                      {selectedQuantity > 0 ? (
-                        <span className="absolute right-2 top-2 z-10 grid h-8 min-w-8 place-items-center rounded-full bg-accent px-2 text-sm font-black text-white shadow-glow sm:right-3 sm:top-3 sm:h-10 sm:min-w-10">
-                          {selectedQuantity}
-                        </span>
-                      ) : null}
+                      {singleSelected > 0 ? <span className="bar-product-quantity">x {singleSelected}</span> : null}
                       <img
-                        src={product.image_url ?? localDrinkFallback(product)}
+                        src={isDemoMode ? localDrinkFallback(product) : product.image_url ?? localDrinkFallback(product)}
                         data-fallback={localDrinkFallback(product)}
                         alt=""
-                        className="h-14 w-full object-cover sm:h-16 lg:h-20"
+                        className="bar-product-image"
                         onError={(event) => {
                           const fallback = event.currentTarget.dataset.fallback;
                           if (fallback && !event.currentTarget.src.endsWith(fallback)) {
@@ -646,19 +1080,22 @@ export default function POS({ settings }: { settings: SettingsMap }) {
                           }
                         }}
                       />
-                      <span className="block px-2.5 pt-2 text-sm font-black leading-tight sm:px-3 sm:text-base lg:px-3">{product.name}</span>
-                      <span className="mt-0.5 block px-2.5 text-sm font-bold sm:px-3">{money(product.price_per_unit, String(settings.currency_symbol))}</span>
-                      <span className="block px-2.5 pb-2.5 pt-0.5 text-xs text-neutral-600 sm:px-3 lg:text-sm">{stock} {text('cans available', 'tin tersedia')}</span>
+                      <span className="bar-product-name">{product.name}</span>
+                      <span className="bar-product-price">{money(product.price_per_unit, String(settings.currency_symbol))}</span>
+                      <span className={`bar-product-stock ${low ? 'text-warning' : ''}`}>
+                        {needsRecipe ? text('Recipe needed', 'Perlu resipi') : recipeTracked
+                          ? `${text('Can make', 'Boleh buat')} ${recipeInfo?.maxMake ?? 0}`
+                          : `${selectedQuantity ? availableAfterCart : stock} ${text('units left', 'unit berbaki')}${low ? ' · ' + text('Low', 'Rendah') : ''}`}
+                      </span>
                     </button>
                   );
                 })}
               </div>
             </div>
           ))}
-          <div>
-            <h2 className="mb-2 text-lg font-black sm:mb-3 sm:text-xl">{text('Custom Order', 'Pesanan Khas')}</h2>
-            <div className="island-card grid min-w-0 gap-3 rounded-2xl p-3 sm:grid-cols-[120px_1fr] sm:items-end sm:rounded-[1.75rem] sm:p-4 lg:grid-cols-[130px_minmax(0,1fr)_minmax(0,1fr)_auto]">
-              <img src={assetPath('assets/custom-order.svg')} alt="" className="h-20 w-full rounded-2xl object-cover sm:h-full sm:rounded-3xl" />
+          {can('bar.pos.custom')&&['all', 'custom'].includes(catalogView) ? <div id="pos-category-custom">
+            <h2 className="mb-2 text-lg font-semibold sm:mb-3 sm:text-xl">{text('Custom Order', 'Pesanan Khas')}</h2>
+            <div className="bar-custom-form">
               <Field label={text('Product name', 'Nama produk')}>
                 <input className={inputClass} value={customName} onChange={(e) => setCustomName(e.target.value)} />
               </Field>
@@ -670,32 +1107,28 @@ export default function POS({ settings }: { settings: SettingsMap }) {
                 {text('Add', 'Tambah')}
               </button>
             </div>
-          </div>
+          </div> : null}
         </section>
-        <aside className="island-panel hidden min-w-0 rounded-[1.5rem] p-3 2xl:sticky 2xl:top-4 2xl:block 2xl:self-start">
+        <aside className="bar-pos-cart">
           {renderCartPanel()}
         </aside>
       </div>
-      <div className="no-print fixed inset-x-0 bottom-0 z-30 border-t border-line bg-white/95 p-2 shadow-[0_-18px_45px_rgba(196,70,115,0.18)] backdrop-blur sm:p-3 2xl:hidden">
-        <div className="mx-auto grid max-w-[760px] grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:gap-3">
-          <button
-            type="button"
-            onClick={() => setCartDrawerOpen(true)}
-            className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-xl border border-accent bg-teal-50 px-3 py-2 text-left shadow-soft sm:gap-3 sm:rounded-2xl sm:px-4 sm:py-3"
-          >
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-accent text-white sm:h-11 sm:w-11 sm:rounded-2xl">
-              <ShoppingCart className="h-5 w-5" />
-            </span>
-            <span className="min-w-0">
-              <span className="block text-sm font-black text-accent">{cartQuantity} item(s) selected</span>
-              <span className="block truncate text-lg font-black sm:text-xl">{money(total, String(settings.currency_symbol))}</span>
-            </span>
-          </button>
-          <button className={`${buttonClass} min-h-[54px] px-3 sm:min-h-[68px] sm:px-4`} disabled={cart.length === 0} onClick={() => setCartDrawerOpen(true)}>
-            View cart
-          </button>
+      {cart.length > 0 ? (
+        <div className="bar-checkout-dock no-print">
+          <div className="bar-checkout-total">
+            <button type="button" className="min-w-0 text-left" onClick={() => setCartDrawerOpen(true)} aria-label={text('Cart Details', 'Butiran Bakul')}>
+              <span className="bar-caption">{countLabel(cartQuantity, text('unit', 'unit'), text('units', 'unit'))}</span>
+              <strong className="block text-sm tabular">{money(total, String(settings.currency_symbol))}</strong>
+            </button>
+            <button type="button" className="text-xs text-muted min-h-8" onClick={() => setCartDrawerOpen(true)}>{text('Discount / Details', 'Diskaun / Butiran')}</button>
+          </div>
+          <div className="bar-checkout-payments">
+            <button className={buttonClass} aria-label={text('Cash Payment', 'Bayaran Tunai')} onClick={() => choosePayment('cash')}><Banknote size={16} />{text('Cash', 'Tunai')}</button>
+            <button className={buttonClass} aria-label={text('QR Payment', 'Bayaran QR')} onClick={() => choosePayment('qr')}><Camera size={16} />QR</button>
+            <button className={secondaryButtonClass} onClick={() => choosePayment('complimentary')}><Gift size={16} />FOC</button>
+          </div>
         </div>
-      </div>
+      ) : null}
       {cartDrawerOpen ? (
         <Modal title={text('Order Cart', 'Bakul')} onClose={() => setCartDrawerOpen(false)}>
           {renderCartPanel(true)}
@@ -707,46 +1140,54 @@ export default function POS({ settings }: { settings: SettingsMap }) {
           onClose={() => setBundleModalOpen(false)}
           footer={
             <div className="grid w-full gap-2 sm:flex sm:justify-end">
-              <button className={secondaryButtonClass} onClick={() => setBundleModalOpen(false)}>Cancel</button>
+              <button className={secondaryButtonClass} onClick={() => setBundleModalOpen(false)}>{text('Cancel', 'Batal')}</button>
               <button className={buttonClass} disabled={bundleSelectedUnits !== bundleRequiredUnits} onClick={addBundleToCart}>
-                Add bundle
+                {bundleSelectedUnits === bundleRequiredUnits
+                  ? text('Add Beer Set', 'Tambah Set Bir')
+                  : text('Select', 'Pilih') + ' ' + countLabel(bundleMissingUnits, text('more beer unit', 'unit bir lagi'), text('more beer units', 'unit bir lagi'))}
               </button>
             </div>
           }
         >
           <div className="grid gap-4">
-            <div className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-2xl border border-line bg-shell p-3">
-              <div>
-                <p className="text-sm font-black">Number of sets</p>
-                <p className="text-xs font-bold text-neutral-600">
-                  {bundleUnits} beer unit(s) per set · {money(bundlePrice, String(settings.currency_symbol))} per set
+            <div className="grid gap-3 border-b border-line pb-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-muted sm:text-sm">
+                  {countLabel(bundleUnits, text('beer', 'bir'), text('beers', 'bir'))} {text('per set', 'setiap set')} · {money(bundlePrice, String(settings.currency_symbol))}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
-                <button className={`${secondaryButtonClass} h-10 min-h-10 w-10 px-0`} onClick={() => { setBundleSets((value) => Math.max(1, value - 1)); setBundleSelections({}); }}>
+              <div className="flex items-center justify-end gap-2">
+                <span className="mr-auto text-sm font-medium">{text('Sets', 'Set')}</span>
+                <button aria-label="Decrease Bundle Sets" className={`${secondaryButtonClass} h-10 min-h-10 w-10 !p-0`} onClick={() => updateBundleSets(bundleSets - 1)}>
                   <Minus className="h-4 w-4" />
                 </button>
                 <input
+                  aria-label="Bundle Sets"
                   className={`${inputClass} h-10 min-h-10 w-20 text-center`}
                   type="number"
                   min={1}
                   value={bundleSets}
-                  onChange={(event) => {
-                    setBundleSets(Math.max(1, Number(event.target.value || 1)));
-                    setBundleSelections({});
-                  }}
+                  onChange={(event) => updateBundleSets(Number(event.target.value || 1))}
                 />
-                <button className={`${secondaryButtonClass} h-10 min-h-10 w-10 px-0`} onClick={() => { setBundleSets((value) => value + 1); setBundleSelections({}); }}>
+                <button aria-label="Increase Bundle Sets" className={`${secondaryButtonClass} h-10 min-h-10 w-10 !p-0`} onClick={() => updateBundleSets(bundleSets + 1)}>
                   <Plus className="h-4 w-4" />
                 </button>
               </div>
             </div>
-            <div className="rounded-2xl border border-pink-200 bg-pink-50 p-3">
+            <div>
               <div className="flex items-center justify-between gap-3">
-                <p className="font-black">Choose beer types</p>
-                <p className={`font-black ${bundleSelectedUnits === bundleRequiredUnits ? 'text-accent' : 'text-coral'}`}>
+                <div>
+                  <p className="font-semibold">{text('Choose Beers', 'Pilih Bir')}</p>
+                </div>
+                <p className={`shrink-0 rounded-lg px-3 py-2 font-semibold ${bundleSelectedUnits === bundleRequiredUnits ? 'bg-accent/5 text-accent' : 'bg-white text-accent'}`}>
                   {bundleSelectedUnits} / {bundleRequiredUnits}
                 </p>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
+                <div
+                  className={`h-full rounded-full ${bundleSelectedUnits === bundleRequiredUnits ? 'bg-accent' : 'bg-accent'}`}
+                  style={{ width: `${bundleUnitProgress}%` }}
+                />
               </div>
             </div>
             <div className="grid gap-2">
@@ -755,17 +1196,17 @@ export default function POS({ settings }: { settings: SettingsMap }) {
                 const stock = product.inventory_balances?.quantity_on_hand ?? 0;
                 const availableAfterCart = stock - cartProductQuantity(product.id);
                 return (
-                  <div key={product.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border border-line bg-white/90 p-3">
+                  <div key={product.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-line bg-white/90 p-3">
                     <div className="min-w-0">
-                      <p className="truncate font-black">{product.name}</p>
-                      <p className="text-xs font-bold text-neutral-600">{Math.max(0, availableAfterCart)} available after current cart</p>
+                      <p className="break-words font-semibold">{product.name}</p>
+                      <p className="text-xs text-muted">{countLabel(Math.max(0, availableAfterCart), text('unit available', 'unit tersedia'), text('units available', 'unit tersedia'))}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button className={`${secondaryButtonClass} h-10 min-h-10 w-10 px-0`} onClick={() => changeBundleSelection(product, -1)}>
+                      <button aria-label={`Remove ${product.name} from bundle`} className={`${secondaryButtonClass} h-10 min-h-10 w-10 !p-0`} onClick={() => changeBundleSelection(product, -1)}>
                         <Minus className="h-4 w-4" />
                       </button>
-                      <span className="grid h-10 min-w-10 place-items-center rounded-xl bg-teal-50 px-3 font-black text-accent">{selected}</span>
-                      <button className={`${secondaryButtonClass} h-10 min-h-10 w-10 px-0`} onClick={() => changeBundleSelection(product, 1)}>
+                      <span className="grid h-10 min-w-10 place-items-center rounded-lg bg-accent/5 px-3 font-semibold text-accent">{selected}</span>
+                      <button aria-label={`Add ${product.name} to bundle`} className={`${secondaryButtonClass} h-10 min-h-10 w-10 !p-0`} onClick={() => changeBundleSelection(product, 1)}>
                         <Plus className="h-4 w-4" />
                       </button>
                     </div>
@@ -776,63 +1217,75 @@ export default function POS({ settings }: { settings: SettingsMap }) {
           </div>
         </Modal>
       ) : null}
-      <div className="h-20 sm:h-28 2xl:hidden" />
+      {cart.length > 0 ? <div className="h-64 sm:h-72 xl:hidden" /> : null}
       {method ? (
         <Modal
-          title={`Confirm ${method === 'qr' ? 'QR Payment' : method === 'cash' ? 'Cash Payment' : 'Complimentary (FOC)'}`}
+          title={`${text('Confirm', 'Sahkan')} ${method === 'qr' ? text('QR Payment', 'Bayaran QR') : method === 'cash' ? text('Cash Payment', 'Bayaran Tunai') : text('Complimentary (FOC)', 'Percuma (FOC)')}`}
           onClose={() => setMethod(null)}
           footer={
             <div className="grid w-full gap-2 sm:flex sm:justify-end">
-              <button className={secondaryButtonClass} onClick={() => setMethod(null)}>Cancel</button>
+              <button className={secondaryButtonClass} onClick={() => setMethod(null)}>{text('Cancel', 'Batal')}</button>
               <button className={buttonClass} disabled={confirmDisabled} onClick={confirmSale}>
-                {saving ? 'Saving...' : `Confirm ${method === 'complimentary' ? 'FOC' : method === 'cash' ? 'Cash Payment' : 'QR Payment'}`}
+                {saving ? text('Saving...', 'Menyimpan...') : `${text('Confirm', 'Sahkan')} ${method === 'complimentary' ? 'FOC' : method === 'cash' ? text('Cash Payment', 'Bayaran Tunai') : text('QR Payment', 'Bayaran QR')}`}
               </button>
             </div>
           }
         >
           <div className="grid gap-3">
+            {hasBundleInCart ? (
+              <p className="rounded-lg border-2 border-accent bg-accent/5 p-3 text-sm font-semibold text-accent">
+                {text('Bundle reminder: bundle price is charged as a set. Beer mix only controls which individual beer stock is deducted.', 'Peringatan set: harga set dicaj sebagai set. Campuran bir hanya tentukan stok bir individu mana ditolak.')}
+              </p>
+            ) : null}
             {cart.map((item) => (
               <div key={item.product.id} className="border-b border-line py-2">
-                <div className="flex justify-between gap-3">
-                  <span>{item.product.name} x {item.quantity}</span>
-                  <strong>{money(linePrice(item), String(settings.currency_symbol))}</strong>
+                <div className="flex items-start justify-between gap-3">
+                  <span className="min-w-0">
+                    <span className="block font-bold">{cartPreviewLabel(item, text)}</span>
+                    <span className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[0.62rem] font-semibold tracking-wide ${cartKindBadgeClass(item.kind)}`}>
+                      {cartKindLabel(item, text)}
+                    </span>
+                  </span>
+                  <strong className="shrink-0 text-right">{money(linePrice(item), String(settings.currency_symbol))}</strong>
                 </div>
                 {item.kind === 'bundle' ? (
-                  <p className="mt-1 text-xs font-bold text-neutral-600">
-                    {(item.components ?? []).map((component) => `${component.product.name} x ${component.quantity}`).join(', ')}
+                  <p className="mt-1 text-xs font-bold text-muted">
+                    {text('Beer stock reduced as', 'Stok bir ditolak sebagai')}: {(item.components ?? []).map((component) => `${component.product.name} x ${component.quantity}`).join(', ')}
                   </p>
                 ) : null}
               </div>
             ))}
-            <div className="rounded-2xl bg-shell p-3">
+            <div className="rounded-lg bg-shell p-3">
               <div className="flex justify-between text-sm font-bold">
-                <span>Subtotal</span>
+                <span>{text('Subtotal', 'Subtotal')}</span>
                 <span>{money(subtotal, String(settings.currency_symbol))}</span>
               </div>
-              <div className="mt-2 flex justify-between text-sm font-bold text-coral">
+              <div className="mt-2 flex justify-between text-sm font-bold text-accent">
                 <span>{text('Discount amount', 'Jumlah diskaun')}</span>
                 <span>- {money(discount, String(settings.currency_symbol))}</span>
               </div>
             </div>
-            <div className="flex justify-between text-lg font-black sm:text-xl">
-              <span>Total</span>
+            <div className="flex justify-between text-lg font-semibold sm:text-xl">
+              <span>{text('Total', 'Jumlah')}</span>
               <span>{money(total, String(settings.currency_symbol))}</span>
             </div>
             {method === 'complimentary' ? (
-              <p className="rounded-2xl bg-pink-50 p-3 text-sm font-black text-coral">Paid amount: {money(0, String(settings.currency_symbol))}. FOC is recorded as cost, not sales.</p>
+              <p className="rounded-lg bg-shell p-3 text-sm font-semibold text-accent">{text('Paid amount', 'Jumlah dibayar')}: {money(0, String(settings.currency_symbol))}. {text('FOC is recorded as cost, not sales.', 'FOC direkod sebagai kos, bukan jualan.')}</p>
             ) : null}
-            <p className="text-sm font-bold text-accent">{dualMoney(total, String(settings.currency_symbol))}</p>
-            <p className="rounded-2xl bg-shell p-3 text-sm font-bold">{text('Order accepted by', 'Diterima oleh')}: {orderTakenBy}</p>
+            <p className="rounded-lg bg-shell p-3 text-sm font-bold">{text('Order accepted by', 'Diterima oleh')}: {orderTakenBy}</p>
+            <Field label={text('Table number (optional)', 'Nombor meja (pilihan)')}>
+              <input className={inputClass} value={tableNumber} onChange={(event) => setTableNumber(event.target.value)} placeholder={text('Example: Table 8', 'Contoh: Meja 8')} />
+            </Field>
             {method === 'qr' ? (
               <>
                 <div>
-                  <p className="mb-2 text-sm font-black">{text('QR Payment type', 'Jenis Bayaran QR')}</p>
+                  <p className="mb-2 text-sm font-semibold">{text('QR Payment type', 'Jenis Bayaran QR')}</p>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                     {qrPaymentTypes.map((type) => (
                       <button
                         key={type}
                         type="button"
-                        className={`min-h-11 rounded-xl border px-2 py-2 text-center text-sm font-black leading-tight shadow-soft transition sm:min-h-12 sm:rounded-2xl ${
+                        className={`min-h-11 rounded-lg border px-2 py-2 text-center text-sm font-semibold leading-tight shadow-none transition sm:min-h-12 sm:rounded-lg ${
                           qrPaymentType === type
                             ? 'border-accent bg-accent text-white'
                             : 'border-line bg-white/90 text-ink hover:border-accent'
@@ -847,9 +1300,9 @@ export default function POS({ settings }: { settings: SettingsMap }) {
                 <Field label={text('QR Payment reference or transaction ID', 'Rujukan Bayaran QR atau ID transaksi')}>
                   <input className={inputClass} value={qrReference} onChange={(e) => setQrReference(e.target.value)} />
                 </Field>
-                <div className="rounded-2xl border border-line bg-shell p-3">
-                  <p className="font-black">{text('QR Payment receipt photo', 'Gambar resit Bayaran QR')}</p>
-                  <p className="mt-1 text-sm text-neutral-600">{qrReceipt ? qrReceipt.name : text('Camera should open automatically. Take a receipt photo before confirming.', 'Kamera akan dibuka secara automatik. Ambil gambar resit sebelum sahkan.')}</p>
+                <div className="rounded-lg border border-line bg-shell p-3">
+                  <p className="font-semibold">{text('QR Payment receipt photo', 'Gambar resit Bayaran QR')}</p>
+                  <p className="mt-1 text-sm text-muted">{qrReceipt ? qrReceipt.name : text('Camera should open automatically. Take a receipt photo before confirming.', 'Kamera akan dibuka secara automatik. Ambil gambar resit sebelum sahkan.')}</p>
                   <button className={`${secondaryButtonClass} mt-3`} onClick={() => document.getElementById(cameraInputId)?.click()}>
                     <Camera className="h-4 w-4" />
                     {text('Snap again', 'Ambil semula')}
@@ -858,9 +1311,32 @@ export default function POS({ settings }: { settings: SettingsMap }) {
               </>
             ) : null}
             {method === 'complimentary' ? (
-              <Field label={text('Complimentary (FOC) reason', 'Sebab FOC')}>
-                <textarea className={inputClass} value={complimentaryReason} onChange={(e) => setComplimentaryReason(e.target.value)} />
-              </Field>
+              <>
+                <Field label={text('Complimentary (FOC) reason', 'Sebab FOC')}>
+                  <textarea className={inputClass} value={complimentaryReason} onChange={(e) => setComplimentaryReason(e.target.value)} />
+                </Field>
+                {requireFocApproval ? (
+                  <div className={`rounded-lg border p-3 ${focApproved ? 'border-teal-200 bg-accent/5' : 'border-amber-200 bg-amber-50'}`}>
+                    <p className={`text-sm font-semibold ${focApproved ? 'text-accent' : 'text-warning'}`}>
+                      {focApproved ? text('Manager approval accepted', 'Kelulusan pengurus diterima') : text('Manager approval required', 'Kelulusan pengurus diperlukan')}
+                    </p>
+                    {!focApproved ? (
+                      <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                        <input
+                          className={inputClass}
+                          type="password"
+                          value={focApprovalPin}
+                          onChange={(event) => setFocApprovalPin(event.target.value)}
+                          placeholder={text('Approval password', 'Kata laluan kelulusan')}
+                        />
+                        <button type="button" className={buttonClass} disabled={!focApprovalPin || focApprovalBusy} onClick={() => void approveFoc()}>
+                          {focApprovalBusy ? text('Checking...', 'Menyemak...') : text('Approve FOC', 'Luluskan FOC')}
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </>
             ) : null}
           </div>
         </Modal>

@@ -1,0 +1,42 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+
+export async function testBookingSheetRange(db,{owner,tablet}){
+  let passed=0;
+  const check=(label,a,b)=>{assert.deepEqual(a,b,label);console.log('PASS',label);passed++;};
+  const reject=async(label,fn,re)=>{await assert.rejects(fn,re,label);console.log('PASS',label);passed++;};
+  const as=async id=>{await db.query('set role authenticated');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id]);};
+  const val=async(sql,args=[])=>Object.values((await db.query(sql,args)).rows[0]??{})[0];
+  const first='2027-01-04',second='2027-01-05';
+  const day=(date,name)=>({p_date:date,p_resources:{},p_rows:[{key:randomUUID(),number:1,id:null,expected:null,account_expected:null,booking:{lead_name:name,pickup_required:false,counts:{adults:2,children:0,infants:0,tour_leaders:0,tour_guides:0}},assignment:{},finance:{amount_due:200,payments:[{payment_date:'2026-09-01',amount:100,reference:'Deposit'}]}}]});
+  const save=(days,id=randomUUID())=>val('select public.save_booking_sheet_range($1::jsonb,$2)',[JSON.stringify(days),id]);
+  const count=()=>val('select count(*)::int from public.bookings where service_date between $1 and $2',[first,second]);
+  await as(owner);
+  const days=[day(first,'Monday Group'),day(second,'Tuesday Group')],id=randomUUID();
+  const saved=await save(days,id);
+  check('Weekly save retains each service date',saved.map(d=>d.date),[first,second]);
+  check('Weekly save creates both dates',await count(),2);
+  check('Weekly retry returns the original records',await save(days,id),saved);
+  check('Weekly retry cannot duplicate bookings',await count(),2);
+  const paymentCount=(await val('select public.read_booking_accounts($1)',[first])).payments.length+(await val('select public.read_booking_accounts($1)',[second])).payments.length;
+  check('Weekly retry cannot duplicate dated receipts',paymentCount,2);
+  check('Weekly audit identifies the named recorder',await val("select actor_id from public.audit_logs where action='booking_sheet_range' and entity_id=$1",[id]),owner);
+  const bad=[day(first,'Must Roll Back'),day(second,'')];
+  await reject('One invalid date rolls back the entire weekly save',()=>save(bad),/Row 1/);
+  check('No partial bookings survive a failed week',await count(),2);
+  await reject('Weekly duplicate dates are rejected',()=>save([day(first,'A'),day(first,'B')]),/twice/i);
+  await reject('Every weekly section requires a date',()=>save([day(first,'A'),day(null,'B')]),/service date/i);
+  await reject('Weekly save cannot span more than seven days',()=>save([day(first,'A'),day('2027-01-11','B')]),/seven-day/i);
+  await reject('Request ID cannot be reused for different rows',()=>save([day(first,'Changed')],id),/different details/i);
+  const monday=await val('select public.read_daily_booking_sheet($1)',[first]),b=monday.bookings[0];
+  const stale={p_date:first,p_resources:{},p_rows:[{key:b.id,id:b.id,number:1,expected:'2000-01-01T00:00:00Z',booking:{lead_name:'Old Device'},assignment:{},finance:{}}]};
+  await reject('Stale weekly edits cannot overwrite another device',()=>save([day(second,'Rollback With Stale'),stale]),/changed/i);
+  check('Stale weekly transaction leaves every date unchanged',await count(),2);
+  await as(tablet);await reject('Bar staff cannot save the booking week',()=>save(days),/permission|access/i);
+  await db.query('reset role');const planner=randomUUID();
+  await db.query('insert into auth.users(id,email) values($1,$2)',[planner,'weekly-planner@example.invalid']);
+  await db.query("update public.profiles set full_name='Weekly Planner',access_role_code='external_planner',status='active',is_anonymous=false where id=$1",[planner]);
+  await as(owner);await val('select public.sheet_planner_access($1,$2,true)',[first,planner]);await as(planner);
+  await reject('One approved date does not grant access to the whole week',()=>save(days),/permission|access|date|approved/i);
+  return passed;
+}

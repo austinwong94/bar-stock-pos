@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import {build} from 'esbuild';
+async function load(file){const b=await build({entryPoints:[file],bundle:true,write:false,format:'cjs',platform:'node'}),m={exports:{}};new Function('module','exports',b.outputFiles[0].text)(m,m.exports);return m.exports;}
+const {readDeliveryRecovery,writeDeliveryRecovery,deliveryRecoveryKey}=await load('src/lib/deliveryRecovery.ts');
+const {deviceKitchenWork,combineKitchenWork}=await load('src/lib/kitchenWorkQueue.ts');
+const uuid=()=>crypto.randomUUID(),actor=uuid(),request=uuid(),item=uuid(),draft=uuid(),stock=uuid(),time=new Date().toISOString();
+const values=new Map(),store={get length(){return values.size;},key:i=>[...values.keys()][i]??null,getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
+const key=deliveryRecoveryKey(undefined,actor,false,request);
+const d={version:1,receiptSource:false,request:{id:request,request_no:'KR-TEST',needed_for_date:'2026-10-14',purchase_request_items:[{id:item,item_name:'Crab',unit:'kg'}]},draft:null,draftId:draft,entries:{[item]:{quantity:'7',ingredientId:stock,size:'',pieces:'12'}},review:false,operation:null,updatedAt:time};
+const metric={...d,entries:{[item]:{...d.entries[item],quantity_measure:'g',quantity_value:'7000'}}};assert.equal(readDeliveryRecovery(JSON.stringify(metric)).entries[item].quantity,'7');
+assert.throws(()=>readDeliveryRecovery(JSON.stringify({...metric,entries:{[item]:{...metric.entries[item],quantity_value:'7'}}})));
+assert.throws(()=>readDeliveryRecovery(JSON.stringify({...metric,entries:{[item]:{...metric.entries[item],quantity_measure:'L'}}})));
+const sized={...d,entries:{[item]:{...d.entries[item],size:'5000',size_measure:'kg',size_value:'5'}}};assert.equal(readDeliveryRecovery(JSON.stringify(sized)).entries[item].size,'5000');
+assert.throws(()=>readDeliveryRecovery(JSON.stringify({...sized,entries:{[item]:{...sized.entries[item],size:'5'}}})));
+let raw=writeDeliveryRecovery(store,key,d,null);assert.deepEqual(readDeliveryRecovery(raw),d);
+assert.throws(()=>writeDeliveryRecovery(store,key,{...d,entries:{}},null),/another tab/);assert.equal(store.getItem(key),raw);
+const op={kind:'save',args:{p_id:draft,p_request_id:request,p_expected_version:0,p_operation_id:uuid(),p_items:[{item_id:item,ingredient_id:stock,quantity:7,base_per_unit:null,measured_pieces:12,ingredient_version:time,expected_base_unit:'unit',expected_updated_at:time,expected_received_quantity:0}]}};
+raw=writeDeliveryRecovery(store,key,{...d,operation:op},raw);assert.deepEqual(readDeliveryRecovery(store.getItem(key)).operation,op);
+const queue=deviceKitchenWork(store,actor,'Cook',undefined,()=>true);assert.equal(queue.length,1);assert.equal(queue[0].state,'uncertain');assert(queue[0].route.includes(encodeURIComponent(key)));assert.equal(deviceKitchenWork(store,uuid(),'Other',undefined,()=>true).length,0);assert.equal(deviceKitchenWork(store,actor,'Cook','other-project',()=>true).length,0);assert.equal(deviceKitchenWork(store,actor,'Cook',undefined,()=>false).length,0);
+assert.equal(combineKitchenWork([{...queue[0],source:'saved',key:'delivery:'+draft}],queue).length,1);
+assert.equal(combineKitchenWork([{...queue[0],source:'saved',id:uuid(),key:'delivery:another'}],queue).length,2,'Never guess that a different server draft is the same operation');
+for(const changed of [{...d,entries:{unknown:d.entries[item]}},{...d,operation:{...op,args:{...op.args,p_request_id:uuid()}}},{...d,operation:{...op,args:{...op.args,p_id:uuid()}}},{...d,operation:{...op,args:{...op.args,p_items:[...op.args.p_items,...op.args.p_items]}}},{...d,operation:{kind:'confirm',args:{p_id:draft,p_expected_version:0}}},{...d,updatedAt:'invalid'}])assert.throws(()=>readDeliveryRecovery(JSON.stringify(changed)));
+const saved={id:draft,request_id:request,version:2,status:'draft',updated_at:time,items:[{item_id:item,ingredient_id:stock,quantity:7,base_per_unit:null,measured_pieces:12,expected_updated_at:time,expected_received_quantity:0,expected_base_unit:'unit',purchase_name:'Crab',purchase_unit:'kg',ingredient_name:'Crab'}]};
+for(const kind of ['confirm','cancel']){const next={...d,draft:saved,review:true,operation:{kind,args:{p_id:draft,p_expected_version:2,...(kind==='cancel'?{p_reason:'Duplicate delivered quantity'}:{})}}};assert.deepEqual(readDeliveryRecovery(JSON.stringify(next)),next);assert.throws(()=>readDeliveryRecovery(JSON.stringify({...next,operation:{...next.operation,args:{...next.operation.args,p_expected_version:3}}})));}
+const before=[...values];assert.throws(()=>writeDeliveryRecovery({...store,setItem:()=>{throw Error('Quota');}},key,d,raw),/Quota/);assert.deepEqual([...values],before);
+assert.throws(()=>writeDeliveryRecovery({...store,setItem:()=>{}},key,d,raw),/not saved/);
+values.set(key,'corrupt');assert.equal(deviceKitchenWork(store,actor,'Cook',undefined,()=>true)[0].state,'unreadable');assert.equal(values.get(key),'corrupt');
+assert.throws(()=>writeDeliveryRecovery(store,key,d,null));
+values.set(key,raw);assert.equal(writeDeliveryRecovery(store,key,null,raw),null);assert.equal(store.getItem(key),null);
+console.log('PASS: delivery typing, exact frozen save/confirm/cancel, measured kg/pcs, account/project/permission isolation, exact queue deduplication, corrupt data retained, storage failure and conflicting-tab writes.');

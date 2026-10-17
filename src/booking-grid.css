@@ -1,0 +1,136 @@
+.booking-workspace-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 20px; margin-bottom: 10px; }
+.booking-workspace-heading h1 { margin: 0; font-weight: 700; }
+.booking-workspace-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; margin: 0; color: #6f626b; }
+.booking-workspace-summary > div { display: flex; align-items: baseline; gap: 4px; }
+.booking-workspace-summary dt { font-size: 12px; }
+.booking-workspace-summary dd { font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.booking-workspace-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.daily-sheet .booking-workspace-actions button { background: transparent; border-color: transparent; box-shadow: none; color: #6f626b; min-height: 36px; }
+.daily-sheet .booking-workspace-actions button:hover { background: #f0e9ed; color: #a7154b; }
+.booking-spreadsheet { min-width: 0; margin-top: 0; container-type: inline-size; }
+.booking-mobile-columns { display: none; }
+.daily-sheet .booking-sheet-sections { display: flex; align-items: center; margin: 0; gap: 8px; }
+.booking-sheet-sections .sheet-tabs { flex: 1; border: 0; }
+.daily-sheet .booking-sheet-sections .sheet-tabs button { min-height: 38px; font-size: 14px; padding: 7px 10px; border-bottom-width: 2px; }
+.booking-sheet-sections .sheet-icon { width: 36px; height: 36px; border-color: transparent; background: transparent; }
+.booking-grid-controls { position: sticky; top: calc(var(--workspace-header-height, 0px) + var(--service-date-height, 0px)); z-index: 10; background: #faf8f9; border-bottom: 1px solid #e6dfe3; }
+.booking-grid-actions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; justify-content: end; }
+.daily-sheet .booking-grid-actions button { min-height: 36px; height: 36px; border-radius: 6px; font-size: 13px; white-space: nowrap; box-shadow: none; }
+.booking-grid-sizing, .booking-grid-zoom, .booking-grid-pan { display: flex; align-items: center; gap: 4px; }
+.booking-grid-sizing { padding: 0; justify-content: end; }
+.daily-sheet .booking-grid-sizing button, .daily-sheet .booking-grid-pan button { display: grid; place-items: center; width: 28px; min-width: 28px; min-height: 32px; border-radius: 4px; color: #776b73; }
+.booking-grid-sizing button:hover:not(:disabled), .booking-grid-pan button:hover:not(:disabled) { background: #eee7ec; }
+.booking-grid-zoom output { width: 40px; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; }
+.daily-sheet .booking-spreadsheet input[type=range] { border: 0; border-radius: 0; padding: 0; height: 24px; min-height: 24px; accent-color: #b3164f; background: transparent; cursor: ew-resize; }
+.daily-sheet .booking-grid-zoom input[type=range] { width: 60px; }
+.booking-grid-pan { padding: 0 2px; background: #f1edef; }
+.daily-sheet .booking-grid-pan input[type=range] { flex: 1; min-width: 0; width: 0; height: 20px; min-height: 20px; accent-color: #897a84; }
+.daily-sheet .booking-grid-pan button { min-height: 22px; }
+.grid-column-label { display: block; overflow: hidden; text-overflow: ellipsis; padding-right: 5px; }
+.grid-column-resize { position: absolute; right: -4px; top: 0; bottom: 0; width: 10px; cursor: col-resize; touch-action: none; z-index: 6; }
+.grid-column-resize:hover, .grid-column-resize:focus-visible { background: #b3164f66; outline: 2px solid #b3164f; outline-offset: -2px; }
+.booking-grid-height { display: grid; place-items: center; height: 24px; cursor: ns-resize; touch-action: none; background: #eee8ec; border: 1px solid #d5c8cf; border-top: 0; color: #786572; }
+.booking-grid-height:focus-visible { outline: 2px solid #b3164f; }
+.booking-grid-table .grid-day-heading > th:first-child { position: static; width: auto; min-width: 0; text-align: left; background: #ebdce7; padding: 0 !important; }
+.grid-day-heading th > div, .grid-day-message { position: sticky; left: 0; width: max-content; max-width: calc(100vw - 36px); display: flex; align-items: center; gap: 12px; padding: 6px 10px; min-height: 36px; }
+.grid-day-heading strong { font-size: 13px; }
+.grid-day-heading span { color: #786572; font-size: 11px; }
+.daily-sheet .grid-day-heading button, .daily-sheet .grid-day-message button { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #a7154b; min-height: 30px; }
+.booking-grid-toolbar { display: grid; grid-template-columns: minmax(0,1fr) auto auto; align-items: center; gap: 8px; padding: 6px 0; }
+.daily-sheet .booking-grid-views { display: flex; flex-wrap: nowrap; gap: 0; min-width: 0; }
+.daily-sheet .booking-grid-views button { padding: 6px 10px; min-height: 36px; font-size: 13px; border: 0; border-radius: 4px; white-space: nowrap; color: #756771; }
+.daily-sheet .booking-grid-views button[aria-pressed=true] { color: #a7154b; background: #f1e5ec; box-shadow: none; }
+.booking-grid-status { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 8px 10px; background: #efddec; border: 1px solid #d9bed1; font-size: 12px; }
+.booking-grid-status span { margin-left: auto; font-weight: 600; }
+.booking-grid-scroll { overflow: auto; contain: paint; max-height: 72dvh; min-height: 200px; border: 1px solid #d5c8cf; border-top: 0; overscroll-behavior-x: contain; }
+.booking-grid-table { width: max-content; table-layout: fixed; border-collapse: separate; border-spacing: 0; background: #fff; }
+.booking-grid-table th, .booking-grid-table td { border-right: 1px solid #eee9ec; border-bottom: 1px solid #e6dfe3; padding: 0 !important; vertical-align: middle; font-size: 12px; }
+.booking-grid-table thead th { position: sticky; top: 0; z-index: 3; background: #f0ebee; height: 36px; padding: 6px !important; text-align: left; white-space: nowrap; color: #61535c; font-weight: 600; }
+.booking-grid-table tr > th:first-child { position: sticky; left: 0; z-index: 2; text-align: center; background: #f1edef; width: 42px; min-width: 42px; }
+.booking-grid-table thead tr > th:first-child { z-index: 5; }
+.booking-grid-table thead th.grid-name-head, .booking-grid-table td.grid-name-cell { position: sticky; left: 42px; z-index: 2; background: var(--grid-row-color,#fff); border-right: 2px solid #d9cad3; }
+.booking-grid-table thead th.grid-name-head { z-index: 4; background: #f1edef; }
+.booking-grid-table td { height: 30px; }
+.daily-sheet .booking-spreadsheet .booking-grid-table input { border: 0; border-radius: 0; min-height: 30px; height: 30px; padding: 3px 7px; background: transparent; font-size: 13px; width: 100%; }
+.daily-sheet .booking-grid-table input:focus { background: #fff; outline-offset: -2px; }
+.grid-done-cell { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 30px; cursor: pointer; }
+.daily-sheet .booking-spreadsheet .booking-grid-table .grid-done-cell input[type=checkbox] { appearance: auto; width: 18px; height: 18px; min-height: 18px; margin: 0; padding: 0; accent-color: #b3164f; cursor: pointer; }
+.grid-done-cell:has(input:disabled) { cursor: default; }
+.booking-grid-table tbody tr { --grid-row-color: #fff; }
+.booking-grid-table tbody tr:nth-child(even) { --grid-row-color: #faf8fa; }
+.booking-grid-table tbody td { background: var(--grid-row-color); }
+.booking-grid-table tbody tr:hover { --grid-row-color: #f7f0f4; }
+.booking-grid-table tbody tr:focus-within { --grid-row-color: #fbe8f1; }
+.booking-grid-table tbody tr:focus-within > th:first-child { color: #a7154b; box-shadow: inset 3px 0 #b3164f; background: #fbe8f1; }
+.booking-grid-table .grid-row-draft > th:first-child { box-shadow: inset 3px 0 #b77e15; }
+.booking-grid-table tbody tr.grid-row-inactive { --grid-row-color: #fbeef0; color: #9b3d50; }
+.booking-grid-table .grid-row-inactive .grid-name-cell { text-decoration: line-through; }
+.booking-grid-table .grid-readonly { display: block; padding: 3px 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #796874; }
+.booking-grid-table tfoot th, .booking-grid-table tfoot td { position: sticky; bottom: 0; z-index: 3; background: #f0edf0; height: 34px; font-weight: 700; padding: 5px !important; }
+.grid-record { display: flex; align-items: center; gap: 6px; padding: 0 5px; font-size: 11px; white-space: nowrap; }
+.grid-record small { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #7c6876; font-size: 11px; }
+.daily-sheet .grid-record button { margin-left: auto; flex-shrink: 0; display: grid; place-items: center; height: 28px; min-height: 28px; width: 28px; min-width: 28px; padding: 0; }
+.booking-grid-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 0; font-size: 12px; color: #74636f; }
+.booking-spreadsheet-wide { position: fixed; inset: 0; z-index: 45; background: #faf8f9; padding: 12px 16px calc(16px + var(--preview-toolbar-height, 0px)); margin: 0; display: flex; flex-direction: column; }
+.booking-spreadsheet-wide .booking-grid-scroll { flex: 1; max-height: none; }
+.booking-spreadsheet-wide .booking-grid-controls { position: static; }
+.booking-spreadsheet-wide .booking-grid-height { display: none; }
+.daily-sheet .ui-control { min-height: 38px; font-size: 14px; }
+@media (pointer: coarse), (max-width:639px) {
+ .daily-sheet .ui-control { min-height: 44px; }
+}
+.booking-layout-toggle { display: flex; gap: 3px; border: 1px solid #dfd2da; padding: 3px; border-radius: 6px; }
+.booking-entry-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 10px; }
+.daily-sheet .booking-layout-toggle button { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 12px; min-height: 40px; font-size: 13px; border-radius: 4px; }
+.booking-layout-toggle button[aria-pressed=true] { background: #b3164f; color: white; }
+@container (max-width:900px) {
+ .booking-grid-toolbar { grid-template-columns: minmax(0,1fr) auto; gap: 4px 8px; }
+ .booking-grid-views { grid-column: 1 / -1; }
+ .booking-grid-sizing { grid-column: 1; grid-row: 2; justify-content: start; }
+ .booking-grid-actions { grid-column: 2; grid-row: 2; }
+}
+@media(max-width:1199px) {
+ .booking-workspace-actions button > span { display: none; }
+ [data-sidebar-hidden=true] .booking-workspace-heading:not(.booking-week-heading) h1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
+@media(max-width:639px) {
+ .booking-workspace-heading { gap: 4px; margin-bottom: 4px; }
+ .booking-workspace-heading:not(.booking-week-heading) h1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+ .booking-workspace-summary { gap: 8px; flex: 1; }
+ .booking-workspace-summary > div { gap: 3px; }
+ .booking-workspace-summary dt { font-size: 11px; }
+ .booking-workspace-summary dd { font-size: 13px; }
+ .booking-workspace-actions { gap: 0; }
+ .daily-sheet .booking-workspace-actions button { min-width: 36px; min-height: 44px; padding: 7px; }
+ .daily-sheet .booking-sheet-sections { gap: 4px; margin-block: 4px; }
+ .daily-sheet .booking-sheet-sections .sheet-tabs { flex-wrap: nowrap; gap: 0; }
+ .daily-sheet .booking-sheet-sections .sheet-tabs button { font-size: 13px; padding-inline: 6px; min-width: 0; min-height: 44px; }
+ .daily-sheet .booking-entry-toolbar button { padding-inline: 7px; font-size: 12px; }
+ .daily-sheet .booking-layout-toggle button { padding-inline: 7px; }
+ .booking-mobile-columns { display: block; padding-top: 4px; }
+ .daily-sheet .booking-grid-toolbar .booking-grid-views { display: none; }
+ .booking-grid-toolbar { gap: 4px; padding-block: 4px; }
+ .booking-grid-sizing, .booking-grid-actions { grid-row: 1; }
+ .booking-grid-sizing { min-width: 0; gap: 0; }
+ .daily-sheet .booking-grid-actions button { min-width: 44px; min-height: 44px; height: 44px; padding: 7px; font-size: 12px; }
+ .booking-grid-actions > button:first-child span { display: none; }
+ .booking-grid-zoom { gap: 0; }
+ .daily-sheet .booking-grid-zoom input[type=range] { display: none; }
+ .booking-grid-zoom output { width: 30px; }
+ .daily-sheet .booking-grid-sizing button { min-height: 44px; }
+ .booking-grid-status { padding: 6px 8px; gap: 4px 10px; font-size: 11px; }
+ .booking-grid-status span { margin-left: 0; }
+ .grid-day-heading button span { display: none; }
+ .grid-day-heading strong, .grid-day-heading span { white-space: nowrap; }
+ .daily-sheet .grid-day-heading button { min-width: 30px; justify-content: center; }
+ .daily-sheet .booking-grid-views { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0,1fr); }
+ .daily-sheet .booking-grid-views button { min-width: 0; min-height: 40px; padding-inline: 3px; font-size: 12px; }
+ .daily-sheet .booking-spreadsheet .booking-grid-table input { font-size: 16px; }
+ .booking-spreadsheet-wide { padding: 8px; }
+}
+@media(max-width:359px) {
+ .daily-sheet .booking-grid-actions button { min-width: 40px; padding-inline: 5px; }
+ .booking-grid-actions { gap: 2px; }
+ .booking-workspace-summary { gap: 6px; }
+ .booking-workspace-summary > div { flex-direction: column; gap: 0; }
+}

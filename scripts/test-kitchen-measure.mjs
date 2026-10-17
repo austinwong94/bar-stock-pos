@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {build} from 'esbuild';
+const b=await build({entryPoints:['src/lib/kitchenMeasure.ts'],bundle:true,write:false,format:'cjs',platform:'node'}),m={exports:{}};new Function('module','exports',b.outputFiles[0].text)(m,m.exports);
+const {entryQuantity,changeMeasure,measureOptions,validMeasure,measuredPackedCount}=m.exports;
+const rice={base_unit:'g',kitchen_key:'rice',kitchen_unit:'pack',kitchen_factor:5000},oil={base_unit:'ml',kitchen_key:'oil',kitchen_unit:'botol',kitchen_factor:750},eggs={base_unit:'unit',kitchen_key:'eggs',kitchen_unit:'biji',kitchen_factor:1};
+assert.equal(entryQuantity('5',rice,'kg'),5000);assert.equal(entryQuantity('5000',rice,'g'),5000);assert.equal(entryQuantity('1',rice),5000);
+assert.equal(entryQuantity('2',oil,'L'),2000);assert.equal(entryQuantity('2000',oil,'ml'),2000);assert.equal(entryQuantity('1',oil),750);
+assert.deepEqual(changeMeasure('5',rice,'kg','g'),{value:'5000',measure:'g'});assert.deepEqual(changeMeasure('5000',rice,'g','pack'),{value:'1',measure:undefined});
+assert.deepEqual(changeMeasure('1',oil,undefined,'L'),{value:'0.75',measure:'L'});assert.equal(changeMeasure('1',oil,'L','botol'),null,'Never round a non-exact bottle quantity');
+assert.deepEqual(changeMeasure('',rice,undefined,'kg'),{value:'',measure:'kg'});assert.equal(changeMeasure('invalid',rice,'kg','g'),null);
+assert.equal(entryQuantity('0',rice,'kg'),0);assert.equal(entryQuantity('.5',rice,'kg'),500);assert.equal(entryQuantity('0.000001',rice,'kg'),null,'Unsupported base precision is rejected, never rounded');
+assert.equal(entryQuantity('2',rice,'L'),null);assert.equal(entryQuantity('1',eggs,'kg'),null);assert.equal(entryQuantity('1e3',rice,'kg'),null);assert.equal(validMeasure('L','g'),false);assert.deepEqual(measureOptions(eggs),[]);
+assert.equal(measuredPackedCount('1','0.5',5000,rice,'g'),5000.5);assert.equal(measuredPackedCount('1','0.1',750,oil,'ml'),750.1);assert.equal(measuredPackedCount('0','0',5000,rice,'g'),0);assert.equal(measuredPackedCount('1','0.001',5000,rice,'g'),null);assert.equal(measuredPackedCount('1.5','1',5000,rice,'g'),null);
+const a=await build({entryPoints:['src/lib/kitchenArrivalDraft.ts'],bundle:true,write:false,format:'cjs',platform:'node'}),am={exports:{}};new Function('module','exports',a.outputFiles[0].text)(am,am.exports);
+assert.equal(am.exports.canKeepArrivalAmount,undefined,'No amount-retention shortcut is exported');
+console.log('PASS: exact weight/volume entries, safe unit switching, zero/blank editing, no rounding or weight-to-pieces, container conversion guards and legacy quantities.');
