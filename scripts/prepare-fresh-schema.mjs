@@ -18,9 +18,11 @@ await withDatabase(async db=>{
   await db.query("insert into app_settings(key,value) values('allow_access_code_login','false') on conflict(key) do update set value='false'");
   const url='postgres://postgres@127.0.0.1:55441/'+db.database;
   const schema=await dump(url,['--schema-only','--schema=public','--schema=private_guest','--no-privileges']);
-  const reference=['departments','access_roles','permissions','access_role_permissions','app_settings','categories','activity_types','item_catalogue','referral_settings','booking_privacy_settings','receipt_ai_settings','kitchen_alert_settings'];
+  const reference=['departments','access_roles','permissions','access_role_permissions','app_settings','categories','activity_types','ingredient_items','catalogue_items','referral_settings','booking_privacy_settings','receipt_ai_settings','kitchen_alert_settings'];
   const tables=(await db.query("select tablename from pg_tables where schemaname='public'")).rows.map(r=>r.tablename);
   const selected=reference.filter(t=>tables.includes(t));
+  // Catalogue defaults from old seeds are not quantities for new requests.
+  if(selected.includes('catalogue_items'))await db.query('update public.catalogue_items set default_quantity=null');
   const data=await dump(url,['--data-only','--column-inserts',...selected.flatMap(t=>['--table','public.'+t])]);
   const buckets=(await db.query('select * from storage.buckets order by id')).rows;
   // pg_dump clears the session search path; identity arguments below include

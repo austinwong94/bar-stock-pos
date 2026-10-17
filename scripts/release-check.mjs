@@ -8,6 +8,7 @@ import {runStaffWorkTests} from '../supabase/tests/staff-work.mjs';
 import {runKitchenMeasureTests} from '../supabase/tests/kitchen-measure.mjs';
 import {runKitchenUnitBatchTests} from '../supabase/tests/kitchen-unit-batch.mjs';
 import {runStaffAccountTests} from '../supabase/tests/staff-accounts.mjs';
+import {runKitchenCatalogueTests} from '../supabase/tests/kitchen-catalogue.mjs';
 import {walk} from './release/admission.mjs';
 import {createServer} from 'node:http';
 import path from 'node:path';
@@ -56,6 +57,7 @@ try{
  await stage('Audited staff accounts and last-owner protection','native-postgres',()=>runStaffAccountTests());
  await stage('Metric kitchen ledger journey','native-postgres',()=>runKitchenMeasureTests());
  await stage('Atomic bulk kitchen unit settings','native-postgres',()=>runKitchenUnitBatchTests());
+ await stage('Kitchen catalogue recovery without stock import','native-postgres',()=>runKitchenCatalogueTests());
  await stage('Build','static',()=>command(['node_modules/vite/bin/vite.js','build'],{VITE_DEMO_MODE:mode==='sample'?'true':'false'}));
  await stage('Page delivery and load budgets','built-browser-and-static',()=>command(['scripts/test-build-delivery.mjs',mode]));
  await stage('Account identity changes','local-browser-contract',()=>command(['scripts/test-access-session-ui.mjs']));
