@@ -9,6 +9,8 @@ const server=await createServer({base:'/',server:{host:'127.0.0.1',port:0},defin
 let browser,page;
 try{
  await server.listen();const base=server.resolvedUrls.local[0].replace(/\/$/,'');browser=await chromium.launch();page=await browser.newPage({viewport:{width:390,height:844}});
+ // Fixed receipt dates need a fixed browser calendar for missing/zero/future-day assertions.
+ await page.clock.setFixedTime(new Date('2026-10-14T04:00:00Z'));
  const errors=[],remote=[];page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(/supabase\.(co|in)|api.openai.com/.test(r.url()))remote.push(r.url());});
  await page.goto(base);await page.getByRole('button',{name:'Austin (Owner)',exact:true}).click();await page.locator('main').waitFor();
  await page.goto(base+'/#/kitchen/finance');await page.getByRole('button',{name:'Finance CSV',exact:true}).waitFor();

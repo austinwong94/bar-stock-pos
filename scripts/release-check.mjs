@@ -62,6 +62,7 @@ try{
  await stage('Page delivery and load budgets','built-browser-and-static',()=>command(['scripts/test-build-delivery.mjs',mode]));
  await stage('Account identity changes','local-browser-contract',()=>command(['scripts/test-access-session-ui.mjs']));
  await stage('Admin staff accounts and username login','local-browser-contract',()=>command(['scripts/test-staff-accounts-ui.mjs']));
+ await stage('Receipt upload completion and recovery','local-browser-contract',()=>command(['scripts/test-receipt-upload-ui.mjs']));
  await stage('Financial failure and recovery screens','local-browser-contract',()=>command(['scripts/test-bar-financial-ui.mjs']));
  await stage('Fresh manual bar and water entries','sample-browser',()=>sampleCommand(['scripts/test-manual-entry-ui.mjs']));
  await stage('Measured receiving review and recovery','sample-browser',()=>sampleCommand(['scripts/test-measured-receiving-ui.mjs']));

@@ -33,11 +33,14 @@ async function photoStore<T>(mode: IDBTransactionMode, action: (store: IDBObject
     };
   });
 }
-export async function savePurchasePhoto(file: File, actor: string, folder: string, kind: 'receipt' | 'items'): Promise<PurchasePhoto> {
+export class DuplicatePurchasePhotoError extends Error {}
+
+export async function savePurchasePhoto(file: File, actor: string, folder: string, kind: 'receipt' | 'items', otherHash?: string): Promise<PurchasePhoto> {
   if (!['image/jpeg','image/png','image/webp'].includes(file.type) || file.size <= 0 || file.size > 10 * 1024 * 1024)
     throw new Error('Choose a JPG, PNG or WebP photo up to 10 MB.');
   const bytes = await file.arrayBuffer();
   const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), x => x.toString(16).padStart(2, '0')).join('');
+  if (hash === otherHash) throw new DuplicatePurchasePhotoError('Use a different photo for the receipt and the items.');
   const extension = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg';
   const path = `${actor}/${folder}/${kind}-${crypto.randomUUID()}.${extension}`;
   if (isDemoMode) await photoStore('readwrite', store => store.put(file, path));

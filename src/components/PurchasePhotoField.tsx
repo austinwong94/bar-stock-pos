@@ -1,16 +1,17 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Camera, Check, ImagePlus } from 'lucide-react';
 import { useLanguage } from '../lib/language';
 import { readErrorMessage } from '../lib/opsData';
-import { purchasePhotoUrl, savePurchasePhoto, type PurchasePhoto } from '../lib/purchaseEvidence';
+import { DuplicatePurchasePhotoError, purchasePhotoUrl, savePurchasePhoto, type PurchasePhoto } from '../lib/purchaseEvidence';
 
-export function PurchasePhotoField({ label, kind, actor, folder, value, otherHash, onChange, disabled = false }: {
+export function PurchasePhotoField({ label, kind, actor, folder, value, otherHash, onChange, onBusyChange, disabled = false }: {
   label: string; kind: 'receipt' | 'items'; actor: string; folder: string;
-  value: PurchasePhoto | null; otherHash?: string; onChange: (photo: PurchasePhoto) => void; disabled?: boolean;
+  value: PurchasePhoto | null; otherHash?: string; onChange: (photo: PurchasePhoto) => void; onBusyChange?: (busy: boolean) => void; disabled?: boolean;
 }) {
   const { text } = useLanguage();
   const id = useId();
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [url, setUrl] = useState('');
+  const uploading = useRef(false);
   useEffect(() => {
     let active = true, blob = '';
     if (value) void purchasePhotoUrl(value.path).then(next => { blob = next; if (active) setUrl(next); else if (next.startsWith('blob:')) URL.revokeObjectURL(next); }).catch(() => setUrl(''));
@@ -18,14 +19,14 @@ export function PurchasePhotoField({ label, kind, actor, folder, value, otherHas
     return () => { active = false; if (blob.startsWith('blob:')) URL.revokeObjectURL(blob); };
   }, [value?.path]);
   async function upload(file?: File) {
-    if (!file || busy || disabled) return;
-    setBusy(true); setError('');
+    if (!file || uploading.current || disabled) return;
+    uploading.current = true; setBusy(true); setError(''); onBusyChange?.(true);
+    let photo: PurchasePhoto | undefined;
     try {
-      const photo = await savePurchasePhoto(file, actor, folder, kind);
-      if (photo.hash === otherHash) throw new Error(text('Use a different photo for the receipt and the items.', 'Gunakan foto berbeza untuk resit dan barang.'));
-      onChange(photo);
-    } catch (e) { setError(readErrorMessage(e, text('Photo not saved. Try again.', 'Foto belum disimpan. Cuba lagi.'))); }
-    finally { setBusy(false); }
+      photo = await savePurchasePhoto(file, actor, folder, kind, otherHash);
+    } catch (e) { setError(e instanceof DuplicatePurchasePhotoError ? text('Use a different photo for the receipt and the items.', 'Gunakan foto berbeza untuk resit dan barang.') : readErrorMessage(e, text('Photo not saved. Try again.', 'Foto belum disimpan. Cuba lagi.'))); }
+    finally { uploading.current = false; setBusy(false); onBusyChange?.(false); }
+    if (photo) onChange(photo);
   }
   return <div data-photo-kind={kind} className="min-w-0 rounded-md border border-line p-2.5">
     <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold">{value ? <Check size={14} className="shrink-0 text-palm"/> : null}{label} <span className="text-danger">*</span></p>
