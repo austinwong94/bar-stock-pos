@@ -20,6 +20,9 @@ import { hasAdminAccess, unlockAdminAccess } from '../lib/adminAccess';
 import { useSharedRefresh } from '../lib/useSharedRefresh';
 import { readAllRows } from '../lib/readAllRows';
 import { blankProductForm, parseProductForm, type ProductForm } from '../lib/productSetup';
+import { useAccess } from '../lib/access';
+import { definitiveInitialSaveFailure } from '../lib/saveAttempt';
+import { productRecoveryKey, readProductRecovery, writeProductRecovery, productSaveConfirmed, withProductSaveLock, productSaveDeadline, type ProductSaveRecovery } from '../lib/productSaveRecovery';
 
 function countLabel(count: number, singular: string, plural: string) {
   return `${count} ${count === 1 ? singular : plural}`;
@@ -74,7 +77,7 @@ function friendlyAdminError(message: string) {
   if (lower.includes('verify_admin_access') || lower.includes('function') || lower.includes('column')) {
     return 'Database setup is unavailable. Ask the owner to check the deployment before retrying.';
   }
-  if (lower.includes('bucket') || lower.includes('storage')) {
+  if (lower.includes('bucket') || lower.includes('storage.objects')) {
     return 'Photo storage is unavailable. Keep this form open and ask the owner to check storage.';
   }
   if (lower.includes('row-level security') || lower.includes('permission denied') || lower.includes('policy')) {
@@ -586,6 +589,11 @@ function CloudHealthPanel() {
   );
 }
 export default function Products({ settings, onSettingsSaved }: { settings: SettingsMap; onSettingsSaved: (settings: SettingsMap) => void }) {
+  const { profile } = useAccess();
+  return <ProductWorkspace key={profile?.id ?? 'no-account'} settings={settings} onSettingsSaved={onSettingsSaved} actorId={profile?.id ?? null} />;
+}
+
+function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: SettingsMap; onSettingsSaved: (settings: SettingsMap) => void; actorId: string | null }) {
   const toast = useToast();
   const { text } = useLanguage();
   const [products, setProducts] = useState<ProductWithStock[]>([]);
@@ -598,6 +606,7 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
   const [bundleDirty, setBundleDirty] = useState(false);
   const [bundleSaving, setBundleSaving] = useState(false);
   const [productSaving, setProductSaving] = useState(false);
+  const productSavingRef = useRef(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [adminPin, setAdminPin] = useState('');
   const [demoAdminUnlocked, setDemoAdminUnlocked] = useState(hasAdminAccess);
@@ -605,6 +614,47 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
   const productFormId = useId();
   const [readError, setReadError] = useState('');
   const readGeneration = useRef(0);
+  const pendingKey = isSupabaseConfigured && actorId ? productRecoveryKey(import.meta.env.VITE_SUPABASE_URL ?? 'cloud', actorId) : null;
+  function loadPending() {
+    let raw: string | null = null;
+    try { raw = pendingKey ? localStorage.getItem(pendingKey) : null; return { raw, operation: readProductRecovery(raw, actorId ?? undefined), error: '' }; }
+    catch (failure) { return { raw, operation: null, error: (failure as Error).message }; }
+  }
+  const [recovery, setRecovery] = useState(loadPending);
+  const alive = useRef(true);
+  const pending = recovery.operation;
+  function retainProduct(next: ProductSaveRecovery | null, expected: string | null) {
+    if (!pendingKey) throw Error(text('Sign in again before saving products.', 'Log masuk semula sebelum menyimpan produk.'));
+    const raw = writeProductRecovery(localStorage, pendingKey, next, expected);
+    setRecovery({ raw, operation: next, error: '' });
+    return raw;
+  }
+  async function lockProduct(save: () => Promise<void>) {
+    if (!pendingKey) throw Error(text('Sign in again before saving products.', 'Log masuk semula sebelum menyimpan produk.'));
+    await withProductSaveLock(navigator.locks, pendingKey, save);
+  }
+  function productError(failure: unknown) {
+    const code = (failure as {code?: string})?.code;
+    if (code === 'PRODUCT_LOCKED') return text('Another tab is saving a product. Wait for it to finish, then check the saved product.', 'Tab lain sedang menyimpan produk. Tunggu sehingga selesai, kemudian semak produk disimpan.');
+    if (code === 'PRODUCT_LOCK_UNAVAILABLE') return text('An updated browser is required to save products safely.', 'Pelayar terkini diperlukan untuk menyimpan produk dengan selamat.');
+    if (code === 'PRODUCT_SAVE_UNCERTAIN') return text('The response could not be verified. Check your connection before continuing.', 'Jawapan tidak dapat disahkan. Semak sambungan sebelum meneruskan.');
+    return friendlyAdminError((failure as Error).message || text('Product could not be saved. Check your connection.', 'Produk tidak dapat disimpan. Semak sambungan.'));
+  }
+  useEffect(() => {
+    alive.current = true;
+    function changed(event: StorageEvent) {
+      if (event.key !== pendingKey && event.key !== null) return;
+      const next = loadPending(); setRecovery(next); setForm(null); setImageFile(null);
+    }
+    window.addEventListener('storage', changed);
+    return () => { alive.current = false; window.removeEventListener('storage', changed); };
+  }, [pendingKey]);
+  useEffect(() => {
+    if (!productSaving) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [productSaving]);
 
   async function refresh(_canRepairDefaults = demoAdminUnlocked) {
     if (!isSupabaseConfigured) {
@@ -708,7 +758,11 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
   }
 
   function openProductForm(next: ProductForm | null) {
-    if (productSaving) return;
+    if (productSavingRef.current) return;
+    if (next && (pending || recovery.error)) {
+      toast.error(text('Check the pending product save first.', 'Semak simpanan produk yang belum disahkan dahulu.'));
+      return;
+    }
     setImageFile(null);
     setForm(next);
   }
@@ -735,12 +789,16 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
 
   async function save(event: FormEvent) {
     event.preventDefault();
-    if (!effectiveForm || productSaving) return;
+    if (!effectiveForm || productSavingRef.current || pending || recovery.error) return;
     if (!effectiveForm.category_id) {
       toast.error(text('Choose a category before saving.', 'Pilih kategori sebelum simpan.'));
       return;
     }
     const parsed = parseProductForm(effectiveForm);
+    if (effectiveForm.id && !effectiveForm.source_updated_at) {
+      toast.error(text('Close and reopen this product to load its latest details.', 'Tutup dan buka semula produk ini untuk memuatkan butiran terkini.'));
+      return;
+    }
     if ('error' in parsed) {
       const errorMalay: Record<string, string> = {
         'Enter a product name.': 'Masukkan nama produk.',
@@ -754,12 +812,15 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
       toast.error(text(errorText, errorMalay[errorText] ?? errorText));
       return;
     }
+    productSavingRef.current = true;
     setProductSaving(true);
     try {
+      const saveCurrent = async () => {
       const payload = { ...parsed.payload };
       if (isSupabaseConfigured && imageFile) {
-        payload.image_url = await uploadProductImage(imageFile);
+        payload.image_url = await productSaveDeadline(uploadProductImage(imageFile));
       }
+      if (!alive.current) return;
       if (!isSupabaseConfigured) {
         saveLocalProduct({
           id: effectiveForm.id,
@@ -774,27 +835,58 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
         toast.success(text('Product saved.', 'Produk disimpan.'));
         return;
       }
-      const result = await supabase.rpc('save_product_checked', {
+      const operation: ProductSaveRecovery = { version: 1, attempted: false, createdAt: new Date().toISOString(), args: {
         p_product_id: effectiveForm.id ?? null,
         p_payload: payload,
         p_source_updated_at: effectiveForm.id ? effectiveForm.source_updated_at ?? null : null,
-      });
-      if (result.error) {
-        if (result.error.message.toLowerCase().includes('another device')) {
-          await refresh(false);
-        }
-        toast.error(friendlyAdminError(result.error.message));
-        return;
-      }
-      setImageFile(null);
-      setForm(null);
-      await refresh();
-      toast.success(text('Product saved.', 'Produk disimpan.'));
+        p_request_id: crypto.randomUUID(), p_expected_actor_id: actorId!,
+      }};
+      const raw = retainProduct(operation, null);
+      await submitProduct(operation, raw);
+      };
+      if (isSupabaseConfigured) await lockProduct(saveCurrent); else await saveCurrent();
     } catch (failure) {
-      toast.error(friendlyAdminError((failure as Error).message || text('Product could not be saved. Keep this form open and check your connection.', 'Produk tidak dapat disimpan. Kekalkan borang ini dan semak sambungan.')));
+      if (!alive.current) return;
+      const restored = loadPending(); setRecovery(restored);
+      if (restored.raw) { setForm(null); setImageFile(null); }
+      toast.error(productError(failure));
     } finally {
+      productSavingRef.current = false;
       setProductSaving(false);
     }
+  }
+
+  async function submitProduct(operation: ProductSaveRecovery, expected: string | null) {
+    let sent = false;
+    let attemptedRaw: string | null = expected;
+    try {
+      attemptedRaw = retainProduct({ ...operation, attempted: true }, expected);
+      sent = true;
+      const result = await productSaveDeadline<{data: unknown; error: {code?: string; message: string} | null}>(supabase.rpc('save_product_checked', operation.args));
+      if (!alive.current) return;
+      if (result.error) throw result.error;
+      if (!productSaveConfirmed(result.data, operation)) throw Error(text('The save reply could not be verified. Check the saved product before adding another.', 'Jawapan simpanan tidak dapat disahkan. Semak produk disimpan sebelum menambah yang lain.'));
+      retainProduct(null, attemptedRaw);
+      setImageFile(null); setForm(null);
+      await refresh();
+      if (alive.current) toast.success(text('Product saved.', 'Produk disimpan.'));
+    } catch (failure) {
+      if (!alive.current) return;
+      if (sent && definitiveInitialSaveFailure(operation.attempted, failure)) retainProduct(null, attemptedRaw);
+      throw failure;
+    }
+  }
+
+  async function checkProduct() {
+    if (!pending || productSavingRef.current) return;
+    productSavingRef.current = true;
+    setProductSaving(true);
+    try { await lockProduct(() => submitProduct(pending, recovery.raw)); }
+    catch (failure) {
+      if (!alive.current) return;
+      const restored = loadPending(); setRecovery(restored); setForm(null); setImageFile(null);
+      toast.error(productError(failure));
+    } finally { productSavingRef.current = false; if (alive.current) setProductSaving(false); }
   }
 
   async function saveBundle(event: FormEvent) {
@@ -872,9 +964,18 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
   return (
     <>
       <PageHeader title={text('Admin', 'Pentadbir')} actions={demoAdminUnlocked && !readError ? <>
-        <button className={buttonClass} onClick={() => openProductForm(blankProductForm())}><Plus size={16} />{text('Add Product', 'Tambah Produk')}</button>
+        <button className={buttonClass} disabled={!!pending || !!recovery.error || productSaving} onClick={() => openProductForm(blankProductForm())}><Plus size={16} />{text('Add Product', 'Tambah Produk')}</button>
         <Link className={secondaryButtonClass} to="/settings">{text('Settings', 'Tetapan')}</Link>
       </> : undefined} />
+      {demoAdminUnlocked && (pending || recovery.error) ? <section role="alert" className="mb-4 grid min-w-0 gap-3 rounded-lg border border-warning bg-amber-50 p-3 sm:grid-cols-[1fr_auto] sm:items-center">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold">{text('Product Save Pending', 'Simpanan Produk Belum Disahkan')}</h2>
+          <p className="break-words text-sm">{pending ? pending.args.p_payload.name : text('Saved details need checking on this device.', 'Butiran disimpan perlu disemak pada peranti ini.')}</p>
+          {pending ? <p className="text-xs text-muted">{money(pending.args.p_payload.price_per_unit, String(settings.currency_symbol))} · {new Date(pending.createdAt).toLocaleString(text('en-MY','ms-MY'), {timeZone:'Asia/Kuala_Lumpur',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})} MYT</p> : null}
+          {recovery.error ? <p className="break-words text-sm">{text('Do not re-enter this product. Ask the owner to check the saved details.', 'Jangan masukkan semula produk ini. Minta pemilik menyemak butiran disimpan.')}</p> : null}
+        </div>
+        {pending ? <button className={`${secondaryButtonClass} w-full sm:w-auto`} disabled={productSaving} onClick={() => void checkProduct()}><RotateCcw size={16} />{productSaving ? text('Checking...', 'Menyemak...') : text('Check Saved Product', 'Semak Produk Disimpan')}</button> : null}
+      </section> : null}
       {readError ? <p role="alert" className="mb-3 text-sm text-danger">{readError} <button className={secondaryButtonClass} onClick={()=>void refresh()}>{text('Retry', 'Cuba Lagi')}</button></p> : null}
       {!demoAdminUnlocked ? (
         <div className="island-panel mb-4 max-w-xl rounded-lg p-3 sm:mb-5 sm:rounded-xl sm:p-5">
@@ -1016,7 +1117,8 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
                 </td>
                 <td className="p-2">
                   <button
-                    className="grid h-8 w-8 place-items-center rounded-xl border border-line bg-white text-ink shadow-none"
+                    className="grid h-8 w-8 place-items-center rounded-xl border border-line bg-white text-ink shadow-none disabled:cursor-not-allowed disabled:opacity-45"
+                    disabled={!!pending || !!recovery.error || productSaving}
                     aria-label={`${text('Edit', 'Edit')} ${product.name}`}
                     onClick={() =>
                       openProductForm({
@@ -1081,6 +1183,7 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
                 <td className="p-3">
                   <button
                     className={secondaryButtonClass}
+                    disabled={!!pending || !!recovery.error || productSaving}
                     onClick={() =>
                       openProductForm({
                         id: product.id,
@@ -1193,12 +1296,12 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
       )}
       {effectiveForm ? (
         <Modal title={effectiveForm.id ? text('Edit Product', 'Edit Produk') : text('Add Product', 'Tambah Produk')} onClose={() => openProductForm(null)} footer={
-          <button type="submit" form={productFormId} className={`${buttonClass} w-full`} disabled={productSaving}>
-            {productSaving ? text('Saving...', 'Menyimpan...') : text('Save Product', 'Simpan Produk')}
+          <button type={pending ? 'button' : 'submit'} form={productFormId} onClick={pending ? () => void checkProduct() : undefined} className={`${buttonClass} w-full`} disabled={productSaving || !!recovery.error}>
+            {productSaving ? text('Saving...', 'Menyimpan...') : pending ? text('Check Saved Product', 'Semak Produk Disimpan') : text('Save Product', 'Simpan Produk')}
           </button>
         }>
           <form id={productFormId} onSubmit={save}>
-          <fieldset disabled={productSaving} className="grid min-w-0 gap-4">
+          <fieldset disabled={productSaving || !!pending || !!recovery.error} className="grid min-w-0 gap-4">
             <Field label={text('Product Name', 'Nama Produk')}>
               <input className={inputClass} value={effectiveForm.name} onChange={(e) => setForm({ ...effectiveForm, name: e.target.value })} required />
             </Field>

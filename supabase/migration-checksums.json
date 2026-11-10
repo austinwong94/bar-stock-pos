@@ -102,5 +102,6 @@
   "20261016230746_hosted_crypto_search_path.sql": "58b432cb74a10f4994afba11510e0117cc8682b2049fc7c808f4f6783a83154f",
   "20261017001732_restore_standard_kitchen_catalogue.sql": "cf119553b887d87fe2fbddac9fd0b42036ba7f342246c6bbad2ba553402694e9",
   "20261110170733_harden_browser_table_privileges.sql": "b0268fdf89024bb2ff46097ef401fdbd6a73df1be07d1c642c9c175d547d2ee3",
-  "20261110173810_require_explicit_product_setup.sql": "4dfdc24c246a9501c0f489a13b9b76047d32ca358f3b220495e4ac9f23e3754a"
+  "20261110173810_require_explicit_product_setup.sql": "4dfdc24c246a9501c0f489a13b9b76047d32ca358f3b220495e4ac9f23e3754a",
+  "20261110181408_recover_product_save_requests.sql": "6aeca4f41a2400306454d5d6f24bbbd7502b56599e05cc11b9bb02f229198e42"
 }
