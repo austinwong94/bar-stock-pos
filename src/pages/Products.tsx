@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
-import { PackagePlus, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { PackagePlus, Pencil, Plus, RotateCcw, Save, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Field, buttonClass, inputClass, secondaryButtonClass } from '../components/Form';
 import { AccountReportArchivePanel } from '../components/AccountReportArchivePanel';
@@ -23,6 +23,7 @@ import { blankProductForm, parseProductForm, type ProductForm } from '../lib/pro
 import { useAccess } from '../lib/access';
 import { definitiveInitialSaveFailure } from '../lib/saveAttempt';
 import { productRecoveryKey, readProductRecovery, writeProductRecovery, productSaveConfirmed, withProductSaveLock, productSaveDeadline, type ProductSaveRecovery } from '../lib/productSaveRecovery';
+import { bundleKeys, bundleFormFromSettings, parseBundleForm, bundleSnapshot, bundleRecoveryKey, readBundleRecovery, writeBundleRecovery, bundleSaveConfirmed, type BundleForm, type BundleRow as BundleSettingRow, type BundleVersions as BundleVersionMap, type BundleRecovery } from '../lib/bundleSetup';
 
 function countLabel(count: number, singular: string, plural: string) {
   return `${count} ${count === 1 ? singular : plural}`;
@@ -36,16 +37,6 @@ const defaultCategories = [
   { name: 'Others', sort_order: 50 },
 ];
 
-type BundleForm = {
-  beer_bundle_enabled: boolean;
-  beer_bundle_name: string;
-  beer_bundle_units_per_set: string;
-  beer_bundle_price: string;
-};
-
-const bundleKeys: AppSettingKey[] = ['beer_bundle_enabled', 'beer_bundle_name', 'beer_bundle_units_per_set', 'beer_bundle_price'];
-type BundleSettingRow = { key: AppSettingKey; value: SettingsMap[AppSettingKey]; updated_at: string };
-type BundleVersionMap = Partial<Record<AppSettingKey, string>>;
 type Localize = (english: string, malay: string) => string;
 type AuditLogRow = {
   id: string;
@@ -210,26 +201,6 @@ function auditDetail(log: AuditLogRow, currencySymbol: string, text: Localize) {
   if (status) return titleCaseAuditAction(status);
 
   return compactAuditId(log.entity_id);
-}
-
-function bundleFormFromSettings(settings: SettingsMap): BundleForm {
-  return {
-    beer_bundle_enabled: settings.beer_bundle_enabled === true || settings.beer_bundle_enabled === 'true',
-    beer_bundle_name: String(settings.beer_bundle_name || 'Beer Bundle'),
-    beer_bundle_units_per_set: String(settings.beer_bundle_units_per_set || 4),
-    beer_bundle_price: String(settings.beer_bundle_price || 40),
-  };
-}
-
-function settingsWithBundleRows(settings: SettingsMap, rows: BundleSettingRow[]) {
-  return rows.reduce(
-    (next, row) => ({ ...next, [row.key]: row.value }),
-    { ...settings },
-  );
-}
-
-function bundleVersionsFromRows(rows: BundleSettingRow[]) {
-  return rows.reduce<BundleVersionMap>((next, row) => ({ ...next, [row.key]: row.updated_at }), {});
 }
 
 function AuditActivityPanel({ logs, settings }: { logs: AuditLogRow[]; settings: SettingsMap }) {
@@ -594,6 +565,7 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
 }
 
 function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: SettingsMap; onSettingsSaved: (settings: SettingsMap) => void; actorId: string | null }) {
+  const canSaveBundle = useAccess().can('bar.settings.manage');
   const toast = useToast();
   const { text } = useLanguage();
   const [products, setProducts] = useState<ProductWithStock[]>([]);
@@ -601,10 +573,16 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
   const [priceHistory, setPriceHistory] = useState<ProductPriceHistory[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogRow[]>([]);
   const [form, setForm] = useState<ProductForm | null>(null);
-  const [bundleForm, setBundleForm] = useState<BundleForm>(() => bundleFormFromSettings(settings));
-  const [bundleVersions, setBundleVersions] = useState<BundleVersionMap>({});
+  const [bundleForm, setBundleForm] = useState<BundleForm>(() => bundleFormFromSettings(isSupabaseConfigured ? {} : settings));
+  const [bundleVersions, setBundleVersions] = useState<BundleVersionMap>(() => bundleSnapshot([]).versions);
+  const [bundleLoaded, setBundleLoaded] = useState(!isSupabaseConfigured);
   const [bundleDirty, setBundleDirty] = useState(false);
   const [bundleSaving, setBundleSaving] = useState(false);
+  const bundleSavingRef = useRef(false);
+  const bundleEditingRef = useRef(false);
+  const bundleEditRevision = useRef(0);
+  const [bundleConflict, setBundleConflict] = useState(false);
+  const latestSettings = useRef(settings); latestSettings.current = settings;
   const [productSaving, setProductSaving] = useState(false);
   const productSavingRef = useRef(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -623,6 +601,26 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
   const [recovery, setRecovery] = useState(loadPending);
   const alive = useRef(true);
   const pending = recovery.operation;
+  const bundleKey = isSupabaseConfigured && actorId ? bundleRecoveryKey(import.meta.env.VITE_SUPABASE_URL ?? 'cloud', actorId) : null;
+  function loadBundlePending() {
+    let raw: string | null = null;
+    try { raw = bundleKey ? localStorage.getItem(bundleKey) : null; return {raw, operation: readBundleRecovery(raw, actorId ?? undefined), error: ''}; }
+    catch (failure) { return {raw, operation: null, error: (failure as Error).message}; }
+  }
+  const [bundleRecovery, setBundleRecovery] = useState(loadBundlePending);
+  const pendingBundle = bundleRecovery.operation;
+  const displayBundle = pendingBundle ? bundleFormFromSettings(Object.fromEntries(pendingBundle.args.p_rows.map(row => [row.key,row.value]))) : bundleForm;
+  const parsedBundle = parseBundleForm(displayBundle);
+  function retainBundle(next: BundleRecovery | null, expected: string | null) {
+    if (!bundleKey) throw Error(text('Sign in again before saving settings.', 'Log masuk semula sebelum menyimpan tetapan.'));
+    const raw = writeBundleRecovery(localStorage, bundleKey, next, expected); setBundleRecovery({raw, operation: next, error: ''}); return raw;
+  }
+  function installBundle(rows: BundleSettingRow[]) {
+    const snapshot = bundleSnapshot(rows);
+    setBundleForm(snapshot.form); setBundleVersions(snapshot.versions); setBundleLoaded(true); setBundleDirty(false); bundleEditingRef.current=false; setBundleConflict(false);
+    const values = Object.fromEntries(bundleKeys.map(key => [key, rows.find(row => row.key === key)?.value ?? (key === 'beer_bundle_enabled' ? false : '')]));
+    onSettingsSaved({...latestSettings.current, ...values});
+  }
   function retainProduct(next: ProductSaveRecovery | null, expected: string | null) {
     if (!pendingKey) throw Error(text('Sign in again before saving products.', 'Log masuk semula sebelum menyimpan produk.'));
     const raw = writeProductRecovery(localStorage, pendingKey, next, expected);
@@ -650,11 +648,16 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
     return () => { alive.current = false; window.removeEventListener('storage', changed); };
   }, [pendingKey]);
   useEffect(() => {
-    if (!productSaving) return;
+    const changed = (event: StorageEvent) => { if (event.key === bundleKey || event.key === null) setBundleRecovery(loadBundlePending()); };
+    window.addEventListener('storage', changed);
+    return () => window.removeEventListener('storage', changed);
+  }, [bundleKey]);
+  useEffect(() => {
+    if (!productSaving && !bundleSaving) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [productSaving]);
+  }, [productSaving, bundleSaving]);
 
   async function refresh(_canRepairDefaults = demoAdminUnlocked) {
     if (!isSupabaseConfigured) {
@@ -662,7 +665,7 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
       setCategories(loadLocalCategories());
       setPriceHistory(loadLocalProductPriceHistory());
       setAuditLogs([]);
-      setBundleVersions({});
+      setBundleVersions(bundleSnapshot([]).versions);
       return;
     }
     const ticket=++readGeneration.current;
@@ -674,16 +677,14 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
       readAllRows<BundleSettingRow>((from,to)=>supabase.from('app_settings').select('key,value,updated_at').in('key', bundleKeys).order('key').range(from,to)),
       readAllRows<AuditLogRow>((from,to)=>supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).order('id').range(from,to)),
     ]);
-    if(ticket!==readGeneration.current)return;
+    if(ticket!==readGeneration.current || !alive.current)return;
     setReadError('');
     setProducts((productData ?? []) as ProductWithStock[]);
     setPriceHistory(priceHistoryData);
     setAuditLogs(auditLogData);
     const bundleRows = (bundleSettingData ?? []) as BundleSettingRow[];
-    setBundleVersions(bundleVersionsFromRows(bundleRows));
-    if (!bundleDirty && bundleRows.length > 0) {
-      setBundleForm(bundleFormFromSettings(settingsWithBundleRows(settings, bundleRows)));
-    }
+    const currentPending = loadBundlePending();
+    if (!bundleEditingRef.current && !currentPending.raw && !currentPending.error && !bundleSavingRef.current) installBundle(bundleRows);
     const currentCategories = (categoryData ?? []) as Category[];
     setCategories(currentCategories);
     } catch (failure) {
@@ -712,7 +713,7 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
   });
 
   useEffect(() => {
-    if (!bundleDirty) setBundleForm(bundleFormFromSettings(settings));
+    if (!isSupabaseConfigured && !bundleDirty) setBundleForm(bundleFormFromSettings(settings));
   }, [bundleDirty, settings]);
 
   const sortedCategories = useMemo(
@@ -768,23 +769,23 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
   }
 
   function updateBundleForm(patch: Partial<BundleForm>) {
+    bundleEditingRef.current = true;
+    bundleEditRevision.current += 1;
     setBundleDirty(true);
     setBundleForm((current) => ({ ...current, ...patch }));
   }
 
-  async function reloadBundleSettingsFromCloud() {
-    if (!isSupabaseConfigured) return;
-    const { data, error } = await supabase.from('app_settings').select('key,value,updated_at').in('key', bundleKeys);
-    if (error) {
-      toast.error(friendlyAdminError(error.message));
-      return;
-    }
-    const rows = (data ?? []) as BundleSettingRow[];
-    const nextSettings = settingsWithBundleRows(settings, rows);
-    setBundleVersions(bundleVersionsFromRows(rows));
-    setBundleForm(bundleFormFromSettings(nextSettings));
-    setBundleDirty(false);
-    onSettingsSaved(nextSettings);
+  async function readBundleRows() {
+    return await productSaveDeadline(readAllRows<BundleSettingRow>((from,to) => supabase.from('app_settings').select('key,value,updated_at').in('key',bundleKeys).order('key').range(from,to)));
+  }
+
+  async function loadLatestBundle() {
+    if (bundleSavingRef.current || loadBundlePending().raw) return;
+    const revision = bundleEditRevision.current;
+    try {
+      const rows = await readBundleRows();
+      if (alive.current && revision === bundleEditRevision.current && !bundleSavingRef.current && !loadBundlePending().raw) installBundle(rows);
+    } catch (failure) { if (alive.current) toast.error(productError(failure)); }
   }
 
   async function save(event: FormEvent) {
@@ -891,46 +892,49 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
 
   async function saveBundle(event: FormEvent) {
     event.preventDefault();
-    const units = Math.max(1, Math.floor(Number(bundleForm.beer_bundle_units_per_set || 4)));
-    const price = Number(bundleForm.beer_bundle_price);
-    if (!Number.isFinite(price) || price <= 0) {
-      toast.error(text('Enter a valid bundle price.', 'Masukkan harga set yang betul.'))
-      return;
+    if (!canSaveBundle || bundleSavingRef.current || bundleRecovery.error || !bundleLoaded && !pendingBundle) return;
+    const parsed = parseBundleForm(bundleForm);
+    if (!pendingBundle && !('values' in parsed)) {
+      const malay = {'Enter a bundle name.':'Masukkan nama set.','Enter a whole number of beers per set.':'Masukkan bilangan bir setiap set dalam nombor bulat.','Enter a bundle price above RM 0, with no more than 2 decimal places.':'Masukkan harga set melebihi RM 0, maksimum 2 tempat perpuluhan.'};
+      toast.error(text(parsed.error!, malay[parsed.error! as keyof typeof malay])); return;
     }
-    const nextSettings: SettingsMap = {
-      ...settings,
-      beer_bundle_enabled: bundleForm.beer_bundle_enabled,
-      beer_bundle_name: bundleForm.beer_bundle_name.trim() || 'Beer Bundle',
-      beer_bundle_units_per_set: units,
-      beer_bundle_price: Number(price.toFixed(2)),
-    };
-    setBundleSaving(true);
-    if (!isSupabaseConfigured) {
-      saveLocalSettings(nextSettings);
-      onSettingsSaved(nextSettings);
-      setBundleDirty(false);
-      setBundleSaving(false);
-      toast.success(text('Beer bundle saved.', 'Set bir disimpan.'));
-      return;
-    }
-    const rows = bundleKeys.map((key) => ({ key, value: nextSettings[key] }));
-    const { data, error } = await supabase.rpc('save_app_settings_checked', {
-      p_rows: rows,
-      p_versions: bundleVersions,
-    });
-    setBundleSaving(false);
-    if (error) {
-      if (error.message.toLowerCase().includes('another device')) {
-        await reloadBundleSettingsFromCloud();
+    bundleSavingRef.current = true; setBundleSaving(true);
+    try {
+      if (!isSupabaseConfigured && 'values' in parsed) {
+        const next = {...settings,...parsed.values}; saveLocalSettings(next); onSettingsSaved(next); setBundleDirty(false); toast.success(text('Beer bundle saved.','Set bir disimpan.')); return;
       }
-      toast.error(friendlyAdminError(error.message));
-      return;
-    }
-    const savedRows = (data?.settings ?? []) as BundleSettingRow[];
-    if (savedRows.length > 0) setBundleVersions(bundleVersionsFromRows(savedRows));
-    setBundleDirty(false);
-    onSettingsSaved(nextSettings);
-    toast.success(text('Beer bundle saved.', 'Set bir disimpan.'));
+      if (!bundleKey) throw Error(text('Sign in again before saving settings.', 'Log masuk semula sebelum menyimpan tetapan.'));
+      await withProductSaveLock(navigator.locks, bundleKey, async () => {
+        if (!alive.current) return;
+        const operation: BundleRecovery = pendingBundle ?? {version:1, attempted:false, createdAt:new Date().toISOString(),args:{p_rows:bundleKeys.map(key=>({key,value:parsed.values![key]})),p_versions:{...bundleVersions},p_request_id:crypto.randomUUID(),p_expected_actor_id:actorId!}};
+        const initial = pendingBundle ? bundleRecovery.raw : retainBundle(operation,null);
+        const sent = retainBundle({...operation,attempted:true},initial);
+        let verified = false;
+        try {
+          const result = await productSaveDeadline<{data:unknown;error:{code?:string;message:string}|null}>(supabase.rpc('save_app_settings_checked',operation.args));
+          if (!alive.current) return;
+          if (result.error) throw result.error;
+          if (!bundleSaveConfirmed(result.data,operation)) throw Error(text('Bundle save could not be verified. Check the saved bundle before editing again.','Simpanan set tidak dapat disahkan. Semak set disimpan sebelum mengedit semula.'));
+          verified = true;
+          // A recovered reply describes the original save, not necessarily today's settings.
+          const currentRows = await readBundleRows(); if (!alive.current) return;
+          bundleSnapshot(currentRows);
+          retainBundle(null,sent); installBundle(currentRows);
+          toast.success(text('Beer bundle saved.','Set bir disimpan.'));
+        } catch (failure) {
+          if (!alive.current) return;
+          if (!verified && definitiveInitialSaveFailure(operation.attempted,failure)) { retainBundle(null,sent); if ((failure as {code?:string}).code === '40001') setBundleConflict(true); }
+          throw failure;
+        }
+      });
+    } catch (failure) {
+      if (alive.current) {
+        setBundleRecovery(loadBundlePending());
+        toast.error((failure as {code?:string}).code==='PRODUCT_LOCKED'
+          ? text('Another tab is saving bundle settings. Wait, then check the saved bundle.','Tab lain sedang menyimpan tetapan set. Tunggu, kemudian semak set disimpan.')
+          : productError(failure));
+      }
+    } finally { bundleSavingRef.current=false; if (alive.current) setBundleSaving(false); }
   }
 
   function openCocktailProductForm() {
@@ -1020,7 +1024,7 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
           </div>
         ) : null}
       </section>
-      <form onSubmit={saveBundle} className="island-panel mb-4 rounded-lg p-3 sm:mb-5 sm:rounded-xl sm:p-5">
+      <form aria-label={text('Beer Bundle Settings','Tetapan Set Bir')} onSubmit={saveBundle} className="island-panel mb-4 rounded-lg p-3 sm:mb-5 sm:rounded-xl sm:p-5">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <span className="text-accent">
@@ -1036,52 +1040,56 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
                 ) : null}
               </div>
               <p className="text-sm font-bold text-neutral-600">
-                {countLabel(Number(bundleForm.beer_bundle_units_per_set || 4), text('Beer Unit', 'Unit Bir'), text('Beer Units', 'Unit Bir'))} · {money(Number(bundleForm.beer_bundle_price || 0), String(settings.currency_symbol))}
+                {parsedBundle.values ? `${countLabel(parsedBundle.values.beer_bundle_units_per_set, text('Beer Unit','Unit Bir'), text('Beer Units','Unit Bir'))} · ${money(parsedBundle.values.beer_bundle_price, String(settings.currency_symbol))}` : text('Not Set Up','Belum Disediakan')}
               </p>
             </div>
           </div>
-          <button className={buttonClass} disabled={bundleSaving}>
-            {bundleSaving ? text('Saving...', 'Menyimpan...') : text('Save', 'Simpan')}
+          <button className={`${buttonClass} max-w-[55%] shrink-0`} disabled={!canSaveBundle || bundleSaving || !!bundleRecovery.error || !bundleLoaded && !pendingBundle}>
+            {pendingBundle ? <RotateCcw size={16} className="shrink-0" aria-hidden="true" /> : <Save size={16} className="shrink-0" aria-hidden="true" />}
+            {bundleSaving ? pendingBundle ? text('Checking...', 'Menyemak...') : text('Saving...', 'Menyimpan...') : pendingBundle ? text('Check Saved Bundle','Semak Set Disimpan') : text('Save','Simpan')}
           </button>
         </div>
-        <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-[1fr_1.4fr_1fr_1fr]">
+        {pendingBundle ? <p role="status" className="mt-3 rounded-lg border border-warning bg-amber-50 p-2 text-xs">{text('Bundle Save Pending','Simpanan Set Belum Disahkan')} · {new Date(pendingBundle.createdAt).toLocaleString(text('en-MY','ms-MY'),{timeZone:'Asia/Kuala_Lumpur',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})} MYT</p> : null}
+        {bundleRecovery.error ? <p role="alert" className="mt-3 text-sm text-danger">{text('Do not re-enter these bundle settings. Ask the owner to check this device.','Jangan masukkan semula tetapan set ini. Minta pemilik menyemak peranti ini.')}</p> : null}
+        {bundleConflict ? <div role="alert" className="mt-3 flex flex-wrap items-center gap-2 text-sm"><span>{text('Bundle settings changed. Your edits have not replaced them.','Tetapan set telah berubah. Suntingan anda belum menggantikannya.')}</span><button type="button" className={secondaryButtonClass} onClick={() => void loadLatestBundle()}>{text('Load Latest','Muat Terkini')}</button></div> : null}
+        <fieldset disabled={!canSaveBundle || bundleSaving || !!pendingBundle || !!bundleRecovery.error || !bundleLoaded} className="mt-4 grid min-w-0 grid-cols-1 items-start gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1.4fr_1fr_1fr]">
           <Field label={text('Status', 'Status')}>
-            <label className="flex min-h-12 items-center gap-3 rounded-lg border border-line bg-paper px-3 text-sm font-bold">
+            <span className="ui-control flex w-full items-center gap-3 rounded-lg border border-line bg-paper px-3 text-sm font-bold">
               <input
                 type="checkbox"
-                checked={bundleForm.beer_bundle_enabled}
+                aria-label={text('Enable Beer Bundle','Aktifkan Set Bir')}
+                checked={displayBundle.beer_bundle_enabled}
                 onChange={(event) => updateBundleForm({ beer_bundle_enabled: event.target.checked })}
               />
-              {bundleForm.beer_bundle_enabled ? text('Enabled', 'Aktif') : text('Disabled', 'Tidak aktif')}
-            </label>
+              {displayBundle.beer_bundle_enabled ? text('Enabled', 'Aktif') : text('Disabled', 'Tidak aktif')}
+            </span>
           </Field>
-          <Field label={text('Bundle name', 'Nama set')}>
+          <Field label={text('Bundle Name', 'Nama Set')}>
             <input
               className={inputClass}
-              value={bundleForm.beer_bundle_name}
+              value={displayBundle.beer_bundle_name}
               onChange={(event) => updateBundleForm({ beer_bundle_name: event.target.value })}
             />
           </Field>
-          <Field label={text('Units per set', 'Unit setiap set')}>
+          <Field label={text('Beers per Set', 'Bir Setiap Set')}>
             <input
               className={inputClass}
-              type="number"
-              min={1}
-              value={bundleForm.beer_bundle_units_per_set}
+              type="text"
+              inputMode="numeric"
+              value={displayBundle.beer_bundle_units_per_set}
               onChange={(event) => updateBundleForm({ beer_bundle_units_per_set: event.target.value })}
             />
           </Field>
-          <Field label={text('Price per set', 'Harga setiap set')}>
+          <Field label={text('Price per Set (RM)', 'Harga Set (RM)')}>
             <input
               className={inputClass}
-              type="number"
-              min={0}
-              step="0.01"
-              value={bundleForm.beer_bundle_price}
+              type="text"
+              inputMode="decimal"
+              value={displayBundle.beer_bundle_price}
               onChange={(event) => updateBundleForm({ beer_bundle_price: event.target.value })}
             />
           </Field>
-        </div>
+        </fieldset>
       </form>
       <div className="mt-3 overflow-hidden rounded-lg border border-line bg-white/80 shadow-none sm:hidden">
         <table className="dense-table w-full table-fixed text-left text-[11px]">

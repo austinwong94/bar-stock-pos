@@ -12,6 +12,7 @@ import {runKitchenCatalogueTests} from '../supabase/tests/kitchen-catalogue.mjs'
 import {runDatabasePrivilegeTests} from '../supabase/tests/database-privileges.mjs';
 import {runProductSetupTests} from '../supabase/tests/product-setup.mjs';
 import {runProductSaveRecoveryTests} from '../supabase/tests/product-save-recovery.mjs';
+import {runBundleSetupTests} from '../supabase/tests/bundle-setup.mjs';
 import {walk} from './release/admission.mjs';
 import {createServer} from 'node:http';
 import path from 'node:path';
@@ -41,6 +42,7 @@ try{
  await stage('Recovery and totals','unit',()=>command(['scripts/test-platform-reliability.mjs']));
  await stage('Explicit product prices and carton setup','unit',()=>command(['scripts/test-product-setup.mjs']));
  await stage('Durable product save recovery','unit',()=>command(['scripts/test-product-save-recovery.mjs']));
+ await stage('Explicit bundle settings and retained intent','unit',()=>command(['scripts/test-bundle-setup.mjs']));
  await stage('Stock-out recovery','unit',()=>command(['scripts/test-stock-out.mjs']));
  await stage('Receiving units and measured pieces','unit',()=>command(['scripts/test-delivery-entry.mjs']));
  await stage('Durable delivery identity and recovery','unit',()=>command(['scripts/test-delivery-recovery.mjs']));
@@ -66,6 +68,7 @@ try{
  await stage('Least-privilege database access and helper resolution','native-postgres',()=>runDatabasePrivilegeTests());
  await stage('Product setup validation and concurrent edits','native-postgres',()=>runProductSetupTests());
  await stage('Retry-safe product creation and edits','native-postgres',()=>runProductSaveRecoveryTests());
+ await stage('Atomic bundle setup and safe checkout','native-postgres',()=>runBundleSetupTests());
  await stage('Build','static',()=>command(['node_modules/vite/bin/vite.js','build'],{VITE_DEMO_MODE:mode==='sample'?'true':'false'}));
  await stage('Page delivery and load budgets','built-browser-and-static',()=>command(['scripts/test-build-delivery.mjs',mode]));
  await stage('Account identity changes','local-browser-contract',()=>command(['scripts/test-access-session-ui.mjs']));
@@ -73,6 +76,7 @@ try{
  await stage('Receipt upload completion and recovery','local-browser-contract',()=>command(['scripts/test-receipt-upload-ui.mjs']));
  await stage('Financial failure and recovery screens','local-browser-contract',()=>command(['scripts/test-bar-financial-ui.mjs']));
  await stage('Mobile product setup without guessed values','local-browser-contract',()=>command(['scripts/test-product-setup-ui.mjs']));
+ await stage('Mobile bundle setup and interrupted save recovery','local-browser-contract',()=>command(['scripts/test-bundle-setup-ui.mjs']));
  await stage('Fresh manual bar and water entries','sample-browser',()=>sampleCommand(['scripts/test-manual-entry-ui.mjs']));
  await stage('Measured receiving review and recovery','sample-browser',()=>sampleCommand(['scripts/test-measured-receiving-ui.mjs']));
  await stage('Finance exports and report scope','sample-browser-and-read-fixture',()=>sampleCommand(['scripts/test-finance-export-ui.mjs']));

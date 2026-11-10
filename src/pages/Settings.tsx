@@ -1,9 +1,9 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Cloud, HardDrive, Plus, RefreshCcw, Trash2 } from 'lucide-react';
 import { Field, buttonClass, dangerButtonClass, inputClass, secondaryButtonClass } from '../components/Form';
 import { PageHeader } from '../components/Page';
 import { useToast } from '../components/Toast';
-import { defaultSettings } from '../lib/data';
+import { defaultSettings, cloudSettingsFromRows } from '../lib/data';
 import { saveLocalSettings } from '../lib/localStore';
 import { supabase } from '../lib/supabase';
 import { isSupabaseConfigured, shouldUseLocalData } from '../lib/supabase';
@@ -35,10 +35,7 @@ type SettingRow = {
 type VersionMap = Partial<Record<AppSettingKey, string>>;
 
 function settingsFromRows(rows: SettingRow[]) {
-  return rows.reduce(
-    (next, row) => ({ ...next, [row.key]: row.value }),
-    { ...defaultSettings },
-  );
+  return cloudSettingsFromRows(rows);
 }
 
 function versionsFromRows(rows: SettingRow[]) {
@@ -48,7 +45,7 @@ function versionsFromRows(rows: SettingRow[]) {
 function friendlySettingsError(message: string) {
   const lower = message.toLowerCase();
   if (lower.includes('save_app_settings_checked') || lower.includes('function')) {
-    return 'Cloud database needs the latest SQL update. Run supabase/live_cloud_fix.sql in Supabase, then try again.';
+    return 'Database setup is unavailable. Ask the owner to check the deployment before retrying.';
   }
   return message;
 }
@@ -65,6 +62,7 @@ export default function Settings({ settings, onSaved }: { settings: SettingsMap;
   const [settingVersions, setSettingVersions] = useState<VersionMap>({});
   const [lastCloudSyncAt, setLastCloudSyncAt] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  const editRevision = useRef(0);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [newStaffName, setNewStaffName] = useState('');
@@ -78,6 +76,7 @@ export default function Settings({ settings, onSaved }: { settings: SettingsMap;
 
   async function refreshCloudSettings(replaceForm = !dirty, quiet = true) {
     if (!isSupabaseConfigured) return;
+    const revision = editRevision.current;
     setRefreshing(true);
     const { data, error } = await supabase.from('app_settings').select('key,value,updated_at');
     setRefreshing(false);
@@ -87,9 +86,9 @@ export default function Settings({ settings, onSaved }: { settings: SettingsMap;
     }
     const rows = (data ?? []) as SettingRow[];
     const nextSettings = settingsFromRows(rows);
-    setSettingVersions(versionsFromRows(rows));
     setLastCloudSyncAt(new Date().toISOString());
-    if (replaceForm) {
+    if (replaceForm && revision === editRevision.current) {
+      setSettingVersions(versionsFromRows(rows));
       setForm(nextSettings);
       setDirty(false);
       onSaved(nextSettings);
@@ -111,6 +110,7 @@ export default function Settings({ settings, onSaved }: { settings: SettingsMap;
   });
 
   function updateSetting(key: AppSettingKey, value: SettingsMap[AppSettingKey]) {
+    editRevision.current += 1;
     setDirty(true);
     setForm((current) => ({ ...current, [key]: value }));
   }

@@ -15,6 +15,7 @@ import { isSupabaseConfigured } from '../lib/supabase';
 import { loadLocalIngredientItems, loadLocalRecipeIngredients, saveLocalSale } from '../lib/localStore';
 import type { IngredientWithBalance, PaymentMethod, ProductWithStock, RecipeIngredient, SettingsMap } from '../lib/types';
 import { useLanguage } from '../lib/language';
+import { bundleConfig } from '../lib/bundleSetup';
 import { assetPath } from '../lib/assets';
 import { hasAdminAccess, unlockAdminAccess } from '../lib/adminAccess';
 import { useSharedRefresh } from '../lib/useSharedRefresh';
@@ -204,11 +205,12 @@ function POSTerminal({ settings }: { settings: SettingsMap }) {
   const [clock, setClock] = useState(() => new Date());
   useEffect(() => { const timer = window.setInterval(() => setClock(new Date()), 30000); return () => clearInterval(timer); }, []);
   const todayLabel = format(parseISO(malaysiaBusinessDateInputValue(clock, settings.business_day_close_time)), 'EEE, d MMM yyyy');
-  const bundleEnabled = settingEnabled(settings.beer_bundle_enabled);
+  const configuredBundle = bundleConfig(settings);
+  const bundleEnabled = configuredBundle?.beer_bundle_enabled === true;
   const allowNegativeStock = settingEnabled(settings.allow_negative_stock);
-  const bundleName = String(settings.beer_bundle_name || 'Beer Bundle');
-  const bundleUnits = positiveInt(settingNumber(settings.beer_bundle_units_per_set, 4), 4);
-  const bundlePrice = Math.max(0, settingNumber(settings.beer_bundle_price, 40));
+  const bundleName = configuredBundle?.beer_bundle_name ?? '';
+  const bundleUnits = configuredBundle?.beer_bundle_units_per_set ?? 0;
+  const bundlePrice = configuredBundle?.beer_bundle_price ?? 0;
   const requireFocApproval = settingEnabled(settings.require_manager_approval_for_complimentary);
 
   async function refreshProducts(updateOrderPrices = false) {
@@ -1031,6 +1033,7 @@ function POSTerminal({ settings }: { settings: SettingsMap }) {
             ].map(item => <button type="button" key={item.value} aria-pressed={catalogView === item.value} onClick={() => setCatalogView(item.value)}>{item.label}</button>)}
           </div>
           {renderLiveCartPanel()}
+          {!configuredBundle && beerProducts.length > 0 && ['all','bundle','Beer'].includes(catalogView) ? <p role="status" className="rounded-lg border border-warning bg-amber-50 p-3 text-sm">{text('Beer sets unavailable. Ask a manager to check the bundle settings.','Set bir tidak tersedia. Minta pengurus menyemak tetapan set.')}</p> : null}
           {bundleEnabled && beerProducts.length > 0 && ['all', 'bundle'].includes(catalogView) ? (
             <section className="bar-bundle" aria-label={text('Beer Sets', 'Set Bir')}>
               <PackagePlus size={24} />

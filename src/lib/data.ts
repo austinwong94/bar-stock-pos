@@ -51,9 +51,13 @@ export async function loadSettings(): Promise<SettingsMap> {
   if (error) throw error;
   if(!Array.isArray(data)||!data.length)throw new Error('Business settings are missing. Ask the administrator to finish database setup.');
   const rows = (data ?? []) as Array<{ key: keyof SettingsMap; value: SettingsMap[keyof SettingsMap] }>;
+  return cloudSettingsFromRows(rows);
+}
+
+export function cloudSettingsFromRows(rows: Array<{key: keyof SettingsMap; value: SettingsMap[keyof SettingsMap]}>): SettingsMap {
   return rows.reduce(
     (settings: SettingsMap, row) => ({ ...settings, [row.key]: row.value }),
-    { ...defaultSettings },
+    { ...defaultSettings, beer_bundle_enabled: false, beer_bundle_name: '', beer_bundle_units_per_set: '', beer_bundle_price: '' },
   );
 }
 
