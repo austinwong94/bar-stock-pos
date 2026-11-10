@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { PackagePlus, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -19,34 +19,11 @@ import { useLanguage } from '../lib/language';
 import { hasAdminAccess, unlockAdminAccess } from '../lib/adminAccess';
 import { useSharedRefresh } from '../lib/useSharedRefresh';
 import { readAllRows } from '../lib/readAllRows';
-
-type ProductForm = {
-  id?: string;
-  name: string;
-  category_id: string;
-  price_per_unit: string;
-  cost_per_unit: string;
-  carton_size: string;
-  low_stock_threshold: string;
-  image_url: string;
-  active: boolean;
-  source_updated_at?: string;
-};
+import { blankProductForm, parseProductForm, type ProductForm } from '../lib/productSetup';
 
 function countLabel(count: number, singular: string, plural: string) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
-
-const blank = (defaultCartonSize: number): ProductForm => ({
-  name: '',
-  category_id: '',
-  price_per_unit: '0',
-  cost_per_unit: '',
-  carton_size: String(defaultCartonSize),
-  low_stock_threshold: '0',
-  image_url: '',
-  active: true,
-});
 
 const defaultCategories = [
   { name: 'Beer', sort_order: 10 },
@@ -95,13 +72,13 @@ function cleanFileName(name: string) {
 function friendlyAdminError(message: string) {
   const lower = message.toLowerCase();
   if (lower.includes('verify_admin_access') || lower.includes('function') || lower.includes('column')) {
-    return 'Cloud database needs the latest SQL update. Run supabase/live_cloud_fix.sql in Supabase, then try again.';
+    return 'Database setup is unavailable. Ask the owner to check the deployment before retrying.';
   }
   if (lower.includes('bucket') || lower.includes('storage')) {
-    return 'Cloud storage needs the latest SQL update. Run supabase/live_cloud_fix.sql in Supabase, then try again.';
+    return 'Photo storage is unavailable. Keep this form open and ask the owner to check storage.';
   }
   if (lower.includes('row-level security') || lower.includes('permission denied') || lower.includes('policy')) {
-    return 'Admin permission is not active. Unlock Admin again, then check the Supabase SQL/RLS update if it still fails.';
+    return 'Your account cannot save this change. Ask the owner to check your access.';
   }
   return message;
 }
@@ -230,33 +207,6 @@ function auditDetail(log: AuditLogRow, currencySymbol: string, text: Localize) {
   if (status) return titleCaseAuditAction(status);
 
   return compactAuditId(log.entity_id);
-}
-
-function parseProductForm(form: ProductForm) {
-  const name = form.name.trim();
-  const price = Number(form.price_per_unit);
-  const cost = form.cost_per_unit.trim() ? Number(form.cost_per_unit) : null;
-  const cartonSize = Math.floor(Number(form.carton_size));
-  const lowStockThreshold = Math.floor(Number(form.low_stock_threshold));
-
-  if (!name) return { error: 'Enter a product name.' } as const;
-  if (!Number.isFinite(price) || price < 0) return { error: 'Enter a valid price per unit.' } as const;
-  if (cost != null && (!Number.isFinite(cost) || cost < 0)) return { error: 'Enter a valid cost per unit.' } as const;
-  if (!Number.isFinite(cartonSize) || cartonSize < 1) return { error: 'Units per carton must be at least 1.' } as const;
-  if (!Number.isFinite(lowStockThreshold) || lowStockThreshold < 0) return { error: 'Low stock alert unit balance must be 0 or more.' } as const;
-
-  return {
-    payload: {
-      name,
-      category_id: form.category_id,
-      price_per_unit: Number(price.toFixed(2)),
-      cost_per_unit: cost == null ? null : Number(cost.toFixed(2)),
-      carton_size: cartonSize,
-      low_stock_threshold: lowStockThreshold,
-      image_url: form.image_url.trim() || null,
-      active: form.active,
-    },
-  } as const;
 }
 
 function bundleFormFromSettings(settings: SettingsMap): BundleForm {
@@ -652,7 +602,7 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
   const [adminPin, setAdminPin] = useState('');
   const [demoAdminUnlocked, setDemoAdminUnlocked] = useState(hasAdminAccess);
   const [adminSection, setAdminSection] = useState<'products' | 'recipes' | 'priceHistory' | 'reports' | 'activity' | 'health'>('products');
-  const defaultCartonSize = Number(settings.default_carton_size || 24);
+  const productFormId = useId();
   const [readError, setReadError] = useState('');
   const readGeneration = useRef(0);
 
@@ -720,10 +670,7 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
     [categories],
   );
   const sortedProducts = useMemo(() => Object.values(groupByCategory(products)).flat(), [products]);
-  const effectiveForm = useMemo(() => {
-    if (!form) return null;
-    return { ...form, category_id: form.category_id || sortedCategories[0]?.id || '' };
-  }, [form, sortedCategories]);
+  const effectiveForm = form;
 
   async function repairDefaultCategories() {
     if (!isSupabaseConfigured) {
@@ -761,6 +708,7 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
   }
 
   function openProductForm(next: ProductForm | null) {
+    if (productSaving) return;
     setImageFile(null);
     setForm(next);
   }
@@ -796,10 +744,11 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
     if ('error' in parsed) {
       const errorMalay: Record<string, string> = {
         'Enter a product name.': 'Masukkan nama produk.',
-        'Enter a valid price per unit.': 'Masukkan harga seunit yang betul.',
-        'Enter a valid cost per unit.': 'Masukkan kos seunit yang betul.',
-        'Units per carton must be at least 1.': 'Unit setiap karton mesti sekurang-kurangnya 1.',
-        'Low stock alert unit balance must be 0 or more.': 'Baki unit amaran stok rendah mesti 0 atau lebih.',
+        'Choose a category before saving.': 'Pilih kategori sebelum simpan.',
+        'Enter the selling price in RM, with no more than 2 decimal places.': 'Isi harga jualan dalam RM, maksimum 2 tempat perpuluhan.',
+        'Enter a valid cost in RM, with no more than 2 decimal places.': 'Isi kos yang sah dalam RM, maksimum 2 tempat perpuluhan.',
+        'Enter a whole number of units per carton, or choose No Carton.': 'Isi unit setiap karton dalam nombor bulat, atau pilih Tiada Karton.',
+        'Enter a whole-number stock alert. Use 0 for no alert.': 'Isi amaran stok dalam nombor bulat. Gunakan 0 untuk tiada amaran.',
       };
       const errorText = parsed.error || 'Check the product fields.';
       toast.error(text(errorText, errorMalay[errorText] ?? errorText));
@@ -819,7 +768,8 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
           updated_at: new Date().toISOString(),
           inventory_balances: { quantity_on_hand: products.find((item) => item.id === effectiveForm.id)?.inventory_balances?.quantity_on_hand ?? 0 },
         });
-        openProductForm(null);
+        setImageFile(null);
+        setForm(null);
         await refresh();
         toast.success(text('Product saved.', 'Produk disimpan.'));
         return;
@@ -836,9 +786,12 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
         toast.error(friendlyAdminError(result.error.message));
         return;
       }
-      openProductForm(null);
+      setImageFile(null);
+      setForm(null);
       await refresh();
       toast.success(text('Product saved.', 'Produk disimpan.'));
+    } catch (failure) {
+      toast.error(friendlyAdminError((failure as Error).message || text('Product could not be saved. Keep this form open and check your connection.', 'Produk tidak dapat disimpan. Kekalkan borang ini dan semak sambungan.')));
     } finally {
       setProductSaving(false);
     }
@@ -891,8 +844,7 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
   function openCocktailProductForm() {
     const cocktailCategory = sortedCategories.find((category) => normalizeCategoryName(category.name) === 'Cocktail');
     openProductForm({
-      ...blank(defaultCartonSize),
-      name: 'Cocktail A',
+      ...blankProductForm(),
       category_id: cocktailCategory?.id ?? '',
       carton_size: '1',
       low_stock_threshold: '0',
@@ -920,7 +872,7 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
   return (
     <>
       <PageHeader title={text('Admin', 'Pentadbir')} actions={demoAdminUnlocked && !readError ? <>
-        <button className={buttonClass} onClick={() => openProductForm(blank(defaultCartonSize))}><Plus size={16} />{text('Add Product', 'Tambah Produk')}</button>
+        <button className={buttonClass} onClick={() => openProductForm(blankProductForm())}><Plus size={16} />{text('Add Product', 'Tambah Produk')}</button>
         <Link className={secondaryButtonClass} to="/settings">{text('Settings', 'Tetapan')}</Link>
       </> : undefined} />
       {readError ? <p role="alert" className="mb-3 text-sm text-danger">{readError} <button className={secondaryButtonClass} onClick={()=>void refresh()}>{text('Retry', 'Cuba Lagi')}</button></p> : null}
@@ -1240,24 +1192,26 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
       </>
       )}
       {effectiveForm ? (
-        <Modal title={effectiveForm.id ? text('Edit product', 'Edit produk') : text('Add product', 'Tambah produk')} onClose={() => openProductForm(null)}>
-          <form onSubmit={save} className="grid gap-4">
-            {effectiveForm.id ? (
-              <p className="rounded-xl border border-teal-200 bg-shell px-3 py-2 text-xs font-semibold leading-tight text-accent">
-                {text('Protected save: stops if this product changed on another device.', 'Simpan terlindung: berhenti jika produk ini diubah pada peranti lain.')}
-              </p>
-            ) : null}
-            <Field label={text('Product name', 'Nama produk')}>
+        <Modal title={effectiveForm.id ? text('Edit Product', 'Edit Produk') : text('Add Product', 'Tambah Produk')} onClose={() => openProductForm(null)} footer={
+          <button type="submit" form={productFormId} className={`${buttonClass} w-full`} disabled={productSaving}>
+            {productSaving ? text('Saving...', 'Menyimpan...') : text('Save Product', 'Simpan Produk')}
+          </button>
+        }>
+          <form id={productFormId} onSubmit={save}>
+          <fieldset disabled={productSaving} className="grid min-w-0 gap-4">
+            <Field label={text('Product Name', 'Nama Produk')}>
               <input className={inputClass} value={effectiveForm.name} onChange={(e) => setForm({ ...effectiveForm, name: e.target.value })} required />
             </Field>
-            <Field label={text('Category', 'Kategori')}>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div className="grid min-w-0 gap-1.5">
+              <p className="text-[0.8125rem] font-semibold text-muted">{text('Category', 'Kategori')}</p>
+              <div role="group" aria-label={text('Category', 'Kategori')} className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {sortedCategories.map((category) => (
                   <button
                     key={category.id}
                     type="button"
+                    aria-pressed={effectiveForm.category_id === category.id}
                     onClick={() => setForm({ ...effectiveForm, category_id: category.id })}
-                    className={`min-h-10 rounded-xl border px-3 py-2 text-sm font-semibold shadow-none ${
+                    className={`min-h-11 min-w-0 break-words rounded-lg border px-3 py-2 text-sm font-semibold shadow-none ${
                       effectiveForm.category_id === category.id
                         ? 'border-accent bg-accent text-white'
                         : 'border-line bg-white text-ink'
@@ -1275,11 +1229,22 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
                   </button>
                 </div>
               ) : null}
-            </Field>
-            <Field label={text('Product image URL', 'URL gambar produk')}>
+            </div>
+            <div className="grid min-w-0 items-start gap-4 sm:grid-cols-2">
+              <Field label={text('Selling Price (RM / Unit)', 'Harga Jualan (RM / Unit)')}><input className={inputClass} type="text" inputMode="decimal" value={effectiveForm.price_per_unit} onChange={(e) => setForm({ ...effectiveForm, price_per_unit: e.target.value })} required /></Field>
+              <Field label={text('Units per Carton', 'Unit Setiap Karton')}>
+                <div className="flex min-w-0 gap-2">
+                  <input aria-label={text('Units per Carton', 'Unit Setiap Karton')} className={`${inputClass} min-w-0 flex-1`} type="text" inputMode="numeric" value={effectiveForm.carton_size} onChange={(e) => setForm({ ...effectiveForm, carton_size: e.target.value })} required />
+                  <button type="button" aria-pressed={effectiveForm.carton_size === '1'} className={`${secondaryButtonClass} shrink-0 px-3 text-xs`} onClick={() => setForm({ ...effectiveForm, carton_size: '1' })}>{text('No Carton', 'Tiada Karton')}</button>
+                </div>
+              </Field>
+              <Field label={text('Cost per Unit (RM, Optional)', 'Kos Seunit (RM, Pilihan)')}><input className={inputClass} type="text" inputMode="decimal" value={effectiveForm.cost_per_unit} onChange={(e) => setForm({ ...effectiveForm, cost_per_unit: e.target.value })} /></Field>
+              <Field label={text('Low Stock Alert (Units)', 'Amaran Stok Rendah (Unit)')}><input className={inputClass} type="text" inputMode="numeric" value={effectiveForm.low_stock_threshold} onChange={(e) => setForm({ ...effectiveForm, low_stock_threshold: e.target.value })} /><p className="mt-1 text-xs text-neutral-600">{text('Individual units, not cartons. 0 = off.', 'Unit individu, bukan karton. 0 = tutup.')}</p></Field>
+            </div>
+            <Field label={text('Image URL (Optional)', 'URL Gambar (Pilihan)')}>
               <input className={inputClass} value={effectiveForm.image_url} onChange={(e) => { setImageFile(null); setForm({ ...effectiveForm, image_url: e.target.value }); }} placeholder="https://..." />
             </Field>
-            <Field label={text('Attach product image', 'Lampir gambar produk')}>
+            <Field label={text('Product Photo (Optional)', 'Gambar Produk (Pilihan)')}>
               <div className="grid gap-3 rounded-xl border border-line bg-shell p-3 sm:grid-cols-[140px_1fr] sm:items-center sm:rounded-lg">
                 <img src={effectiveForm.image_url || assetPath('assets/custom-order.svg')} alt="" className="h-20 w-full rounded-xl object-cover sm:h-24" />
                 <div className="grid gap-2">
@@ -1288,17 +1253,11 @@ export default function Products({ settings, onSettingsSaved }: { settings: Sett
                 </div>
               </div>
             </Field>
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field label={text('Price per unit', 'Harga seunit')}><input className={inputClass} type="number" min={0} step="0.01" value={effectiveForm.price_per_unit} onChange={(e) => setForm({ ...effectiveForm, price_per_unit: e.target.value })} /></Field>
-              <Field label={text('Cost Per Unit', 'Kos Seunit')}><input className={inputClass} type="number" min={0} step="0.01" value={effectiveForm.cost_per_unit} onChange={(e) => setForm({ ...effectiveForm, cost_per_unit: e.target.value })} /></Field>
-              <Field label={text('Units per carton', 'Unit setiap karton')}><input className={inputClass} type="number" min={1} value={effectiveForm.carton_size} onChange={(e) => setForm({ ...effectiveForm, carton_size: e.target.value })} /></Field>
-              <Field label={text('Low stock alert at (unit balance)', 'Amaran stok rendah pada baki unit')}><input className={inputClass} type="number" min={0} value={effectiveForm.low_stock_threshold} onChange={(e) => setForm({ ...effectiveForm, low_stock_threshold: e.target.value })} /><p className="mt-1 text-xs font-bold text-neutral-600">{text('Counted in individual units, not cartons.', 'Dikira dalam unit individu, bukan karton.')}</p></Field>
-            </div>
             <label className="flex items-center gap-3 font-bold">
               <input type="checkbox" checked={effectiveForm.active} onChange={(e) => setForm({ ...effectiveForm, active: e.target.checked })} />
               {text('Active', 'Aktif')}
             </label>
-            <button className={`${buttonClass} w-full sm:w-auto`} disabled={productSaving}>{productSaving ? text('Saving...', 'Menyimpan...') : text('Save product', 'Simpan produk')}</button>
+          </fieldset>
           </form>
         </Modal>
       ) : null}
