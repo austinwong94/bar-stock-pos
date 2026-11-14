@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { addDays, addMonths, addWeeks, format, parseISO, startOfWeek } from 'date-fns';
-import { AlertTriangle, ChevronRight } from 'lucide-react';
-import { inputClass } from '../components/Form';
+import { AlertTriangle, ChevronRight, RefreshCw } from 'lucide-react';
+import { secondaryButtonClass } from '../components/Form';
 import { PageHeader } from '../components/Page';
 import { WorkflowHelp } from '../components/WorkflowHelp';
 import { ViewChoices } from '../components/ViewChoices';
@@ -15,6 +15,8 @@ import type { Sale, SaleItem, SettingsMap, StockInDraftRecord, StockMovement } f
 import StockIn from './StockIn';
 import { useSharedRefresh } from '../lib/useSharedRefresh';
 import { readAllRows } from '../lib/readAllRows';
+import { allocateSaleItems } from '../lib/moneyAllocation';
+import { attachStockSaleItems, stockReceivedLabel } from '../lib/barStockHistory';
 
 type Period = 'day' | 'week' | 'month' | 'custom';
 type Mode = 'in' | 'out';
@@ -49,38 +51,16 @@ function statusLabel(status: Sale['status'], translate: (en: string, ms: string)
   return status === 'completed' ? translate('Completed', 'Selesai') : translate('Voided', 'Dibatalkan');
 }
 
-function countLabel(count: number, singular: string, plural: string) {
-  return `${count} ${count === 1 ? singular : plural}`;
-}
-
-function stockInputLabel(movement: StockMovement) {
-  const quantity = Number(movement.input_quantity ?? Math.abs(Number(movement.quantity_change)));
-  if (movement.unit_input === 'carton') return countLabel(quantity, 'Carton', 'Cartons');
-  return countLabel(quantity, 'Unit', 'Units');
-}
-
-function allocateSaleAmounts(total: number, lineTotals: number[]) {
-  const cents = Math.round(total * 100);
-  const weightTotal = lineTotals.reduce((sum, value) => sum + value, 0);
-  const fallbackWeight = weightTotal > 0 ? 0 : 1 / Math.max(lineTotals.length, 1);
-  let used = 0;
-  return lineTotals.map((lineTotal, index) => {
-    if (index === lineTotals.length - 1) return (cents - used) / 100;
-    const share = weightTotal > 0 ? lineTotal / weightTotal : fallbackWeight;
-    const value = Math.round(cents * share);
-    used += value;
-    return value / 100;
-  });
-}
-
 function rowsFromSale(sale: Sale & { sale_items?: SaleItem[] }, closeTime: SettingsMap[keyof SettingsMap]): StockOutRow[] {
   const items = sale.sale_items ?? [];
-  const allocatedValues = allocateSaleAmounts(Number(sale.total_amount), items.map((item) => Number(item.line_total)));
+  const { netLines: allocatedValues } = allocateSaleItems(sale.total_amount, sale.discount_amount ?? 0, items.map((item) => item.line_total));
+  if (sale.status === 'completed' && !items.length) throw new Error('Sale items are missing.');
+  if (items.some(item => !Number.isSafeInteger(Number(item.quantity)) || Number(item.quantity) <= 0)) throw new Error('Sale quantities are invalid.');
   return items.map((item, index) => ({
     date: sale.business_date || (sale.created_at ? malaysiaBusinessDateInputValue(sale.created_at, closeTime) : '-'),
     sale: sale.sale_number,
     item: item.products?.name ?? item.custom_item_name ?? item.product_id ?? 'Custom Order',
-    qty: item.quantity,
+    qty: Number(item.quantity),
     method: sale.payment_method,
     total: allocatedValues[index] ?? 0,
     worker: sale.order_taken_by ?? '-',
@@ -121,10 +101,12 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
   const [stockInRows, setStockInRows] = useState<StockInRow[]>([]);
   const [pendingStockInDrafts, setPendingStockInDrafts] = useState<StockInDraftRecord[]>([]);
   const [loadError, setLoadError] = useState('');
+  const [loading, setLoading] = useState(true);
   const generation = useRef(0);
 
   async function loadRows() {
     const ticket = ++generation.current;
+    setLoading(current => current || !!loadError);
     try {
       setLoadError('');
       if (!isSupabaseConfigured) {
@@ -146,7 +128,7 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
               reference: movement.reason ?? movement.reference_type ?? '-',
               item: movement.products?.name ?? movement.product_id ?? '-',
               qty: Math.abs(movement.quantity_change),
-              unit: stockInputLabel(movement),
+              unit: stockReceivedLabel(movement, text),
               worker: movement.entered_by ?? '-',
               notes: movement.notes ?? '-',
             })),
@@ -155,13 +137,14 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
       }
 
       const [salesData, movementData, draftData] = await Promise.all([
-        readAllRows<Sale & { sale_items?: SaleItem[] }>((from,to) => supabase.from('sales').select('*, sale_items(*, products(name))').order('created_at', { ascending: false }).order('id').range(from,to)),
+        readAllRows<Sale>((from,to) => supabase.from('sales').select('*').order('created_at', { ascending: false }).order('id').range(from,to)),
         readAllRows<StockMovement>((from,to) => supabase.from('stock_movements').select('*, products(name)').eq('movement_type', 'stock_in').order('created_at', { ascending: false }).order('id').range(from,to)),
         readAllRows<StockInDraftRecord>((from,to) => supabase.from('stock_in_drafts').select('*').eq('status', 'draft').order('created_at', { ascending: false }).order('id').range(from,to)),
       ]);
       if (ticket !== generation.current) return;
 
-      const sales = (salesData ?? []) as Array<Sale & { sale_items?: SaleItem[] }>;
+      const sales = await attachStockSaleItems(salesData, (ids, from, to) => supabase.from('sale_items').select('*, products(name)').in('sale_id', ids).order('id').range(from, to));
+      if (ticket !== generation.current) return;
       setStockOutRows(
         sales.flatMap((sale) => rowsFromSale(sale, settings.business_day_close_time)),
       );
@@ -172,7 +155,7 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
           reference: movement.reason ?? movement.reference_type ?? '-',
           item: movement.products?.name ?? movement.product_id ?? '-',
           qty: Math.abs(movement.quantity_change),
-          unit: stockInputLabel(movement),
+          unit: stockReceivedLabel(movement, text),
           worker: movement.entered_by ?? '-',
           notes: movement.notes ?? '-',
         })),
@@ -180,12 +163,15 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
       setPendingStockInDrafts((draftData ?? []) as StockInDraftRecord[]);
     } catch {
       if (ticket !== generation.current) return;
-      setLoadError(text('Stock records could not refresh. Previously loaded figures may be out of date.', 'Rekod stok gagal dikemas kini. Angka yang dimuatkan sebelum ini mungkin tidak terkini.'));
+      setLoadError(text('Stock records could not be verified. Totals are hidden until you retry.', 'Rekod stok tidak dapat disahkan. Jumlah disembunyikan sehingga anda cuba lagi.'));
+    } finally {
+      if (ticket === generation.current) setLoading(false);
     }
   }
 
   useEffect(() => {
     void loadRows();
+    return () => { generation.current++; };
   }, [settings.business_day_close_time, text]);
 
   useSharedRefresh(loadRows, {
@@ -214,13 +200,13 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
   return (
     <>
       <PageHeader title={text('Stock Activity', 'Aktiviti Stok')} actions={<WorkflowHelp area="bar" />} />
-      {loadError ? <p role="alert" className="mb-3 text-sm text-danger">{loadError} <button className="underline" onClick={() => void loadRows()}>{text('Retry', 'Cuba Lagi')}</button></p> : null}
+      {loadError ? <div role="alert" className="mb-3 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border border-danger/30 p-3 text-sm text-danger"><span>{loadError}</span><button className={`${secondaryButtonClass} min-h-11`} onClick={() => void loadRows()}><RefreshCw className="h-4 w-4" />{text('Retry', 'Cuba Lagi')}</button></div> : null}
       <ViewChoices label={text('Stock Direction', 'Arah Stok')} className="bar-stock-mode" value={mode} onChange={value => setMode(value as 'in' | 'out')} items={[
         { value: 'in', label: text('Stock In', 'Stok Masuk') },
         { value: 'out', label: text('Stock Out', 'Stok Keluar') },
       ]} />
 
-      {mode === 'out' && pendingStockInDrafts.length > 0 ? (
+      {!loading && !loadError && mode === 'out' && pendingStockInDrafts.length > 0 ? (
         <section className="mb-3 grid gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 shadow-none sm:mb-4 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center sm:rounded-xl sm:p-4">
           <AlertTriangle className="hidden h-5 w-5 text-amber-700 sm:block" />
           <div className="min-w-0">
@@ -246,13 +232,14 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
         value={period === 'day' ? selectedDate : period === 'week' ? selectedWeek : selectedMonth}
         onValue={value => { if (period === 'day') setSelectedDate(value); else if (period === 'week') setSelectedWeek(value); else setSelectedMonth(value); }}
         onShift={shiftPeriod} custom={{ start: customStart, end: customEnd, onStart: setCustomStart, onEnd: setCustomEnd }} />
-      {mode === 'out' ? <StaffSummary items={[
+      {loading ? <p role="status" className="py-4 text-sm text-muted">{text('Checking Stock Records...', 'Menyemak Rekod Stok...')}</p> : null}
+      {!loading && !loadError && mode === 'out' ? <StaffSummary items={[
         { label: text('Units Out', 'Unit Keluar'), value: activeOutRows.reduce((sum, row) => sum + row.qty, 0) },
         { label: text('Revenue', 'Hasil'), value: money(activeOutRows.filter(row => row.method !== 'complimentary').reduce((sum, row) => sum + row.total, 0), String(settings.currency_symbol)) },
         { label: text('FOC Value', 'Nilai FOC'), value: money(activeOutRows.filter(row => row.method === 'complimentary').reduce((sum, row) => sum + row.total, 0), String(settings.currency_symbol)) },
       ]} /> : null}
 
-      {mode === 'in' ? (
+      {!loading && !loadError ? mode === 'in' ? (
         <>
           <StaffSummary items={[
             { label: text('Units Added', 'Unit Ditambah'), value: filteredInRows.reduce((sum, row) => sum + row.qty, 0) },
@@ -275,7 +262,7 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
                     <th className="p-3 whitespace-nowrap">{text('Date', 'Tarikh')}</th>
                     <th className="p-3 whitespace-nowrap">{text('Item', 'Item')}</th>
                     <th className="p-3 whitespace-nowrap">{text('Worker', 'Pekerja')}</th>
-                    <th className="p-3 whitespace-nowrap">{text('Input', 'Input')}</th>
+                    <th className="p-3 whitespace-nowrap">{text('Received As', 'Diterima Sebagai')}</th>
                     <th className="p-3 whitespace-nowrap">{text('Units Added', 'Unit Ditambah')}</th>
                     <th className="p-3 whitespace-nowrap">{text('Reference', 'Rujukan')}</th>
                     <th className="p-3 whitespace-nowrap">{text('Notes', 'Nota')}</th>
@@ -353,7 +340,7 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
             </div>
           </section>
         </>
-      )}
+      ) : null}
     </>
   );
 }

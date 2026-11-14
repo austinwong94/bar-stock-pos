@@ -1,5 +1,6 @@
 import { malaysiaBusinessDateInputValue } from './format';
 import type { Sale, SaleItem } from './types';
+import { allocateSaleItems } from './moneyAllocation';
 
 export type ItemSalesBreakdown = {
   product: string;
@@ -17,20 +18,6 @@ type ReportTotals = {
   discount: number;
 };
 
-function distributeAmount(total: number, weights: number[]) {
-  const cents = Math.round(total * 100);
-  const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
-  const fallbackWeight = weightTotal > 0 ? 0 : 1 / Math.max(weights.length, 1);
-  let used = 0;
-  return weights.map((weight, index) => {
-    if (index === weights.length - 1) return (cents - used) / 100;
-    const share = weightTotal > 0 ? weight / weightTotal : fallbackWeight;
-    const value = Math.round(cents * share);
-    used += value;
-    return value / 100;
-  });
-}
-
 export type SaleWithItems = Sale & { sale_items?: SaleItem[] };
 
 export function actualItemSales(sales: SaleWithItems[], dates?: string[], businessCloseTime: string | number | boolean | null | undefined = '00:00'): ItemSalesBreakdown[] {
@@ -46,20 +33,20 @@ export function actualItemSales(sales: SaleWithItems[], dates?: string[], busine
     })
     .forEach((sale) => {
       const items = sale.sale_items ?? [];
-      const lineTotals = items.map((item) => Number(item.line_total));
-      const saleValue = Number(sale.total_amount);
-      const netLines = distributeAmount(saleValue, lineTotals);
-      const discounts = distributeAmount(Number(sale.discount_amount ?? 0), lineTotals);
+      if (!items.length) throw new Error('Sale items are missing. Reload the source records.');
+      const lineTotals = items.map((item) => item.line_total);
+      const { netLines, discounts } = allocateSaleItems(sale.total_amount, sale.discount_amount ?? 0, lineTotals);
 
       items.forEach((item, index) => {
+        if (!Number.isSafeInteger(Number(item.quantity)) || Number(item.quantity) <= 0) throw new Error('Sale quantities are incomplete. Reload the source records.');
         const product = item.products?.name ?? item.custom_item_name ?? item.product_id ?? 'Custom Order';
         const existing = rows.get(product) ?? { product, quantity: 0, cash: 0, qr: 0, focCost: 0, discount: 0 };
         const value = netLines[index] ?? 0;
         existing.quantity += Number(item.quantity);
-        if (sale.payment_method === 'cash') existing.cash += value;
-        if (sale.payment_method === 'qr') existing.qr += value;
-        if (sale.payment_method === 'complimentary') existing.focCost += value;
-        existing.discount += discounts[index] ?? 0;
+        if (sale.payment_method === 'cash') existing.cash = (Math.round(existing.cash * 100) + Math.round(value * 100)) / 100;
+        if (sale.payment_method === 'qr') existing.qr = (Math.round(existing.qr * 100) + Math.round(value * 100)) / 100;
+        if (sale.payment_method === 'complimentary') existing.focCost = (Math.round(existing.focCost * 100) + Math.round(value * 100)) / 100;
+        existing.discount = (Math.round(existing.discount * 100) + Math.round((discounts[index] ?? 0) * 100)) / 100;
         rows.set(product, existing);
       });
     });
