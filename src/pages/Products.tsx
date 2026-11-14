@@ -8,12 +8,13 @@ import { CocktailRecipePanel } from '../components/CocktailRecipePanel';
 import { Modal } from '../components/Modal';
 import { PageHeader } from '../components/Page';
 import { ViewChoices } from '../components/ViewChoices';
+import { PriceHistory } from '../components/PriceHistory';
 import { useToast } from '../components/Toast';
 import { categoryRank, groupByCategory, normalizeCategoryName } from '../lib/data';
 import { hasSupabaseCredentials, isSupabaseConfigured, shouldUseLocalData, supabase } from '../lib/supabase';
-import { clearLocalTransactionHistory, loadLocalCategories, loadLocalProductPriceHistory, loadLocalProducts, resetLocalStarterData, saveLocalProduct, saveLocalSettings } from '../lib/localStore';
+import { clearLocalTransactionHistory, loadLocalCategories, loadLocalProducts, resetLocalStarterData, saveLocalProduct, saveLocalSettings } from '../lib/localStore';
 import { money } from '../lib/format';
-import type { AppSettingKey, Category, ProductPriceHistory, ProductWithStock, SettingsMap } from '../lib/types';
+import type { AppSettingKey, Category, ProductWithStock, SettingsMap } from '../lib/types';
 import { assetPath } from '../lib/assets';
 import { useLanguage } from '../lib/language';
 import { hasAdminAccess, unlockAdminAccess } from '../lib/adminAccess';
@@ -570,7 +571,6 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
   const { text } = useLanguage();
   const [products, setProducts] = useState<ProductWithStock[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [priceHistory, setPriceHistory] = useState<ProductPriceHistory[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogRow[]>([]);
   const [form, setForm] = useState<ProductForm | null>(null);
   const [bundleForm, setBundleForm] = useState<BundleForm>(() => bundleFormFromSettings(isSupabaseConfigured ? {} : settings));
@@ -663,24 +663,21 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
     if (!isSupabaseConfigured) {
       setProducts(loadLocalProducts(true));
       setCategories(loadLocalCategories());
-      setPriceHistory(loadLocalProductPriceHistory());
       setAuditLogs([]);
       setBundleVersions(bundleSnapshot([]).versions);
       return;
     }
     const ticket=++readGeneration.current;
     try {
-    const [productData, categoryData, priceHistoryData, bundleSettingData, auditLogData] = await Promise.all([
+    const [productData, categoryData, bundleSettingData, auditLogData] = await Promise.all([
       readAllRows<ProductWithStock>((from,to)=>supabase.from('products').select('*, categories(id,name,sort_order), inventory_balances(quantity_on_hand)').order('name').order('id').range(from,to)),
       readAllRows<Category>((from,to)=>supabase.from('categories').select('*').order('sort_order').order('id').range(from,to)),
-      readAllRows<ProductPriceHistory>((from,to)=>supabase.from('product_price_history').select('*, products(name), profiles(full_name)').order('changed_at', { ascending: false }).order('id').range(from,to)),
       readAllRows<BundleSettingRow>((from,to)=>supabase.from('app_settings').select('key,value,updated_at').in('key', bundleKeys).order('key').range(from,to)),
       readAllRows<AuditLogRow>((from,to)=>supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).order('id').range(from,to)),
     ]);
     if(ticket!==readGeneration.current || !alive.current)return;
     setReadError('');
     setProducts((productData ?? []) as ProductWithStock[]);
-    setPriceHistory(priceHistoryData);
     setAuditLogs(auditLogData);
     const bundleRows = (bundleSettingData ?? []) as BundleSettingRow[];
     const currentPending = loadBundlePending();
@@ -708,7 +705,7 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
   }, [demoAdminUnlocked]);
 
   useSharedRefresh(() => refresh(false), {
-    tables: ['products', 'categories', 'inventory_balances', 'product_price_history', 'app_settings', 'daily_reports', 'account_report_archives', 'audit_logs'],
+    tables: ['products', 'categories', 'inventory_balances', 'app_settings', 'daily_reports', 'account_report_archives', 'audit_logs'],
     intervalMs: 20000,
   });
 
@@ -980,7 +977,7 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
         </div>
         {pending ? <button className={`${secondaryButtonClass} w-full sm:w-auto`} disabled={productSaving} onClick={() => void checkProduct()}><RotateCcw size={16} />{productSaving ? text('Checking...', 'Menyemak...') : text('Check Saved Product', 'Semak Produk Disimpan')}</button> : null}
       </section> : null}
-      {readError ? <p role="alert" className="mb-3 text-sm text-danger">{readError} <button className={secondaryButtonClass} onClick={()=>void refresh()}>{text('Retry', 'Cuba Lagi')}</button></p> : null}
+      {readError && adminSection !== 'priceHistory' ? <p role="alert" className="mb-3 text-sm text-danger">{readError} <button className={secondaryButtonClass} onClick={()=>void refresh()}>{text('Retry', 'Cuba Lagi')}</button></p> : null}
       {!demoAdminUnlocked ? (
         <div className="island-panel mb-4 max-w-xl rounded-lg p-3 sm:mb-5 sm:rounded-xl sm:p-5">
           <h2 className="text-xl font-semibold sm:text-2xl">{text('Admin Access', 'Akses Pentadbir')}</h2>
@@ -990,7 +987,7 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
           </div>
         </div>
       ) : null}
-      {!demoAdminUnlocked || readError ? null : (
+      {!demoAdminUnlocked ? null : (
       <>
       <ViewChoices className="bar-admin-tabs mb-4" label={text('Admin Section', 'Bahagian Pentadbir')} value={adminSection} onChange={value => setAdminSection(value as typeof adminSection)} items={[
         {value: 'products', label: text('Products', 'Produk')},
@@ -1000,6 +997,7 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
         {value: 'activity', label: text('Activity', 'Aktiviti')},
         {value: 'health', label: text('System', 'Sistem')},
       ]} />
+      {readError && adminSection !== 'priceHistory' ? null : <>
       {adminSection === 'products' ? (
       <>
       <section className="island-panel mb-4 rounded-lg p-3 sm:mb-5 sm:rounded-xl sm:p-5">
@@ -1219,80 +1217,7 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
       ) : adminSection === 'recipes' ? (
         <CocktailRecipePanel products={sortedProducts} settings={settings} onAddCocktailProduct={openCocktailProductForm} />
       ) : adminSection === 'priceHistory' ? (
-        <section className="island-panel rounded-lg p-3 sm:rounded-xl sm:p-5">
-          <h2 className="text-lg font-semibold sm:text-xl">{text('Price History', 'Sejarah Harga')}</h2>
-          <div className="mt-3 overflow-hidden rounded-lg border border-line bg-white/75 sm:hidden">
-            <table className="dense-table w-full table-fixed text-left text-[11px]">
-              <thead className="bg-paper">
-                <tr>
-                  <th className="w-[40%] p-2">{text('Product', 'Produk')}</th>
-                  <th className="w-[30%] p-2">{text('Price', 'Harga')}</th>
-                  <th className="w-[30%] p-2">{text('Cost', 'Kos')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {priceHistory.map((item) => (
-                  <tr key={`mobile-price-${item.id}`} className="border-t border-line">
-                    <td className="p-2 align-top">
-                      <p className="truncate font-semibold">{item.products?.name ?? item.product_name}</p>
-                      <p className="mt-0.5 text-[10px] font-bold text-neutral-600">{format(new Date(item.changed_at), 'dd MMM yyyy')}</p>
-                      <p className="text-[10px] font-bold text-neutral-600">{format(new Date(item.changed_at), 'h:mm a')}</p>
-                      <p className="mt-1 truncate text-[10px] font-semibold text-accent">{text('By', 'Oleh')} {item.profiles?.full_name ?? 'Admin'}</p>
-                    </td>
-                    <td className="p-2 align-top font-bold leading-tight">
-                      <span className="block text-[10px] text-neutral-500">{text('Old', 'Lama')}</span>
-                      <span className="block truncate">{item.old_price_per_unit == null ? '-' : money(item.old_price_per_unit, String(settings.currency_symbol))}</span>
-                      <span className="mt-1 block text-[10px] text-accent">{text('New', 'Baru')}</span>
-                      <span className="block truncate font-semibold text-accent">{item.new_price_per_unit == null ? '-' : money(item.new_price_per_unit, String(settings.currency_symbol))}</span>
-                    </td>
-                    <td className="p-2 align-top font-bold leading-tight">
-                      <span className="block text-[10px] text-neutral-500">{text('Old', 'Lama')}</span>
-                      <span className="block truncate">{item.old_cost_per_unit == null ? '-' : money(item.old_cost_per_unit, String(settings.currency_symbol))}</span>
-                      <span className="mt-1 block text-[10px] text-neutral-500">{text('New', 'Baru')}</span>
-                      <span className="block truncate">{item.new_cost_per_unit == null ? '-' : money(item.new_cost_per_unit, String(settings.currency_symbol))}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {priceHistory.length === 0 ? (
-              <div className="p-4 text-center text-sm font-bold text-neutral-600">
-                {text('No price changes recorded yet.', 'Belum ada perubahan harga.')}
-              </div>
-            ) : null}
-          </div>
-          <div className="clean-scroll mt-3 hidden overflow-x-auto rounded-lg border border-line bg-white/75 sm:block">
-            <table className="dense-table w-full min-w-[820px] text-left text-xs sm:text-sm">
-              <thead className="bg-paper">
-                <tr>
-                  <th className="p-3">{text('Time', 'Masa')}</th>
-                  <th className="p-3">{text('Product', 'Produk')}</th>
-                  <th className="p-3">{text('Old price', 'Harga lama')}</th>
-                  <th className="p-3">{text('New price', 'Harga baru')}</th>
-                  <th className="p-3">{text('Old cost', 'Kos lama')}</th>
-                  <th className="p-3">{text('New cost', 'Kos baru')}</th>
-                  <th className="p-3">{text('Changed by', 'Diubah oleh')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {priceHistory.map((item) => (
-                  <tr key={item.id} className="border-t border-line">
-                    <td className="p-3 whitespace-nowrap">{format(new Date(item.changed_at), 'dd MMM yyyy, h:mm a')}</td>
-                    <td className="p-3 font-semibold">{item.products?.name ?? item.product_name}</td>
-                    <td className="p-3 whitespace-nowrap">{item.old_price_per_unit == null ? '-' : money(item.old_price_per_unit, String(settings.currency_symbol))}</td>
-                    <td className="p-3 whitespace-nowrap font-semibold">{item.new_price_per_unit == null ? '-' : money(item.new_price_per_unit, String(settings.currency_symbol))}</td>
-                    <td className="p-3 whitespace-nowrap">{item.old_cost_per_unit == null ? '-' : money(item.old_cost_per_unit, String(settings.currency_symbol))}</td>
-                    <td className="p-3 whitespace-nowrap">{item.new_cost_per_unit == null ? '-' : money(item.new_cost_per_unit, String(settings.currency_symbol))}</td>
-                    <td className="p-3 whitespace-nowrap">{item.profiles?.full_name ?? 'Admin'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {priceHistory.length === 0 ? (
-              <div className="p-5 text-center text-sm font-bold text-neutral-600">{text('No price changes recorded yet.', 'Belum ada perubahan harga.')}</div>
-            ) : null}
-          </div>
-        </section>
+        <PriceHistory settings={settings} />
       ) : adminSection === 'activity' ? (
         <AuditActivityPanel logs={auditLogs} settings={settings} />
       ) : adminSection === 'reports' ? (
@@ -1300,6 +1225,7 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
       ) : (
         <CloudHealthPanel />
       )}
+      </>}
       </>
       )}
       {effectiveForm ? (

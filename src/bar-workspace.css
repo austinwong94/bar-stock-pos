@@ -26,6 +26,25 @@
 .bar-workspace .island-panel { border: 0; border-radius: 0; background: transparent; padding-inline: 0; box-shadow: none; }
 .bar-workspace .island-card { border-radius: 8px; box-shadow: none; }
 .bar-workspace .page-heading { margin-bottom: 16px; }
+.bar-price-history { min-width: 0; container-type: inline-size; }
+.bar-price-history button { min-width: 44px; min-height: 44px; }
+.bar-price-history input[type="search"]::-webkit-search-cancel-button { display: none; }
+.bar-price-toolbar { display: grid; min-width: 0; gap: 12px; align-items: center; }
+.view-choices.bar-price-types { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); }
+.bar-price-types button { min-height: 44px; min-width: 44px; padding-inline: 4px; }
+.bar-price-values { display: grid; grid-template-columns: minmax(0,1fr) repeat(2,minmax(0,1fr)); gap: 8px; overflow-wrap: anywhere; }
+.bar-price-mobile { display: grid; min-width: 0; }
+.bar-price-desktop { display: none; }
+@container (max-width: 620px) {
+  .bar-price-history .bar-period { flex-wrap: wrap; }
+  .bar-price-history .bar-period > .view-choices { flex: 1 1 100%; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); }
+  .bar-price-history .bar-period .bar-date-stepper { flex: 1 1 100%; width: 100%; grid-template-columns: 44px minmax(0,1fr) 44px; }
+}
+@container (min-width: 900px) {
+  .bar-price-mobile { display: none; }
+  .bar-price-desktop { display: block; }
+  .bar-price-toolbar { grid-template-columns: minmax(0,400px) minmax(0,1fr); }
+}
 .bar-sales-history { min-width: 0; container-type: inline-size; }
 .bar-sales-history input[type="search"]::-webkit-search-cancel-button { display: none; }
 .bar-sales-toolbar { display: grid; grid-template-columns: minmax(0,1fr) 44px; align-items: end; gap: 12px 8px; margin-bottom: 12px; }

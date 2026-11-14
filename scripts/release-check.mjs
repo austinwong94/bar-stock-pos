@@ -15,6 +15,7 @@ import {runProductSaveRecoveryTests} from '../supabase/tests/product-save-recove
 import {runBundleSetupTests} from '../supabase/tests/bundle-setup.mjs';
 import {runPosMoneyTests} from '../supabase/tests/pos-money.mjs';
 import {runClosingItemAmountTests} from '../supabase/tests/closing-item-amounts.mjs';
+import {runPriceHistoryTests} from '../supabase/tests/price-history.mjs';
 import {walk} from './release/admission.mjs';
 import {createServer} from 'node:http';
 import path from 'node:path';
@@ -51,6 +52,7 @@ try{
  await stage('Validated bar calendar periods and report ranges','unit',()=>command(['scripts/test-bar-report-period.mjs']));
  await stage('Verified dated stock movements and ledger balances','unit',()=>command(['scripts/test-bar-movement-history.mjs']));
  await stage('Exact dated sales history and private receipt references','unit',()=>command(['scripts/test-bar-sales-history.mjs']));
+ await stage('Verified historical product prices and editor records','unit',()=>command(['scripts/test-bar-price-history.mjs']));
  await stage('Stock-out recovery','unit',()=>command(['scripts/test-stock-out.mjs']));
  await stage('Receiving units and measured pieces','unit',()=>command(['scripts/test-delivery-entry.mjs']));
  await stage('Durable delivery identity and recovery','unit',()=>command(['scripts/test-delivery-recovery.mjs']));
@@ -79,6 +81,7 @@ try{
  await stage('Atomic bundle setup and safe checkout','native-postgres',()=>runBundleSetupTests());
  await stage('Exact new payment money and legacy recovery','native-postgres',()=>runPosMoneyTests());
  await stage('Exact saved closing item amounts and audit','native-postgres',()=>runClosingItemAmountTests());
+ await stage('Restricted historical prices and record-preserving upgrade','native-postgres',()=>runPriceHistoryTests());
  await stage('Build','static',()=>command(['node_modules/vite/bin/vite.js','build'],{VITE_DEMO_MODE:mode==='sample'?'true':'false'}));
  await stage('Page delivery and load budgets','built-browser-and-static',()=>command(['scripts/test-build-delivery.mjs',mode]));
  await stage('Account identity changes','local-browser-contract',()=>command(['scripts/test-access-session-ui.mjs']));
@@ -96,6 +99,7 @@ try{
  await stage('Validated report-date controls and safe downloads','local-browser-contract',()=>command(['scripts/test-bar-report-period-ui.mjs']));
  await stage('Mobile dated movement history and failed-read safeguards','local-browser-contract',()=>command(['scripts/test-bar-movement-history-ui.mjs']));
  await stage('Mobile sales history and QR receipt identity safeguards','local-browser-contract',()=>command(['scripts/test-bar-sales-history-ui.mjs']));
+ await stage('Mobile historical prices and independent Admin reads','local-browser-contract',()=>command(['scripts/test-bar-price-history-ui.mjs']));
  await stage('Measured receiving review and recovery','sample-browser',()=>sampleCommand(['scripts/test-measured-receiving-ui.mjs']));
  await stage('Finance exports and report scope','sample-browser-and-read-fixture',()=>sampleCommand(['scripts/test-finance-export-ui.mjs']));
  await stage('Supplier payments and Finance follow-up','sample-browser',()=>sampleCommand(['scripts/test-purchase-payment-ui.mjs']));
