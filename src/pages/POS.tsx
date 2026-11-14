@@ -15,7 +15,7 @@ import { isSupabaseConfigured } from '../lib/supabase';
 import { loadLocalIngredientItems, loadLocalRecipeIngredients, saveLocalSale } from '../lib/localStore';
 import type { IngredientWithBalance, PaymentMethod, ProductWithStock, RecipeIngredient, SettingsMap } from '../lib/types';
 import { useLanguage } from '../lib/language';
-import { bundleConfig } from '../lib/bundleSetup';
+import { bundleConfig, bundleOrderCount } from '../lib/bundleSetup';
 import { assetPath } from '../lib/assets';
 import { hasAdminAccess, unlockAdminAccess } from '../lib/adminAccess';
 import { useSharedRefresh } from '../lib/useSharedRefresh';
@@ -89,10 +89,6 @@ function ingredientOnHand(item: IngredientWithBalance) {
 function formatIngredientAmount(value: number, unit: string) {
   const rounded = unit === 'unit' ? Math.ceil(value).toString() : value.toFixed(value % 1 === 0 ? 0 : 2);
   return `${rounded} ${unit}`;
-}
-
-function positiveInt(value: number, fallback = 1) {
-  return Number.isFinite(value) ? Math.max(1, Math.floor(value)) : fallback;
 }
 
 function localDrinkFallback(product: ProductWithStock) {
@@ -195,7 +191,8 @@ function POSTerminal({ settings }: { settings: SettingsMap }) {
     if (!cart.length && !pendingSale) { setDiscountRate(0); setCustomDiscount(''); }
   }, [cart.length, pendingSale]);
   const [bundleModalOpen, setBundleModalOpen] = useState(false);
-  const [bundleSets, setBundleSets] = useState(1);
+  const [bundleSetsInput, setBundleSetsInput] = useState('1');
+  const [bundleDraftConfig, setBundleDraftConfig] = useState<NonNullable<ReturnType<typeof bundleConfig>> | null>(null);
   const [bundleSelections, setBundleSelections] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
   const [saleIdempotencyKey, setSaleIdempotencyKey] = useState('');
@@ -348,13 +345,25 @@ function POSTerminal({ settings }: { settings: SettingsMap }) {
     return `${first.name} ${text('is short by', 'kurang')} ${formatIngredientAmount(first.shortage, first.unit)}.`;
   }
 
-  const bundleRequiredUnits = bundleUnits * bundleSets;
+  const draftBundleUnits = bundleDraftConfig?.beer_bundle_units_per_set ?? bundleUnits;
+  const draftBundlePrice = bundleDraftConfig?.beer_bundle_price ?? bundlePrice;
+  const draftBundleName = bundleDraftConfig?.beer_bundle_name ?? bundleName;
+  const bundleSets = bundleOrderCount(bundleSetsInput, draftBundleUnits);
+  const bundleRequiredUnits = bundleSets === null ? 0 : draftBundleUnits * bundleSets;
+  const bundleDraftChanged = !!bundleDraftConfig && (!bundleEnabled || bundleDraftConfig.beer_bundle_units_per_set !== bundleUnits || bundleDraftConfig.beer_bundle_price !== bundlePrice || bundleDraftConfig.beer_bundle_name !== bundleName || Object.keys(bundleSelections).some(id => !beerProducts.some(product => product.id === id)));
+  const bundleStockChanged = !allowNegativeStock && beerProducts.some(product => (bundleSelections[product.id] ?? 0) + cartProductQuantity(product.id) > (product.inventory_balances?.quantity_on_hand ?? 0));
+  const bundleCountError = bundleSets !== null ? '' : !bundleSetsInput.trim()
+    ? text('Enter the number of sets.', 'Masukkan bilangan set.')
+    : /^\d+$/.test(bundleSetsInput.trim()) && Number(bundleSetsInput) * draftBundleUnits > 2147483647
+      ? text('Too many beer units. Reduce the number of sets.', 'Terlalu banyak unit bir. Kurangkan bilangan set.')
+      : text('Enter a whole number of sets (1 or more).', 'Masukkan bilangan set dalam nombor bulat (1 atau lebih).');
   const bundleSelectedUnits = Object.values(bundleSelections).reduce((sum, quantity) => sum + quantity, 0);
   const bundleMissingUnits = Math.max(0, bundleRequiredUnits - bundleSelectedUnits);
   const bundleUnitProgress = bundleRequiredUnits > 0 ? Math.min(100, (bundleSelectedUnits / bundleRequiredUnits) * 100) : 0;
 
-  function updateBundleSets(nextValue: number) {
-    setBundleSets(positiveInt(nextValue, 1));
+  function updateBundleSets(nextValue: string) {
+    if (nextValue === bundleSetsInput) return;
+    setBundleSetsInput(nextValue);
     setBundleSelections({});
   }
 
@@ -431,12 +440,15 @@ function POSTerminal({ settings }: { settings: SettingsMap }) {
       toast.error('No active beer products found.');
       return;
     }
-    setBundleSets(1);
+    if (!configuredBundle) return;
+    setBundleDraftConfig(configuredBundle);
+    setBundleSetsInput('1');
     setBundleSelections({});
     setBundleModalOpen(true);
   }
 
   function changeBundleSelection(product: ProductWithStock, delta: number) {
+    if (bundleSets === null || bundleDraftChanged) return;
     setBundleSelections((current) => {
       const currentQuantity = current[product.id] ?? 0;
       const nextQuantity = Math.max(0, currentQuantity + delta);
@@ -458,6 +470,11 @@ function POSTerminal({ settings }: { settings: SettingsMap }) {
   }
 
   function addBundleToCart() {
+    if (bundleDraftChanged) {
+      toast.error(text('Beer set changed. Close this set and check the latest details.', 'Set bir telah berubah. Tutup set ini dan semak butiran terkini.'));
+      return;
+    }
+    if (bundleSets === null) { toast.error(bundleCountError); return; }
     if (bundleSelectedUnits !== bundleRequiredUnits) {
       toast.error(text('Select exactly', 'Pilih tepat') + ` ${bundleRequiredUnits} ` + text('beer units.', 'unit bir.'));
       return;
@@ -465,17 +482,17 @@ function POSTerminal({ settings }: { settings: SettingsMap }) {
     const components = beerProducts
       .map((product) => ({ product, quantity: bundleSelections[product.id] ?? 0 }))
       .filter((component) => component.quantity > 0);
-    if (components.length === 0) {
+    if (components.length === 0 || components.reduce((sum, component) => sum + component.quantity, 0) !== bundleRequiredUnits) {
       toast.error('Choose the beer types for this bundle.');
       return;
     }
     const bundleProduct: ProductWithStock = {
       id: `bundle-${crypto.randomUUID()}`,
-      name: bundleName,
+      name: draftBundleName,
       category_id: null,
-      price_per_unit: bundlePrice,
+      price_per_unit: draftBundlePrice,
       cost_per_unit: null,
-      carton_size: bundleUnits,
+      carton_size: draftBundleUnits,
       low_stock_threshold: 0,
       active: true,
       created_at: new Date().toISOString(),
@@ -483,9 +500,11 @@ function POSTerminal({ settings }: { settings: SettingsMap }) {
       categories: { id: 'bundle', name: 'Beer', sort_order: 0 },
       inventory_balances: { quantity_on_hand: 9999 },
     };
-    setCart((items) => [...items, { product: bundleProduct, quantity: bundleSets, customPrice: bundlePrice, kind: 'bundle', components, bundleUnits }]);
+    const nextCart = [...cart, { product: bundleProduct, quantity: bundleSets, customPrice: draftBundlePrice, kind: 'bundle', components, bundleUnits: draftBundleUnits } as CartItem];
+    if (!validateCartStock(nextCart)) return;
+    setCart(nextCart);
     setBundleModalOpen(false);
-    toast.success(`${bundleName} added: ${components.map((component) => `${component.product.name} x ${component.quantity}`).join(', ')}.`);
+    toast.success(`${draftBundleName} added: ${components.map((component) => `${component.product.name} x ${component.quantity}`).join(', ')}.`);
   }
 
   function choosePayment(nextMethod: PaymentMethod) {
@@ -1139,13 +1158,14 @@ function POSTerminal({ settings }: { settings: SettingsMap }) {
       ) : null}
       {bundleModalOpen ? (
         <Modal
-          title={bundleName}
+          title={draftBundleName}
           onClose={() => setBundleModalOpen(false)}
           footer={
             <div className="grid w-full gap-2 sm:flex sm:justify-end">
               <button className={secondaryButtonClass} onClick={() => setBundleModalOpen(false)}>{text('Cancel', 'Batal')}</button>
-              <button className={buttonClass} disabled={bundleSelectedUnits !== bundleRequiredUnits} onClick={addBundleToCart}>
-                {bundleSelectedUnits === bundleRequiredUnits
+              <button className={buttonClass} disabled={bundleSets === null || bundleDraftChanged || bundleStockChanged || bundleSelectedUnits !== bundleRequiredUnits} onClick={addBundleToCart}>
+                <Plus size={16} className="shrink-0" aria-hidden="true" />
+                {bundleSets === null ? text('Enter Sets', 'Masukkan Set') : bundleSelectedUnits === bundleRequiredUnits
                   ? text('Add Beer Set', 'Tambah Set Bir')
                   : text('Select', 'Pilih') + ' ' + countLabel(bundleMissingUnits, text('more beer unit', 'unit bir lagi'), text('more beer units', 'unit bir lagi'))}
               </button>
@@ -1153,37 +1173,43 @@ function POSTerminal({ settings }: { settings: SettingsMap }) {
           }
         >
           <div className="grid gap-4">
+            {bundleDraftChanged ? <p role="alert" className="rounded-lg border border-warning bg-amber-50 p-3 text-sm">{text('Beer set changed. Close this set and check the latest details.', 'Set bir telah berubah. Tutup set ini dan semak butiran terkini.')}</p> : null}
+            {bundleStockChanged && !bundleDraftChanged ? <p role="alert" className="rounded-lg border border-warning bg-amber-50 p-3 text-sm">{text('Selected beers exceed the available stock. Reduce the selection.', 'Pilihan bir melebihi stok tersedia. Kurangkan pilihan.')}</p> : null}
             <div className="grid gap-3 border-b border-line pb-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
               <div className="min-w-0">
                 <p className="text-xs font-bold text-muted sm:text-sm">
-                  {countLabel(bundleUnits, text('beer', 'bir'), text('beers', 'bir'))} {text('per set', 'setiap set')} · {money(bundlePrice, String(settings.currency_symbol))}
+                  {countLabel(draftBundleUnits, text('beer', 'bir'), text('beers', 'bir'))} {text('per set', 'setiap set')} · {money(draftBundlePrice, String(settings.currency_symbol))}
                 </p>
               </div>
               <div className="flex items-center justify-end gap-2">
                 <span className="mr-auto text-sm font-medium">{text('Sets', 'Set')}</span>
-                <button aria-label="Decrease Bundle Sets" className={`${secondaryButtonClass} h-10 min-h-10 w-10 !p-0`} onClick={() => updateBundleSets(bundleSets - 1)}>
+                <button aria-label={text('Decrease Bundle Sets', 'Kurangkan Bilangan Set')} disabled={bundleSets === null || bundleSets <= 1 || bundleDraftChanged} className={`${secondaryButtonClass} h-11 min-h-11 w-11 shrink-0 !p-0`} onClick={() => bundleSets !== null && updateBundleSets(String(bundleSets - 1))}>
                   <Minus className="h-4 w-4" />
                 </button>
                 <input
-                  aria-label="Bundle Sets"
-                  className={`${inputClass} h-10 min-h-10 w-20 text-center`}
-                  type="number"
-                  min={1}
-                  value={bundleSets}
-                  onChange={(event) => updateBundleSets(Number(event.target.value || 1))}
+                  aria-label={text('Bundle Sets', 'Bilangan Set')}
+                  aria-invalid={bundleSets === null}
+                  aria-describedby={bundleCountError ? 'bundle-count-error' : undefined}
+                  className={`${inputClass} h-11 min-h-11 w-20 text-center`}
+                  type="text"
+                  inputMode="numeric"
+                  disabled={bundleDraftChanged}
+                  value={bundleSetsInput}
+                  onChange={(event) => updateBundleSets(event.target.value)}
                 />
-                <button aria-label="Increase Bundle Sets" className={`${secondaryButtonClass} h-10 min-h-10 w-10 !p-0`} onClick={() => updateBundleSets(bundleSets + 1)}>
+                <button aria-label={text('Increase Bundle Sets', 'Tambah Bilangan Set')} disabled={bundleSets === null || bundleOrderCount(String(bundleSets + 1), draftBundleUnits) === null || bundleDraftChanged} className={`${secondaryButtonClass} h-11 min-h-11 w-11 shrink-0 !p-0`} onClick={() => bundleSets !== null && updateBundleSets(String(bundleSets + 1))}>
                   <Plus className="h-4 w-4" />
                 </button>
               </div>
             </div>
+            {bundleCountError ? <p id="bundle-count-error" role="alert" className="text-sm text-danger">{bundleCountError}</p> : null}
             <div>
               <div className="flex items-center justify-between gap-3">
-                <div>
+                <div className="min-w-0">
                   <p className="font-semibold">{text('Choose Beers', 'Pilih Bir')}</p>
                 </div>
-                <p className={`shrink-0 rounded-lg px-3 py-2 font-semibold ${bundleSelectedUnits === bundleRequiredUnits ? 'bg-accent/5 text-accent' : 'bg-white text-accent'}`}>
-                  {bundleSelectedUnits} / {bundleRequiredUnits}
+                <p className={`max-w-[65%] break-words rounded-lg px-3 py-2 font-semibold ${bundleSets !== null && bundleSelectedUnits === bundleRequiredUnits ? 'bg-accent/5 text-accent' : 'bg-white text-accent'}`}>
+                  {bundleSelectedUnits} / {bundleSets === null ? '-' : bundleRequiredUnits}
                 </p>
               </div>
               <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
@@ -1205,11 +1231,11 @@ function POSTerminal({ settings }: { settings: SettingsMap }) {
                       <p className="text-xs text-muted">{countLabel(Math.max(0, availableAfterCart), text('unit available', 'unit tersedia'), text('units available', 'unit tersedia'))}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button aria-label={`Remove ${product.name} from bundle`} className={`${secondaryButtonClass} h-10 min-h-10 w-10 !p-0`} onClick={() => changeBundleSelection(product, -1)}>
+                      <button aria-label={text(`Remove ${product.name} from bundle`, `Kurangkan ${product.name} dalam set`)} disabled={bundleSets === null || bundleDraftChanged || selected === 0} className={`${secondaryButtonClass} h-11 min-h-11 w-11 shrink-0 !p-0`} onClick={() => changeBundleSelection(product, -1)}>
                         <Minus className="h-4 w-4" />
                       </button>
-                      <span className="grid h-10 min-w-10 place-items-center rounded-lg bg-accent/5 px-3 font-semibold text-accent">{selected}</span>
-                      <button aria-label={`Add ${product.name} to bundle`} className={`${secondaryButtonClass} h-10 min-h-10 w-10 !p-0`} onClick={() => changeBundleSelection(product, 1)}>
+                      <span className="grid h-11 min-w-11 place-items-center rounded-lg bg-accent/5 px-3 font-semibold text-accent">{selected}</span>
+                      <button aria-label={text(`Add ${product.name} to bundle`, `Tambah ${product.name} dalam set`)} disabled={bundleSets === null || bundleDraftChanged || bundleSelectedUnits >= bundleRequiredUnits || !allowNegativeStock && selected >= availableAfterCart} className={`${secondaryButtonClass} h-11 min-h-11 w-11 shrink-0 !p-0`} onClick={() => changeBundleSelection(product, 1)}>
                         <Plus className="h-4 w-4" />
                       </button>
                     </div>

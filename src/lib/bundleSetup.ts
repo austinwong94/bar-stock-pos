@@ -24,6 +24,12 @@ export function bundleConfig(settings: Partial<SettingsMap>) {
   const parsed = parseBundleForm(bundleFormFromSettings(settings));
   return 'values' in parsed ? parsed.values : null;
 }
+export function bundleOrderCount(raw: string, unitsPerSet: number): number | null {
+  if (!/^\d+$/.test(raw.trim())) return null;
+  const count = Number(raw);
+  if (!Number.isSafeInteger(count) || count < 1 || !Number.isSafeInteger(unitsPerSet) || unitsPerSet < 1 || count * unitsPerSet > 2147483647) return null;
+  return count;
+}
 export function bundleSnapshot(rows: BundleRow[]) {
   if (new Set(rows.map(row => row.key)).size !== rows.length || rows.some(row => !bundleKeys.includes(row.key) || !Number.isFinite(Date.parse(row.updated_at)))) throw Error('Bundle settings could not be verified. Reload before editing.');
   return {form: bundleFormFromSettings(Object.fromEntries(rows.map(row => [row.key, row.value]))),

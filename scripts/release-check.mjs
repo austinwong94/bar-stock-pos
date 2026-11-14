@@ -78,6 +78,7 @@ try{
  await stage('Mobile product setup without guessed values','local-browser-contract',()=>command(['scripts/test-product-setup-ui.mjs']));
  await stage('Mobile bundle setup and interrupted save recovery','local-browser-contract',()=>command(['scripts/test-bundle-setup-ui.mjs']));
  await stage('Fresh manual bar and water entries','sample-browser',()=>sampleCommand(['scripts/test-manual-entry-ui.mjs']));
+ await stage('Exact mobile POS bundle quantities','sample-browser',()=>sampleCommand(['scripts/test-pos-bundle-entry-ui.mjs']));
  await stage('Measured receiving review and recovery','sample-browser',()=>sampleCommand(['scripts/test-measured-receiving-ui.mjs']));
  await stage('Finance exports and report scope','sample-browser-and-read-fixture',()=>sampleCommand(['scripts/test-finance-export-ui.mjs']));
  await stage('Supplier payments and Finance follow-up','sample-browser',()=>sampleCommand(['scripts/test-purchase-payment-ui.mjs']));

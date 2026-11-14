@@ -52,6 +52,11 @@ async function barJourney(db,connect){
   assert.equal(Number(await value(db,'select quantity_on_hand from ingredient_balances where ingredient_id=$1',[gin])),2500);
   const bundle=[{bundle:true,quantity:1,expected_bundle_price:40,expected_bundle_units:4,components:[{product_id:beer,quantity:4}]}];
   const bundleSale=await pay({key:randomUUID(),items:bundle});assert.equal(bundleSale.total_amount,40);
+  const stockBeforeSets=Number(await value(db,'select quantity_on_hand from inventory_balances where product_id=$1',[beer]));
+  const twoSets=await pay({key:randomUUID(),items:[{...bundle[0],quantity:2,components:[{product_id:beer,quantity:8}]}]});assert.equal(twoSets.total_amount,80);
+  assert.equal(Number(await value(db,'select sum(quantity) from sale_items where sale_id=$1',[twoSets.sale_id])),8);
+  assert.equal(Number(await value(db,'select sum(line_total) from sale_items where sale_id=$1',[twoSets.sale_id])),80);
+  assert.equal(Number(await value(db,'select quantity_on_hand from inventory_balances where product_id=$1',[beer])),stockBeforeSets-8);
   await assert.rejects(()=>pay({key:randomUUID(),items:[{...bundle[0],expected_bundle_price:30}]}),e=>e.code==='40001');
   const a=await connect(),b=await connect();await as(a,owner);await as(b,owner);
   const sameKey=randomUUID();const repeated=await Promise.all([pay({key:sameKey,items:currentItems},a),pay({key:sameKey,items:currentItems},b)]);
