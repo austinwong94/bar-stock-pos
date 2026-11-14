@@ -45,6 +45,7 @@ try{
  const pkg=JSON.parse(await readFile(root+'/package.json','utf8'));
  const mode=pkg.name==='lovely-paradise-review'?'sample':'cloud';receipt.buildMode=mode;
  await stage('Types','static',()=>command(['node_modules/typescript/bin/tsc','-b']));
+ await stage('Read-only cloud connection evidence','unit',()=>command(['scripts/test-cloud-connection.mjs']));
  await stage('Recovery and totals','unit',()=>command(['scripts/test-platform-reliability.mjs']));
  await stage('Verified Closing snapshots and exact business dates','unit',()=>command(['scripts/test-closing-snapshot.mjs']));
  await stage('Explicit product prices and carton setup','unit',()=>command(['scripts/test-product-setup.mjs']));
@@ -95,6 +96,7 @@ try{
  await stage('Build','static',()=>command(['node_modules/vite/bin/vite.js','build'],{VITE_DEMO_MODE:mode==='sample'?'true':'false'}));
  await stage('Page delivery and load budgets','built-browser-and-static',()=>command(['scripts/test-build-delivery.mjs',mode]));
  await stage('Account identity changes','local-browser-contract',()=>command(['scripts/test-access-session-ui.mjs']));
+ await stage('Honest Admin System checks on mobile','local-browser-contract',()=>command(['scripts/test-cloud-health-ui.mjs']));
  await stage('Admin staff accounts and username login','local-browser-contract',()=>command(['scripts/test-staff-accounts-ui.mjs']));
  await stage('Receipt upload completion and recovery','local-browser-contract',()=>command(['scripts/test-receipt-upload-ui.mjs']));
  await stage('Receipt photo preview identity and retry','local-browser-contract',()=>command(['scripts/test-photo-preview-ui.mjs']));

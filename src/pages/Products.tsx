@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
-import { PackagePlus, Pencil, Plus, RotateCcw, Save, Trash2 } from 'lucide-react';
+import { PackagePlus, Pencil, Plus, RotateCcw, Save } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Field, buttonClass, inputClass, secondaryButtonClass } from '../components/Form';
 import { AccountReportArchivePanel } from '../components/AccountReportArchivePanel';
@@ -9,10 +9,11 @@ import { Modal } from '../components/Modal';
 import { PageHeader } from '../components/Page';
 import { ViewChoices } from '../components/ViewChoices';
 import { PriceHistory } from '../components/PriceHistory';
+import { CloudHealthPanel } from '../components/CloudHealthPanel';
 import { useToast } from '../components/Toast';
 import { categoryRank, groupByCategory, normalizeCategoryName } from '../lib/data';
-import { hasSupabaseCredentials, isSupabaseConfigured, shouldUseLocalData, supabase } from '../lib/supabase';
-import { clearLocalTransactionHistory, loadLocalCategories, loadLocalProducts, resetLocalStarterData, saveLocalProduct, saveLocalSettings } from '../lib/localStore';
+import { isSupabaseConfigured, shouldUseLocalData, supabase } from '../lib/supabase';
+import { loadLocalCategories, loadLocalProducts, saveLocalProduct, saveLocalSettings } from '../lib/localStore';
 import { money } from '../lib/format';
 import type { AppSettingKey, Category, ProductWithStock, SettingsMap } from '../lib/types';
 import { assetPath } from '../lib/assets';
@@ -49,12 +50,6 @@ type AuditLogRow = {
   after_json: unknown;
   created_at: string;
 };
-type CloudCheckStatus = 'pass' | 'fail' | 'info';
-type CloudCheckRow = {
-  label: string;
-  status: CloudCheckStatus;
-  detail: string;
-};
 const productImageBucket = 'product-images';
 const maxProductImageBytes = 4 * 1024 * 1024;
 
@@ -76,26 +71,6 @@ function friendlyAdminError(message: string) {
     return 'Your account cannot save this change. Ask the owner to check your access.';
   }
   return message;
-}
-
-function cloudCheckTone(status: CloudCheckStatus) {
-  if (status === 'pass') return 'bg-shell text-accent';
-  if (status === 'fail') return 'bg-amber-50 text-warning';
-  return 'bg-white text-neutral-600';
-}
-
-function cloudCheckLabel(status: CloudCheckStatus, text: Localize) {
-  if (status === 'pass') return text('Ready', 'Sedia');
-  if (status === 'fail') return text('Needs fix', 'Perlu betul');
-  return text('Info', 'Info');
-}
-
-function cloudCheckError(error: unknown, fallback: string) {
-  const message =
-    error && typeof error === 'object' && 'message' in error && typeof (error as { message?: unknown }).message === 'string'
-      ? (error as { message: string }).message
-      : fallback;
-  return friendlyAdminError(message);
 }
 
 function asAuditRecord(value: unknown) {
@@ -290,276 +265,6 @@ function AuditActivityPanel({ logs, settings }: { logs: AuditLogRow[]; settings:
   );
 }
 
-function CloudHealthPanel() {
-  const { text } = useLanguage();
-  const [cloudCheckRows, setCloudCheckRows] = useState<CloudCheckRow[]>([]);
-  const [checkingCloud, setCheckingCloud] = useState(false);
-  const currentSaveLocation = shouldUseLocalData
-    ? text('This browser/device only', 'Browser/peranti ini sahaja')
-    : text('Supabase cloud', 'Cloud Supabase');
-  const realUseStatus = shouldUseLocalData
-    ? text('Switch to Cloud Live before real operation', 'Tukar ke Cloud Live sebelum operasi sebenar')
-    : text('Ready for shared use across devices', 'Sedia untuk guna bersama merentas peranti');
-  async function runCloudCheck() {
-    setCheckingCloud(true);
-    try {
-      if (!hasSupabaseCredentials) {
-        setCloudCheckRows([
-          {
-            label: text('Supabase keys', 'Kunci Supabase'),
-            status: 'fail',
-            detail: text('Add the public project URL and publishable key before Cloud Live can save data.', 'Tambah Project URL dan publishable key sebelum Cloud Live boleh simpan data.'),
-          },
-        ]);
-        return;
-      }
-
-      if (shouldUseLocalData || !isSupabaseConfigured) {
-        setCloudCheckRows([
-          {
-            label: text('Cloud Live mode', 'Mod Cloud Live'),
-            status: 'info',
-            detail: text('Switch to Cloud Live, unlock the app, then run this check again.', 'Tukar ke Cloud Live, buka aplikasi, kemudian jalankan semakan ini sekali lagi.'),
-          },
-          {
-            label: text('Supabase keys', 'Kunci Supabase'),
-            status: 'pass',
-            detail: text('Public Supabase URL/key are present. Secret keys are not used in the browser.', 'URL/key awam Supabase ada. Secret key tidak digunakan dalam browser.'),
-          },
-        ]);
-        return;
-      }
-
-      const nextRows: CloudCheckRow[] = [];
-      const session = await supabase.auth.getSession();
-      nextRows.push({
-        label: text('Cloud session', 'Sesi cloud'),
-        status: session.data.session ? 'pass' : 'fail',
-        detail: session.data.session
-          ? text('Access-code login is connected to Supabase Auth.', 'Login kod akses disambungkan ke Supabase Auth.')
-          : text('Enable Anonymous sign-ins in Supabase Auth, then unlock the app again.', 'Aktifkan Anonymous sign-ins di Supabase Auth, kemudian buka aplikasi semula.'),
-      });
-
-      const probes: Array<{ label: string; ok: string; run: () => Promise<{ error: unknown }> }> = [
-        {
-          label: text('Settings/RLS', 'Tetapan/RLS'),
-          ok: text('Settings table can be read with current access.', 'Jadual settings boleh dibaca dengan akses semasa.'),
-          run: () => supabase.from('app_settings').select('key').limit(1),
-        },
-        {
-          label: text('Products/RLS', 'Produk/RLS'),
-          ok: text('Products can be read for POS/Admin.', 'Produk boleh dibaca untuk POS/Admin.'),
-          run: () => supabase.from('products').select('id').limit(1),
-        },
-        {
-          label: text('Report SQL', 'SQL laporan'),
-          ok: text('Account report functions are installed.', 'Fungsi laporan akaun sudah dipasang.'),
-          run: () =>
-            supabase.rpc('account_report_archive_file_name', {
-              p_report_kind: 'daily',
-              p_period_start: '2026-01-01',
-              p_period_end: '2026-01-01',
-            }),
-        },
-        {
-          label: text('Audit log', 'Log audit'),
-          ok: text('Admin can review saved system activity.', 'Admin boleh semak aktiviti sistem yang disimpan.'),
-          run: () => supabase.from('audit_logs').select('id').limit(1),
-        },
-      ];
-
-      for (const probe of probes) {
-        const result = await probe.run();
-        nextRows.push({
-          label: probe.label,
-          status: result.error ? 'fail' : 'pass',
-          detail: result.error ? cloudCheckError(result.error, text('Cloud check failed.', 'Semakan cloud gagal.')) : probe.ok,
-        });
-      }
-      setCloudCheckRows(nextRows);
-    } finally {
-      setCheckingCloud(false);
-    }
-  }
-
-  const rows = [
-    {
-      label: text('Current mode', 'Mod semasa'),
-      status: shouldUseLocalData ? text('This Device Only', 'Peranti Ini Sahaja') : text('Cloud Live', 'Cloud Live'),
-      detail: shouldUseLocalData
-        ? text('Data stays in this browser/device. Use Cloud Live before real operation.', 'Data kekal dalam browser/peranti ini. Guna Cloud Live sebelum operasi sebenar.')
-        : text('Data saves to Supabase and is shared across devices.', 'Data disimpan ke Supabase dan dikongsi merentas peranti.'),
-      ok: !shouldUseLocalData,
-    },
-    {
-      label: text('Supabase keys', 'Kunci Supabase'),
-      status: hasSupabaseCredentials ? text('Present', 'Ada') : text('Missing', 'Tiada'),
-      detail: hasSupabaseCredentials
-        ? text('Public project URL/key detected. No secret key is used in the browser.', 'Project URL/public key dikesan. Secret key tidak digunakan dalam browser.')
-        : text('Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY for cloud use.', 'Tambah VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY untuk guna cloud.'),
-      ok: hasSupabaseCredentials,
-    },
-    {
-      label: text('Anonymous Auth', 'Auth Tanpa Nama'),
-      status: shouldUseLocalData ? text('Not used in device mode', 'Tidak digunakan dalam mod peranti') : text('Needed for access-code login', 'Diperlukan untuk login kod akses'),
-      detail: text('In Supabase, enable Auth > Sign In / Providers > Anonymous sign-ins.', 'Di Supabase, aktifkan Auth > Sign In / Providers > Anonymous sign-ins.'),
-      ok: shouldUseLocalData || isSupabaseConfigured,
-    },
-    {
-      label: text('Storage bucket', 'Bucket storage'),
-      status: shouldUseLocalData ? text('Not used in device mode', 'Tidak digunakan dalam mod peranti') : text('Needed for images', 'Diperlukan untuk gambar'),
-      detail: text('QR receipts use payment-receipts. Product photos use product-images.', 'Resit QR guna payment-receipts. Gambar produk guna product-images.'),
-      ok: shouldUseLocalData || isSupabaseConfigured,
-    },
-  ];
-
-  return (
-    <section className="island-panel rounded-lg p-3 sm:rounded-xl sm:p-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-lg font-semibold sm:text-xl">{text('System Health', 'Status Sistem')}</h2>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <button type="button" className={secondaryButtonClass} onClick={() => void runCloudCheck()} disabled={checkingCloud}>
-            <RotateCcw className="h-4 w-4" />
-            {checkingCloud ? text('Checking cloud', 'Semak cloud') : text('Run cloud check', 'Semak cloud')}
-          </button>
-        </div>
-      </div>
-      <div className="mt-4 grid gap-2 sm:grid-cols-2">
-        <div className="rounded-lg border border-line bg-white/80 p-3">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-accent">{text('Current save location', 'Lokasi simpan semasa')}</p>
-          <p className="mt-1 text-sm font-semibold sm:text-base">{currentSaveLocation}</p>
-        </div>
-        <div className={'rounded-lg border p-3 ' + (shouldUseLocalData ? 'border-amber-200 bg-amber-50' : 'border-teal-200 bg-shell')}>
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-accent">{text('Use for real operation', 'Untuk operasi sebenar')}</p>
-          <p className={'mt-1 text-sm font-semibold sm:text-base ' + (shouldUseLocalData ? 'text-warning' : 'text-accent')}>{realUseStatus}</p>
-        </div>
-      </div>
-      <div className="mt-4 grid gap-2 sm:hidden">
-        {rows.map((row) => (
-          <article key={`mobile-health-${row.label}`} className="rounded-lg border border-line bg-white/85 p-3 shadow-none">
-            <div className="flex items-start justify-between gap-2">
-              <p className="min-w-0 text-sm font-semibold">{row.label}</p>
-              <span className={'shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ' + (row.ok ? 'bg-shell text-accent' : 'bg-amber-50 text-warning')}>
-                {row.status}
-              </span>
-            </div>
-            <p className="mt-1.5 text-xs font-bold leading-relaxed text-neutral-600">{row.detail}</p>
-          </article>
-        ))}
-      </div>
-      <div className="clean-scroll mt-4 hidden overflow-x-auto rounded-lg border border-line bg-white/75 sm:block">
-        <table className="dense-table w-full min-w-[680px] text-left text-xs sm:text-sm">
-          <thead className="bg-paper">
-            <tr>
-              <th className="p-3">{text('Check', 'Semakan')}</th>
-              <th className="p-3">{text('Status', 'Status')}</th>
-              <th className="p-3">{text('Detail', 'Butiran')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.label} className="border-t border-line">
-                <td className="p-3 font-semibold">{row.label}</td>
-                <td className="p-3">
-                  <span className={'rounded-full px-3 py-1 text-xs font-semibold ' + (row.ok ? 'bg-shell text-accent' : 'bg-amber-50 text-warning')}>
-                    {row.status}
-                  </span>
-                </td>
-                <td className="p-3 font-bold text-neutral-600">{row.detail}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="mt-4 rounded-lg border border-line bg-white/75 p-3">
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <h3 className="text-base font-semibold">{text('Cloud Readiness', 'Kesediaan Cloud')}</h3>
-          <span className="text-xs font-semibold text-neutral-500">
-            {cloudCheckRows.length > 0
-              ? text('Latest check results', 'Keputusan semakan terkini')
-              : text('Run before real multi-device use', 'Jalankan sebelum guna banyak peranti')}
-          </span>
-        </div>
-        {cloudCheckRows.length === 0 ? (
-          <p className="mt-3 text-sm font-bold text-neutral-600">
-            {text('This confirms whether the site can save and read shared cloud data safely.', 'Ini mengesahkan sama ada laman boleh simpan dan baca data cloud bersama dengan selamat.')}
-          </p>
-        ) : (
-          <>
-          <div className="mt-3 grid gap-2 sm:hidden">
-            {cloudCheckRows.map((row) => (
-              <article key={`mobile-cloud-${row.label}`} className="rounded-lg border border-line bg-white/85 p-3 shadow-none">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="min-w-0 text-sm font-semibold">{row.label}</p>
-                  <span className={'shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ' + cloudCheckTone(row.status)}>
-                    {cloudCheckLabel(row.status, text)}
-                  </span>
-                </div>
-                <p className="mt-1.5 text-xs font-bold leading-relaxed text-neutral-600">{row.detail}</p>
-              </article>
-            ))}
-          </div>
-          <div className="clean-scroll mt-3 hidden overflow-x-auto rounded-xl border border-line bg-white sm:block">
-            <table className="dense-table w-full min-w-[620px] text-left text-xs sm:text-sm">
-              <thead className="bg-paper">
-                <tr>
-                  <th className="p-3">{text('Area', 'Bahagian')}</th>
-                  <th className="p-3">{text('Result', 'Keputusan')}</th>
-                  <th className="p-3">{text('What it means', 'Maksud')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cloudCheckRows.map((row) => (
-                  <tr key={row.label} className="border-t border-line align-top">
-                    <td className="p-3 font-semibold">{row.label}</td>
-                    <td className="p-3">
-                      <span className={'rounded-full px-3 py-1 text-xs font-semibold ' + cloudCheckTone(row.status)}>
-                        {cloudCheckLabel(row.status, text)}
-                      </span>
-                    </td>
-                    <td className="p-3 font-bold text-neutral-600">{row.detail}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          </>
-        )}
-      </div>
-      {shouldUseLocalData ? (
-        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 sm:p-4">
-          <h3 className="text-base font-semibold">{text('Device Data', 'Data Peranti')}</h3>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            <button
-              type="button"
-              className={secondaryButtonClass + ' dense-action justify-center bg-white/90'}
-              onClick={() => {
-                if (!window.confirm('Clear sales, stock activity, and daily closing records on this device only? Products and settings will stay.')) return;
-                clearLocalTransactionHistory();
-                window.location.reload();
-              }}
-            >
-              <Trash2 className="h-4 w-4" />
-              {text('Clear this-device sales/stock history', 'Padam sejarah jualan/stok peranti ini')}
-            </button>
-            <button
-              type="button"
-              className={secondaryButtonClass + ' dense-action justify-center bg-white/90'}
-              onClick={() => {
-                if (!window.confirm('Restore starter products, settings, sales, stock activity, and reports on this device only? Cloud data is not affected.')) return;
-                resetLocalStarterData();
-                window.location.reload();
-              }}
-            >
-              <RotateCcw className="h-4 w-4" />
-              {text('Restore starter data on this device', 'Pulihkan data permulaan pada peranti ini')}
-            </button>
-          </div>
-        </div>
-      ) : null}
-    </section>
-  );
-}
 export default function Products({ settings, onSettingsSaved }: { settings: SettingsMap; onSettingsSaved: (settings: SettingsMap) => void }) {
   const { profile } = useAccess();
   return <ProductWorkspace key={profile?.id ?? 'no-account'} settings={settings} onSettingsSaved={onSettingsSaved} actorId={profile?.id ?? null} />;
@@ -977,7 +682,7 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
         </div>
         {pending ? <button className={`${secondaryButtonClass} w-full sm:w-auto`} disabled={productSaving} onClick={() => void checkProduct()}><RotateCcw size={16} />{productSaving ? text('Checking...', 'Menyemak...') : text('Check Saved Product', 'Semak Produk Disimpan')}</button> : null}
       </section> : null}
-      {readError && adminSection !== 'priceHistory' ? <p role="alert" className="mb-3 text-sm text-danger">{readError} <button className={secondaryButtonClass} onClick={()=>void refresh()}>{text('Retry', 'Cuba Lagi')}</button></p> : null}
+      {readError && adminSection !== 'priceHistory' && adminSection !== 'health' ? <p role="alert" className="mb-3 text-sm text-danger">{readError} <button className={secondaryButtonClass} onClick={()=>void refresh()}>{text('Retry', 'Cuba Lagi')}</button></p> : null}
       {!demoAdminUnlocked ? (
         <div className="island-panel mb-4 max-w-xl rounded-lg p-3 sm:mb-5 sm:rounded-xl sm:p-5">
           <h2 className="text-xl font-semibold sm:text-2xl">{text('Admin Access', 'Akses Pentadbir')}</h2>
@@ -997,7 +702,7 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
         {value: 'activity', label: text('Activity', 'Aktiviti')},
         {value: 'health', label: text('System', 'Sistem')},
       ]} />
-      {readError && adminSection !== 'priceHistory' ? null : <>
+      {readError && adminSection !== 'priceHistory' && adminSection !== 'health' ? null : <>
       {adminSection === 'products' ? (
       <>
       <section className="island-panel mb-4 rounded-lg p-3 sm:mb-5 sm:rounded-xl sm:p-5">
@@ -1223,7 +928,7 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
       ) : adminSection === 'reports' ? (
         <AccountReportArchivePanel settings={settings} />
       ) : (
-        <CloudHealthPanel />
+        <CloudHealthPanel onProducts={() => setAdminSection('products')} />
       )}
       </>}
       </>
