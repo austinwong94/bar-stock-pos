@@ -15,7 +15,7 @@ export function checkedHistorySales(rows: Array<Sale & { sale_items?: SaleItem[]
     ids.add(sale.id); saleTimestamp(sale.created_at);
     if (sale.review_version != null && (!Number.isSafeInteger(sale.review_version) || sale.review_version < 0)) throw new Error('Sale review version is incomplete.');
     for (const value of [sale.order_taken_by, sale.table_number, sale.qr_reference, sale.qr_payment_type, sale.qr_receipt_image_path, sale.void_reason, sale.voided_at, sale.complimentary_reason]) if (value != null && typeof value !== 'string') throw new Error('Sale details are incomplete.');
-    if (!['not_required', 'pending', 'verified', 'mismatch'].includes(sale.qr_status)) throw new Error('QR status is incomplete.');
+    if (!['not_applicable', 'pending', 'verified', 'mismatch'].includes(sale.qr_status)) throw new Error('QR status is incomplete.');
     const total = reportMoneyCents(sale.total_amount), paid = reportMoneyCents(sale.paid_amount), discount = reportMoneyCents(sale.discount_amount);
     if (paid !== (sale.payment_method === 'complimentary' ? 0 : total)) throw new Error('Paid amount does not reconcile.');
     if (!Array.isArray(sale.sale_items) || (sale.status === 'completed' && !sale.sale_items.length)) throw new Error('Sale items are unavailable.');
@@ -32,7 +32,7 @@ export function checkedHistorySales(rows: Array<Sale & { sale_items?: SaleItem[]
   return result;
 }
 
-export function historyTotals(sales: HistorySale[]) {
+export function historyTotals(sales: Sale[]) {
   const sums = { cash: 0n, qr: 0n, focCost: 0n, revenue: 0n };
   let transactions = 0, voided = 0;
   for (const sale of sales) {

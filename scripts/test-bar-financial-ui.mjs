@@ -21,8 +21,8 @@ const bundled=await build({loader:{'.svg':'dataurl'},define:{'import.meta.env.BA
    const f=window.fixture;f.calls.push({name,args:structuredClone(args)});
    if(name==='read_bar_closing'){
      if(f.failRead)return {data:null,error:{message:'Sales could not be loaded. Retry before closing.',code:'57014'}};
-     const sale={id:'sale',sale_number:'AUDIT-1',business_date:args.p_business_date,created_at:new Date().toISOString(),status:'completed',payment_method:'cash',paid_amount:24,total_amount:24,discount_amount:0,sale_items:[{id:'line',quantity:2,line_total:24,unit_price:12,products:{name:'Audit Lager'}}]};
-     return {data:{business_date:args.p_business_date,sales:[sale],cash_session:{opening_float:100},report:f.close,version:'fixture-snapshot'},error:null};
+     const sale={id:'sale',sale_number:'AUDIT-1',business_date:args.p_business_date,created_at:new Date().toISOString(),status:'completed',payment_method:'cash',paid_amount:24,total_amount:24,discount_amount:0,qr_status:'not_applicable',sale_items:[{id:'line',sale_id:'sale',quantity:2,line_total:24,unit_price:12,products:{name:'Audit Lager'}}]};
+     return {data:{business_date:args.p_business_date,sales:[sale],cash_session:{business_date:args.p_business_date,opening_float:100},report:f.close,version:'fixture-snapshot'},error:null};
    }
    if(name==='close_daily_report_checked'){
      f.close={id:'fixture-close',business_date:args.p_business_date,status:'closed',report_json:{number_of_transactions:1},total_cash:24,total_qr:0,total_sales:24,total_complimentary_value:0,expected_cash:124,actual_cash_counted:args.p_actual_cash_counted,cash_variance:args.p_actual_cash_counted-124};
@@ -49,7 +49,7 @@ const browser=await chromium.launch({headless:true});
 let page;
 try{
  page=await browser.newPage({viewport:{width:390,height:844},timezoneId:'Asia/Kuala_Lumpur'});const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(base+'/?fail=read');await page.getByRole('alert').filter({hasText:'Sales could not'}).waitFor();
+ await page.goto(base+'/?fail=read');await page.getByRole('alert').filter({hasText:'Closing figures could not be verified'}).waitFor();
  assert.equal(await page.getByRole('button',{name:'Close Daily Report',exact:true}).isVisible(),false);
  for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await page.screenshot({path:out+'/closing-error-'+width+'.png'});}
  await page.evaluate(()=>window.fixture.failRead=false);await page.getByRole('button',{name:'Retry',exact:true}).click();

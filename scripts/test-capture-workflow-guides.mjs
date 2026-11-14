@@ -38,6 +38,11 @@ try {
       console.log('Captured',id,language);
     }
     await page.goto(base);await page.getByRole('button',{name:'Austin (Owner)',exact:true}).click();await page.locator('main').waitFor();
+    if(process.env.TEST_GUIDE==='closing'){
+      await go('/daily-closing');
+      await capture('closing',[[1,page.getByLabel(t('Business date','Tarikh bisnes'),{exact:true})],[2,page.locator('.bar-metrics')]]);
+      await context.close();continue;
+    }
     await go('/kitchen');await button('New Request','Permintaan Baru').click();
     await dialog().locator('.request-quantity').first().fill('20');
     await capture('requests',[[2,dialog().locator('.request-entry-meta')],[2,dialog().locator('.request-quantity').first()],[3,button('Save & Review','Simpan & Semak')]]);

@@ -18,6 +18,9 @@ async function readWorkQueue(db,forcePermissions=false){
 }
 
 async function barJourney(db,connect){
+  const closingBuild=await build({entryPoints:[new URL('../../src/lib/barClosing.ts',import.meta.url).pathname],bundle:true,write:false,format:'cjs',platform:'node'}),closingModule={exports:{}};
+  new Function('module','exports',closingBuild.outputFiles[0].text)(closingModule,closingModule.exports);
+  const checkedClosing=closingModule.exports.checkedClosingSnapshot;
   await db.query(`reset role;update auth.users set is_anonymous=false where id='${tablet}';update profiles set is_anonymous=false,status='active',access_role_code='bar_cashier',app_access_granted=true,admin_access_expires_at=now()+interval '2 hours' where id='${tablet}'`);
   await as(db,owner);
   const category=await value(db,"insert into categories(name) values('Beer') on conflict(name) do update set name=excluded.name returning id");
@@ -79,27 +82,35 @@ async function barJourney(db,connect){
   await assert.rejects(()=>db.query("delete from storage.objects where name='audit/qr.jpg'"),/must be retained/);
   await saleAction(db,qrSale.sale_id,'verified');
   const today=await value(db,'select get_business_date()::text');
+  const focSale=await pay({key:randomUUID(),items:currentItems,method:'complimentary',reason:'Owner-approved test FOC'});
+  const withFoc=checkedClosing(await value(db,'select read_bar_closing($1::date)',[today]),today);
+  assert.equal(withFoc.sales.find(row=>row.id===focSale.sale_id).qr_status,'not_applicable');
+  assert.equal(withFoc.sales.find(row=>row.id===focSale.sale_id).paid_amount,0);
   await db.query('reset role');await db.query('insert into cash_sessions(business_date,opening_float,opened_by) values($1,100,$2) on conflict(business_date) do update set opening_float=100',[today,owner]);await as(db,owner);
   const stale=await value(db,'select read_bar_closing($1::date)',[today]);
+  assert.equal(checkedClosing(stale,today).cash_session.opening_float,100);
   const later=await pay({key:randomUUID(),items:currentItems});
   const close=(snapshot,key=randomUUID(),client=db)=>value(client,'select close_daily_report_checked($1,200,$2,$3,$4)',[today,'Audit count',snapshot.version,key]);
   await assert.rejects(()=>close(stale),e=>e.code==='40001');
   const reviewed=await value(db,'select read_bar_closing($1::date)',[today]),closingKey=randomUUID();
   const closed=await close(reviewed,closingKey);assert.equal((await close(reviewed,closingKey)).id,closed.id);
+  assert.equal(checkedClosing(await value(db,'select read_bar_closing($1::date)',[today]),today).report.id,closed.id);
   assert.equal(Number(closed.expected_cash),100+reviewed.sales.filter(s=>s.status==='completed'&&s.payment_method==='cash').reduce((n,s)=>n+Number(s.paid_amount),0));
   assert.equal(Number(await value(db,"select count(*) from audit_logs where action='close_daily_report'")),1);
   await assert.rejects(()=>pay({key:randomUUID(),items:currentItems}),/day is closed/);
   await assert.rejects(()=>saleAction(db,later.sale_id,'void','Correction'),/day is closed/);
   await value(db,'select reopen_daily_report($1,$2)',[today,'Audit correction']);await saleAction(db,later.sale_id,'void','Correction');
   const fresh=await value(db,'select read_bar_closing($1::date)',[today]);await as(a,owner);await as(b,owner);
+  assert.equal(checkedClosing(fresh,today).report.status,'reopened');
   const closes=await Promise.allSettled([close(fresh,randomUUID(),a),close(fresh,randomUUID(),b)]);
   assert.equal(closes.filter(r=>r.status==='fulfilled').length,1);assert.equal(closes.find(r=>r.status==='rejected').reason.code,'40001');
   await denied(()=>value(db,"select close_daily_report_internal($1,200,null)",[today]));
   await db.query('reset role');
   await db.query("insert into sales(sale_number,business_date,payment_method,total_amount,paid_amount,cashier_id) select 'AUDIT-VOLUME-'||n,current_date-10,'cash',12,12,$1 from generate_series(1,1205) n",[owner]);
+  await db.query("insert into sale_items(sale_id,product_id,quantity,unit_price,line_total) select id,$1,1,12,12 from sales where sale_number like 'AUDIT-VOLUME-%'",[beer]);
   await as(db,owner);const source=await value(db,'select read_bar_reporting_source()');
   assert.equal(source.sales.filter(s=>s.sale_number.startsWith('AUDIT-VOLUME-')).length,1205);
-  assert.equal((await value(db,'select read_bar_closing(current_date-10)')).sales.length,1205);
+  const volume=await value(db,'select read_bar_closing(current_date-10)');assert.equal(checkedClosing(volume,volume.business_date).sales.length,1205);
   await as(db,cook);await denied(()=>pay({key:randomUUID(),items:currentItems}));await denied(()=>value(db,'select read_bar_reporting_source()'));
   await as(db,null);await denied(()=>value(db,'select read_bar_closing(current_date)'));
   console.log('PASS native-postgres: reviewed-price conflict, historical recovery, actor isolation, simultaneous retry, last-unit race, QR evidence, closing conflict/replay, closed-day controls, opening float, >1,000 sales and denied roles.');

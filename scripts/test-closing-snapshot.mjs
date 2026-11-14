@@ -1,0 +1,25 @@
+import assert from 'node:assert/strict';
+import {build} from 'esbuild';
+const bundle=await build({entryPoints:['src/lib/barClosing.ts'],bundle:true,write:false,platform:'node',format:'cjs'}),module={exports:{}};
+new Function('module','exports',bundle.outputFiles[0].text)(module,module.exports);
+const {checkedClosingSnapshot,readClosingSnapshot}=module.exports;
+const date='2026-11-15',sale={id:'sample-sale',sale_number:'TEST-1',business_date:date,status:'completed',payment_method:'cash',qr_status:'not_applicable',total_amount:'0.30',paid_amount:'0.30',discount_amount:'0.00',created_at:date+'T02:00:00Z',sale_items:[{id:'sample-item',sale_id:'sample-sale',quantity:1,unit_price:'0.30',line_total:'0.30'}]};
+const snapshot={business_date:date,version:'reviewed-day',sales:[sale],report:null,cash_session:{business_date:date,opening_float:'10.10'}};
+const original=JSON.stringify(snapshot),result=checkedClosingSnapshot(snapshot,date);
+assert.equal(result.cash_session.opening_float,10.1);assert.equal(result.sales[0].paid_amount,.3);assert.equal(JSON.stringify(snapshot),original);
+assert.equal(checkedClosingSnapshot({...snapshot,sales:[],cash_session:null},date).sales.length,0,'Verified empty sales and no cash session are explicit, not failed reads');
+assert.throws(()=>checkedClosingSnapshot({...snapshot,sales:[{...sale,qr_status:'not_required'}]},date),'The reader must use the database status not_applicable, not a fictional fixture status');
+for(const field of ['report','cash_session','version','sales']){const invalid={...snapshot};delete invalid[field];assert.throws(()=>checkedClosingSnapshot(invalid,date));}
+for(const changed of [{version:''},{version:' '},{business_date:'2026-11-14'},{sales:null},{sales:[sale,sale]},{cash_session:{business_date:'2026-11-14',opening_float:10}},{cash_session:{business_date:date}},{sales:[{...sale,paid_amount:null}]},{sales:[{...sale,business_date:'2026-11-14'}]},{sales:[{...sale,sale_items:[]}]}])assert.throws(()=>checkedClosingSnapshot({...snapshot,...changed},date));
+for(const opening_float of [null,undefined,'',true,-1,NaN,Infinity,'1.001','1e2'])assert.throws(()=>checkedClosingSnapshot({...snapshot,cash_session:{business_date:date,opening_float}},date));
+const report={id:'test-report',business_date:date,status:'closed',report_json:{business_date:date,number_of_transactions:1,sales_by_product:[{name:'Legacy Item',quantity:1,cash:.3,qr:0,foc_cost:0}]},total_cash:'0.30',total_qr:'0',total_sales:'0.30',total_complimentary_value:0,actual_cash_counted:'10.00',expected_cash:'10.40',cash_variance:'-0.40'};
+const closed=checkedClosingSnapshot({...snapshot,report},date).report;
+assert.equal(closed.cash_variance,-.4);assert.equal(closed.expected_cash,10.4);assert.equal(closed.actual_cash_counted,10);assert.equal(closed.total_cash,.3);
+assert.equal(checkedClosingSnapshot({...snapshot,report:{...report,status:'reopened'}},date).report.status,'reopened');
+const unknown=checkedClosingSnapshot({...snapshot,report:{...report,actual_cash_counted:null,expected_cash:null,cash_variance:null}},date).report;assert.equal(unknown.expected_cash,null);assert.equal(unknown.cash_variance,null);
+for(const field of ['total_cash','total_qr','total_sales','total_complimentary_value'])for(const bad of [null,undefined,true,-1,'0.301','1e2'])assert.throws(()=>checkedClosingSnapshot({...snapshot,report:{...report,[field]:bad}},date));
+for(const changed of [{id:''},{business_date:'2026-11-14'},{status:'open'},{report_json:null},{cash_variance:'-.40'},{cash_variance:0},{actual_cash_counted:9.99},{expected_cash:11},{cash_variance:'-0.401'},{total_sales:1},{report_json:{business_date:'2026-11-14'}},{report_json:{number_of_transactions:null}},{report_json:{qrPending:null}},{report_json:{itemSales:[{product:'Item',quantity:1,cash:null,qr:0,focCost:0,discount:0}]}},{report_json:{sales_by_product:[{name:'Item',quantity:.5,cash:0,qr:0,foc_cost:0}]}},{report_json:{sales_by_product:{}}}])assert.throws(()=>checkedClosingSnapshot({...snapshot,report:{...report,...changed}},date));
+let calls=0;const client={rpc:async(name,args)=>{calls++;assert.equal(name,'read_bar_closing');assert.equal(args.p_business_date,date);return{data:snapshot,error:null}}};
+for(const invalid of ['', '2026-02-30','not-a-date','0000-01-01'])await assert.rejects(()=>readClosingSnapshot(client,invalid));assert.equal(calls,0,'Invalid dates never reach the server');
+assert.equal((await readClosingSnapshot(client,date)).business_date,date);assert.equal(calls,1);
+console.log('PASS closing snapshot: exact money, complete dated sales/cash/report, preserved legacy breakdowns and unknown cash, invalid counts/amounts/variance rejected, real calendar dates and no RPC for invalid dates. Read-only.');

@@ -45,6 +45,7 @@ try{
  const mode=pkg.name==='lovely-paradise-review'?'sample':'cloud';receipt.buildMode=mode;
  await stage('Types','static',()=>command(['node_modules/typescript/bin/tsc','-b']));
  await stage('Recovery and totals','unit',()=>command(['scripts/test-platform-reliability.mjs']));
+ await stage('Verified Closing snapshots and exact business dates','unit',()=>command(['scripts/test-closing-snapshot.mjs']));
  await stage('Explicit product prices and carton setup','unit',()=>command(['scripts/test-product-setup.mjs']));
  await stage('Durable product save recovery','unit',()=>command(['scripts/test-product-save-recovery.mjs']));
  await stage('Explicit bundle settings and retained intent','unit',()=>command(['scripts/test-bundle-setup.mjs']));
