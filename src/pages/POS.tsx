@@ -9,7 +9,7 @@ import { WorkflowHelp } from '../components/WorkflowHelp';
 import { useToast } from '../components/Toast';
 import { groupByCategory, loadProducts } from '../lib/data';
 import { malaysiaBusinessDateInputValue, money } from '../lib/format';
-import { cartDiscount } from '../lib/posDiscount';
+import { cartDiscount, posMoneyCents } from '../lib/posDiscount';
 import { supabase, isDemoMode } from '../lib/supabase';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { loadLocalIngredientItems, loadLocalRecipeIngredients, saveLocalSale } from '../lib/localStore';
@@ -263,9 +263,26 @@ function POSTerminal({ settings }: { settings: SettingsMap }) {
 
   const groups = useMemo(() => groupByCategory(products), [products]);
   const beerProducts = groups.Beer ?? [];
-  const subtotal = cart.reduce((sum, item) => sum + item.quantity * Number(item.customPrice ?? item.product.price_per_unit), 0);
-  const discount = cartDiscount(subtotal, discountRate, customDiscount);
-  const total = Math.max(0, subtotal - discount);
+  // Sum integer cents; invalid catalogue amounts cannot become payable totals.
+  const subtotalCents = cart.reduce((sum, item) => {
+    const price = Number(item.customPrice ?? item.product.price_per_unit);
+    if (!Number.isFinite(price) || price < 0 || price !== Math.round(price * 100) / 100 || !Number.isSafeInteger(item.quantity) || item.quantity < 1) return NaN;
+    return sum + Math.round(price * 100) * item.quantity;
+  }, 0);
+  const subtotal = subtotalCents / 100;
+  const discountResult = cartDiscount(subtotal, discountRate, customDiscount);
+  const discount = discountResult.amount;
+  const total = discount === null ? null : (subtotalCents - Math.round(discount * 100)) / 100;
+  const moneyError = discountResult.issue === 'precision' ? text('Enter a discount of RM 0 or more, with no more than 2 decimal places.', 'Masukkan diskaun RM 0 atau lebih, maksimum 2 tempat perpuluhan.')
+    : discountResult.issue === 'excess' ? text('Discount cannot be more than the subtotal.', 'Diskaun tidak boleh melebihi subtotal.')
+    : discountResult.issue === 'rate' ? text('Choose a valid discount percentage.', 'Pilih peratus diskaun yang sah.')
+    : discountResult.issue === 'subtotal' ? text('Order amount is invalid or too large. Check the items.', 'Amaun pesanan tidak sah atau terlalu besar. Semak item.') : '';
+  const customPriceCents = posMoneyCents(customPrice);
+  const customPriceError = customPrice.trim() && (customPriceCents === null || customPriceCents <= 0)
+    ? text('Enter a price above RM 0, with no more than 2 decimal places.', 'Masukkan harga melebihi RM 0, maksimum 2 tempat perpuluhan.') : '';
+  function checkoutAmount(value: number | null) {
+    return value === null || !Number.isFinite(value) ? text('Check Amount', 'Semak Amaun') : money(value, String(settings.currency_symbol));
+  }
   const cartQuantity = cart.reduce((sum, item) => sum + cartUnitCount(item), 0);
   const hasBundleInCart = cart.some((item) => item.kind === 'bundle');
   const regularGroups = Object.entries(groups).filter(([category]) => category !== 'Others');
@@ -383,7 +400,7 @@ function POSTerminal({ settings }: { settings: SettingsMap }) {
   }
 
   function linePrice(item: CartItem) {
-    return item.quantity * Number(item.customPrice ?? item.product.price_per_unit);
+    return Math.round(Number(item.customPrice ?? item.product.price_per_unit) * 100) * item.quantity / 100;
   }
 
   function nextCartWithProduct(product: ProductWithStock) {
@@ -404,11 +421,11 @@ function POSTerminal({ settings }: { settings: SettingsMap }) {
 
   function addCustomOrder() {
     if(!can('bar.pos.custom'))return;
-    const price = Number(customPrice);
-    if (!Number.isFinite(price) || price <= 0) {
-      toast.error('Enter a custom price first.');
+    if (customPriceCents === null || customPriceCents <= 0) {
+      toast.error(text('Enter a price above RM 0, with no more than 2 decimal places.', 'Masukkan harga melebihi RM 0, maksimum 2 tempat perpuluhan.'));
       return;
     }
+    const price = customPriceCents / 100;
     const customProduct: ProductWithStock = {
       id: `custom-${crypto.randomUUID()}`,
       name: customName.trim() || 'Custom Order',
@@ -508,6 +525,7 @@ function POSTerminal({ settings }: { settings: SettingsMap }) {
   }
 
   function choosePayment(nextMethod: PaymentMethod) {
+    if (moneyError || total === null) { toast.error(moneyError); return; }
     if (!validateCartStock()) return;
     setCartDrawerOpen(false);
     setMethod(nextMethod);
@@ -673,8 +691,8 @@ function POSTerminal({ settings }: { settings: SettingsMap }) {
   async function confirmSale() {
     if (!method || saving || paymentBusy.current || pendingSale || catalogueError) return;
     if (!validateCartStock()) return;
-    if (discount > subtotal) {
-      toast.error('Discount cannot be more than subtotal.');
+    if (moneyError || discount === null || total === null) {
+      toast.error(moneyError);
       return;
     }
     if (method === 'qr') {
@@ -832,7 +850,7 @@ function POSTerminal({ settings }: { settings: SettingsMap }) {
     saving ||
     cart.length === 0 ||
     !orderTakenBy ||
-    discount > subtotal ||
+    !!moneyError ||
     cartStockIssue() !== null ||
     (method === 'qr' && !qrPaymentType) ||
     (method === 'qr' && !qrReceipt) ||
@@ -906,9 +924,10 @@ function POSTerminal({ settings }: { settings: SettingsMap }) {
               <span className="text-sm font-semibold text-accent">RM</span>
               <input
                 className={inputClass}
-                type="number"
-                min={0}
-                step="0.01"
+                type="text"
+                inputMode="decimal"
+                aria-invalid={discountResult.issue === 'precision' || discountResult.issue === 'excess'}
+                aria-describedby={moneyError ? (inDrawer ? 'pos-discount-error-drawer' : 'pos-discount-error-side') : undefined}
                 value={customDiscount}
                 onChange={(e) => {
                   setCustomDiscount(e.target.value);
@@ -918,28 +937,29 @@ function POSTerminal({ settings }: { settings: SettingsMap }) {
                 placeholder={text('Discount Amount (RM)', 'Jumlah Diskaun (RM)')}
               />
             </div>
+            {moneyError ? <p id={inDrawer ? 'pos-discount-error-drawer' : 'pos-discount-error-side'} role="alert" className="mt-2 text-sm text-danger">{moneyError}</p> : null}
           </Field>
           <div className="mt-3 flex justify-between gap-3 font-bold sm:mt-4">
             <span>{text('Subtotal', 'Subtotal')}</span>
-            <span>{money(subtotal, String(settings.currency_symbol))}</span>
+            <span>{checkoutAmount(subtotal)}</span>
           </div>
           <div className="mt-2 flex justify-between gap-3 font-bold text-accent">
             <span>{text('Discount amount', 'Jumlah diskaun')}</span>
-            <span>- {money(discount, String(settings.currency_symbol))}</span>
+            <span>{discount === null ? checkoutAmount(null) : `- ${checkoutAmount(discount)}`}</span>
           </div>
           <div className="mt-2 flex justify-between gap-3 text-xl font-semibold sm:text-2xl">
             <span>{text('Total', 'Jumlah')}</span>
-            <span>{money(total, String(settings.currency_symbol))}</span>
+            <span>{checkoutAmount(total)}</span>
           </div>
           <div className="bar-payment-actions">
-            <button className={buttonClass} aria-label={text('Cash Payment', 'Bayaran Tunai')} disabled={cart.length === 0} onClick={() => choosePayment('cash')}>
+            <button className={buttonClass} aria-label={text('Cash Payment', 'Bayaran Tunai')} disabled={cart.length === 0 || !!moneyError} onClick={() => choosePayment('cash')}>
               <Banknote className="h-4 w-4" />{text('Cash', 'Tunai')}
             </button>
-            <button className={buttonClass} aria-label={text('QR Payment', 'Bayaran QR')} disabled={cart.length === 0} onClick={() => choosePayment('qr')}>
+            <button className={buttonClass} aria-label={text('QR Payment', 'Bayaran QR')} disabled={cart.length === 0 || !!moneyError} onClick={() => choosePayment('qr')}>
               <Camera className="h-5 w-5" />
               QR
             </button>
-            <button className={secondaryButtonClass} disabled={cart.length === 0} onClick={() => choosePayment('complimentary')}>
+            <button className={secondaryButtonClass} disabled={cart.length === 0 || !!moneyError} onClick={() => choosePayment('complimentary')}>
               <Gift className="h-4 w-4" />{text('Complimentary (FOC)', 'Percuma (FOC)')}
             </button>
           </div>
@@ -958,7 +978,7 @@ function POSTerminal({ settings }: { settings: SettingsMap }) {
           </div>
           <div className="text-right">
             <p className="text-xs font-semibold uppercase tracking-widest text-muted">{countLabel(cartQuantity, text('Unit', 'Unit'), text('Units', 'Unit'))}</p>
-            <p className="text-base font-semibold">{money(total, String(settings.currency_symbol))}</p>
+            <p className="text-base font-semibold">{checkoutAmount(total)}</p>
           </div>
         </div>
         {cartIngredientShortages.length > 0 ? (
@@ -966,6 +986,7 @@ function POSTerminal({ settings }: { settings: SettingsMap }) {
             {recipeShortageMessage(cartIngredientShortages)}
           </p>
         ) : null}
+        {moneyError && !cartDrawerOpen ? <p role="alert" className="mt-2 text-sm text-danger">{moneyError}</p> : null}
         <div className="bar-live-cart-list mt-2">
           {cart.map((item) => (
             <div key={item.product.id} className="bar-live-cart-row">
@@ -1118,16 +1139,17 @@ function POSTerminal({ settings }: { settings: SettingsMap }) {
           {can('bar.pos.custom')&&['all', 'custom'].includes(catalogView) ? <div id="pos-category-custom">
             <h2 className="mb-2 text-lg font-semibold sm:mb-3 sm:text-xl">{text('Custom Order', 'Pesanan Khas')}</h2>
             <div className="bar-custom-form">
-              <Field label={text('Product name', 'Nama produk')}>
+              <Field label={text('Item Name', 'Nama Item')}>
                 <input className={inputClass} value={customName} onChange={(e) => setCustomName(e.target.value)} />
               </Field>
-              <Field label={text('Custom price', 'Harga khas')}>
-                <input className={inputClass} type="number" min={0} step="0.01" value={customPrice} onChange={(e) => setCustomPrice(e.target.value)} placeholder="38.00" />
+              <Field label={text('Price (RM)', 'Harga (RM)')}>
+                <input className={inputClass} type="text" inputMode="decimal" aria-invalid={!!customPriceError} aria-describedby={customPriceError ? 'pos-custom-price-error' : undefined} value={customPrice} onChange={(e) => setCustomPrice(e.target.value)} />
               </Field>
-              <button type="button" className={`${buttonClass} w-full md:w-auto`} onClick={addCustomOrder}>
+              <button type="button" disabled={customPriceCents === null || customPriceCents <= 0} className={`${buttonClass} w-full md:w-auto`} onClick={addCustomOrder}>
                 <Plus className="h-4 w-4" />
                 {text('Add', 'Tambah')}
               </button>
+              {customPriceError ? <p id="pos-custom-price-error" role="alert" className="col-span-full text-sm text-danger">{customPriceError}</p> : null}
             </div>
           </div> : null}
         </section>
@@ -1140,14 +1162,14 @@ function POSTerminal({ settings }: { settings: SettingsMap }) {
           <div className="bar-checkout-total">
             <button type="button" className="min-w-0 text-left" onClick={() => setCartDrawerOpen(true)} aria-label={text('Cart Details', 'Butiran Bakul')}>
               <span className="bar-caption">{countLabel(cartQuantity, text('unit', 'unit'), text('units', 'unit'))}</span>
-              <strong className="block text-sm tabular">{money(total, String(settings.currency_symbol))}</strong>
+              <strong className="block text-sm tabular">{checkoutAmount(total)}</strong>
             </button>
             <button type="button" className="text-xs text-muted min-h-8" onClick={() => setCartDrawerOpen(true)}>{text('Discount / Details', 'Diskaun / Butiran')}</button>
           </div>
           <div className="bar-checkout-payments">
-            <button className={buttonClass} aria-label={text('Cash Payment', 'Bayaran Tunai')} onClick={() => choosePayment('cash')}><Banknote size={16} />{text('Cash', 'Tunai')}</button>
-            <button className={buttonClass} aria-label={text('QR Payment', 'Bayaran QR')} onClick={() => choosePayment('qr')}><Camera size={16} />QR</button>
-            <button className={secondaryButtonClass} onClick={() => choosePayment('complimentary')}><Gift size={16} />FOC</button>
+            <button className={buttonClass} disabled={!!moneyError} aria-label={text('Cash Payment', 'Bayaran Tunai')} onClick={() => choosePayment('cash')}><Banknote size={16} />{text('Cash', 'Tunai')}</button>
+            <button className={buttonClass} disabled={!!moneyError} aria-label={text('QR Payment', 'Bayaran QR')} onClick={() => choosePayment('qr')}><Camera size={16} />QR</button>
+            <button className={secondaryButtonClass} disabled={!!moneyError} onClick={() => choosePayment('complimentary')}><Gift size={16} />FOC</button>
           </div>
         </div>
       ) : null}
@@ -1287,16 +1309,16 @@ function POSTerminal({ settings }: { settings: SettingsMap }) {
             <div className="rounded-lg bg-shell p-3">
               <div className="flex justify-between text-sm font-bold">
                 <span>{text('Subtotal', 'Subtotal')}</span>
-                <span>{money(subtotal, String(settings.currency_symbol))}</span>
+                <span>{checkoutAmount(subtotal)}</span>
               </div>
               <div className="mt-2 flex justify-between text-sm font-bold text-accent">
                 <span>{text('Discount amount', 'Jumlah diskaun')}</span>
-                <span>- {money(discount, String(settings.currency_symbol))}</span>
+                <span>{discount === null ? checkoutAmount(null) : `- ${checkoutAmount(discount)}`}</span>
               </div>
             </div>
             <div className="flex justify-between text-lg font-semibold sm:text-xl">
               <span>{text('Total', 'Jumlah')}</span>
-              <span>{money(total, String(settings.currency_symbol))}</span>
+              <span>{checkoutAmount(total)}</span>
             </div>
             {method === 'complimentary' ? (
               <p className="rounded-lg bg-shell p-3 text-sm font-semibold text-accent">{text('Paid amount', 'Jumlah dibayar')}: {money(0, String(settings.currency_symbol))}. {text('FOC is recorded as cost, not sales.', 'FOC direkod sebagai kos, bukan jualan.')}</p>

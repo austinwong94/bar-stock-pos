@@ -104,5 +104,6 @@
   "20261110170733_harden_browser_table_privileges.sql": "b0268fdf89024bb2ff46097ef401fdbd6a73df1be07d1c642c9c175d547d2ee3",
   "20261110173810_require_explicit_product_setup.sql": "4dfdc24c246a9501c0f489a13b9b76047d32ca358f3b220495e4ac9f23e3754a",
   "20261110181408_recover_product_save_requests.sql": "6aeca4f41a2400306454d5d6f24bbbd7502b56599e05cc11b9bb02f229198e42",
-  "20261110185901_safeguard_bundle_configuration.sql": "2caf74d74e36bb51bddbb61224c5452bc06e5fbd30a8e9d031cf8a2681e1ad2a"
+  "20261110185901_safeguard_bundle_configuration.sql": "2caf74d74e36bb51bddbb61224c5452bc06e5fbd30a8e9d031cf8a2681e1ad2a",
+  "20261114080401_validate_pos_money.sql": "2e30029249f2434402911be6acc9751f0d6d280e44f8c81db5c1b751d3ae811e"
 }

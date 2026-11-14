@@ -10,7 +10,7 @@ for(const code of ['40001','42501','P0001','PGRST202']){
   assert(!definitiveInitialSaveFailure(true,{code}),'A later error cannot unlock an earlier uncertain receipt or usage submission.');
 }
 assert(!definitiveInitialSaveFailure(false,new Error('Reply lost')));
-assert.equal(cartDiscount(100,.1,''),10);assert.equal(cartDiscount(200,.1,''),20);assert.equal(cartDiscount(20,null,'50'),20);assert.equal(cartDiscount(0,.1,''),0);assert.equal(cartDiscount(19.99,.15,''),3);
+assert.equal(cartDiscount(100,.1,'').amount,10);assert.equal(cartDiscount(200,.1,'').amount,20);assert.equal(cartDiscount(20,null,'50').issue,'excess');assert.equal(cartDiscount(0,.1,'').amount,0);assert.equal(cartDiscount(19.99,.15,'').amount,3);
 assert.equal(supplyPeriod('2026-01-01','week').start,'2025-12-29');assert.equal(supplyPeriod('2024-03-01','month').previousEnd,'2024-02-29');
 assert.deepEqual(supplyPeriod('2026-01-01','day'),{start:'2026-01-01',end:'2026-01-01',previousStart:'2025-12-31',previousEnd:'2025-12-31'});
 assert.equal(supplyPeriod('2024-03-01','day').previousStart,'2024-02-29');
