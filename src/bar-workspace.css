@@ -253,3 +253,7 @@
 }
 
 .bar-stock-entry-footer { position: sticky; bottom: calc(var(--preview-toolbar-height, 0px) + 8px); z-index: 20; padding-bottom: max(8px, env(safe-area-inset-bottom)); }
+.bar-settings .ui-control { min-height: 44px; }
+.bar-settings button { overflow-wrap: anywhere; }
+.bar-settings input:not([type="checkbox"]) { font-size: 16px; }
+.bar-settings fieldset { margin: 0; }
