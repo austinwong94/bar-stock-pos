@@ -19,6 +19,7 @@ import { actualItemSales, type ItemSalesBreakdown } from '../lib/reportItems';
 import SalesHistory from './SalesHistory';
 import { unlockAdminAccess } from '../lib/adminAccess';
 import { useSharedRefresh } from '../lib/useSharedRefresh';
+import { barPeriodRange, periodProblemLabel } from '../lib/barReportPeriod';
 
 type ReportPeriod = 'daily' | 'weekly' | 'monthly' | 'custom';
 type ReportSection = 'daily' | 'weekly' | 'monthly' | 'annual' | 'selected';
@@ -759,12 +760,16 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
     if (latestMonthWithData) setReportMonth(latestMonthWithData);
   }, [reportDays, reportMonth, reportMonthTouched]);
 
+  const customSelection = barPeriodRange('custom', customStart, customEnd);
+  const filterProblem = reportPeriod === 'custom' ? customSelection.problem : reportPeriod === 'daily' ? barPeriodRange('month', reportMonth).problem : null;
+  const filterError = periodProblemLabel(filterProblem, text);
   const filteredReports = useMemo(() => reportDays.filter((item) => {
+    if (filterProblem) return false;
     if (reportPeriod === 'daily') return item.businessDate.startsWith(reportMonth);
     if (reportPeriod === 'weekly') return true;
     if (reportPeriod === 'monthly') return true;
     return item.businessDate >= customStart && item.businessDate <= customEnd;
-  }), [customEnd, customStart, reportDays, reportMonth, reportPeriod]);
+  }), [customEnd, customStart, reportDays, reportMonth, reportPeriod, filterProblem]);
 
   const reportRows = useMemo(
     () => summarizeReports(filteredReports, reportPeriod).sort((a, b) => b.businessDate.localeCompare(a.businessDate)),
@@ -801,7 +806,8 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
     { quantity: 0, cash: 0, qr: 0, focCost: 0, discount: 0, paidSales: 0 },
   );
 
-  const selectedPeriodRow = useMemo<ReportRow>(() => {
+  const selectedPeriodRow = useMemo<ReportRow | null>(() => {
+    if (!barPeriodRange('custom', customStart, customEnd).range) return null;
     const closingStatus: ClosingStatus = reportRows.every((row) => row.closingStatus === 'closed')
       ? 'closed'
       : reportRows.every((row) => row.closingStatus === 'not_closed')
@@ -899,6 +905,7 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
   const previewArchiveSummary = previewReport?.archive ? archiveSummary(previewReport.archive) : null;
 
   function downloadPdfReport(report?: ReportRow) {
+    if (sourceLoading || sourceError) { toast.error(text('Reload reports before downloading.', 'Muat semula laporan sebelum memuat turun.')); return; }
     const selectedReport = report ?? activeReport ?? reportRows.find((row) => row.businessDate === selectedReportDate) ?? reportRows[0];
     if (!selectedReport) {
       toast.error('No report rows to download.');
@@ -909,6 +916,8 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
       downloadArchivePdf(selectedReport.archive, currency, toast);
       return;
     }
+    const dates = barPeriodRange('custom', selectedReport.fromDate, selectedReport.toDate);
+    if (!dates.range) { toast.error(periodProblemLabel(dates.problem, text)); return; }
     const printable = window.open('', '_blank');
     if (!printable) {
       toast.error('Popup blocked. Allow popups to download/print PDF.');
@@ -1224,7 +1233,7 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
           {label: text('QR Payment', 'Bayaran QR'), value: money(periodTotals.qr, String(settings.currency_symbol))},
           {label: text('FOC Value', 'Nilai FOC'), value: money(periodTotals.focCost, String(settings.currency_symbol))},
           {label: text('Total Revenue', 'Jumlah Hasil'), value: money(periodTotals.paidSales, String(settings.currency_symbol))},
-        ].map(item => <div key={item.label}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}
+        ].map(item => <div key={item.label}><dt>{item.label}</dt><dd>{filterProblem ? '-' : item.value}</dd></div>)}
       </dl>
       <section className="island-panel rounded-lg p-2.5 sm:rounded-xl sm:p-5">
         <h2 className="text-base font-semibold sm:text-xl">{text('Bar Reports', 'Laporan Bar')}</h2>
@@ -1241,6 +1250,9 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
               <input
                 className={`${inputClass} lg:w-[240px]`}
                 type="month"
+                aria-label={text('Report Month', 'Bulan Laporan')}
+                aria-invalid={!!filterError}
+                aria-describedby={filterError ? 'bar-report-date-error' : undefined}
                 value={reportMonth}
                 onChange={(event) => {
                   setReportMonthTouched(true);
@@ -1249,10 +1261,10 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
               />
             ) : null}
             {reportPeriod === 'custom' ? (
-              <div className="grid w-full min-w-0 gap-2 lg:grid-cols-[minmax(0,170px)_minmax(0,170px)_auto]">
-                <input className={inputClass} type="date" value={customStart} onChange={(event) => setCustomStart(event.target.value)} />
-                <input className={inputClass} type="date" value={customEnd} onChange={(event) => setCustomEnd(event.target.value)} />
-                <button className={`${secondaryButtonClass} justify-center`} onClick={() => downloadPdfReport(selectedPeriodRow)}>
+              <div className="grid w-full min-w-0 grid-cols-2 items-end gap-2 lg:grid-cols-[minmax(0,170px)_minmax(0,170px)_auto]">
+                <label className="grid min-w-0 gap-1 text-xs text-muted">{text('From', 'Dari')}<input className={inputClass} type="date" aria-label={text('Start Date', 'Tarikh Mula')} aria-invalid={!!filterError} aria-describedby={filterError ? 'bar-report-date-error' : undefined} value={customStart} onChange={(event) => setCustomStart(event.target.value)} /></label>
+                <label className="grid min-w-0 gap-1 text-xs text-muted">{text('To', 'Hingga')}<input className={inputClass} type="date" aria-label={text('End Date', 'Tarikh Akhir')} aria-invalid={!!filterError} aria-describedby={filterError ? 'bar-report-date-error' : undefined} value={customEnd} onChange={(event) => setCustomEnd(event.target.value)} /></label>
+                <button disabled={!selectedPeriodRow} className={`${secondaryButtonClass} col-span-2 justify-center lg:col-span-1`} onClick={() => { if (selectedPeriodRow) downloadPdfReport(selectedPeriodRow); }}>
                   <Download className="h-4 w-4" />
                   {text('Bar PDF', 'PDF Bar')}
                 </button>
@@ -1260,6 +1272,8 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
             ) : null}
           </div>
         </div>
+        {filterError ? <p id="bar-report-date-error" role="alert" className="mt-2 text-sm text-danger">{filterError}</p> : null}
+        {!filterProblem ? <>
         <div className="mt-3 overflow-hidden rounded-lg border border-line bg-white/80 sm:hidden">
           <table className="w-full table-fixed text-left text-[11px]">
             <thead className="bg-shell">
@@ -1379,6 +1393,7 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
             </button>
           ) : null}
         </div>
+        </> : null}
       </section>
       <section className="island-panel mt-4 rounded-lg p-3 sm:mt-5 sm:rounded-xl sm:p-5">
         <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
@@ -1548,8 +1563,8 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
           ) : null}
         </div>
       </section>
-      <section className="island-panel mt-4 rounded-lg p-3 sm:mt-5 sm:rounded-xl sm:p-5">
-        <h2 className="text-lg font-semibold sm:text-xl">{text('Sales of All Items', 'Jualan Semua Item')} · {activeReport ? `${activeReport.label} (${activeReport.range})` : selectedReportDate}</h2>
+      {!filterProblem && activeReport ? <section className="island-panel mt-4 rounded-lg p-3 sm:mt-5 sm:rounded-xl sm:p-5">
+        <h2 className="text-lg font-semibold sm:text-xl">{text('Sales of All Items', 'Jualan Semua Item')} · {`${activeReport.label} (${activeReport.range})`}</h2>
         <div className="clean-scroll mt-3 overflow-x-auto rounded-lg border border-line bg-white/75 sm:hidden">
           <table className="dense-table w-full min-w-[720px] text-left text-xs">
             <thead className="bg-shell">
@@ -1624,7 +1639,7 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
             </tbody>
           </table>
         </div>
-      </section>
+      </section> : null}
       </>
       )}
       {previewReport ? (

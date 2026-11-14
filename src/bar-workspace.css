@@ -42,6 +42,9 @@
 .bar-date-stepper button:hover { background: #f1e9ee; }
 .bar-date-stepper input, .bar-date-range input { width: 100%; min-width: 0; height: 40px; border: 1px solid #e8dde2; border-radius: 6px; padding: 6px; background: #fff; font-size: 14px; }
 .bar-date-range { display: flex; gap: 8px; max-width: 350px; }
+.bar-workspace .bar-date-stepper { width: 256px; grid-template-columns: 44px minmax(0,1fr) 44px; }
+.bar-workspace .bar-date-stepper button { min-height: 44px; }
+.bar-workspace .bar-date-stepper input, .bar-workspace .bar-date-range input { height: 44px; }
 .bar-revenue { display: grid; grid-template-columns: minmax(180px,.8fr) minmax(0,1.8fr); gap: 24px; padding: 4px 0 22px; border-bottom: 1px solid #e8dde2; }
 .bar-revenue-label { margin: 14px 0 2px; font-size: 13px; font-weight: 500; }
 .bar-revenue-value { color: #a7154b; font-size: 28px; line-height: 1.2; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
@@ -174,6 +177,13 @@
   .bar-period-short .view-choices button { flex: 0 0 auto; padding-inline: 5px; font-size: 12px; white-space: nowrap; }
   .bar-period-short .bar-date-stepper { flex: 1; width: 190px; min-width: 178px; grid-template-columns: 26px minmax(0,1fr) 26px; gap: 0; }
   .bar-period-short .bar-date-stepper input { padding-inline: 2px; font-size: 14px; }
+}
+@container (max-width: 460px) {
+  .bar-workspace .bar-period-short { flex-wrap: wrap; }
+  .bar-workspace .bar-period-short .view-choices { flex: 1 1 100%; }
+  .bar-workspace .bar-period-short .view-choices button { flex: 1; }
+  .bar-workspace .bar-period-short .bar-date-stepper { flex: 1 1 100%; width: 100%; min-width: 0; grid-template-columns: 44px minmax(0,1fr) 44px; }
+  .bar-workspace .bar-period-short .bar-date-stepper input { font-size: 16px; }
 }
 
 .bar-stock-entry-footer { position: sticky; bottom: calc(var(--preview-toolbar-height, 0px) + 8px); z-index: 20; padding-bottom: max(8px, env(safe-area-inset-bottom)); }

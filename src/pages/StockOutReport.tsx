@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { addDays, addMonths, addWeeks, format, parseISO, startOfWeek } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { AlertTriangle, ChevronRight, RefreshCw } from 'lucide-react';
 import { secondaryButtonClass } from '../components/Form';
 import { PageHeader } from '../components/Page';
@@ -17,6 +17,7 @@ import { useSharedRefresh } from '../lib/useSharedRefresh';
 import { readAllRows } from '../lib/readAllRows';
 import { allocateSaleItems } from '../lib/moneyAllocation';
 import { attachStockSaleItems, stockReceivedLabel } from '../lib/barStockHistory';
+import { barPeriodRange, periodProblemLabel, shiftBarPeriod } from '../lib/barReportPeriod';
 
 type Period = 'day' | 'week' | 'month' | 'custom';
 type Mode = 'in' | 'out';
@@ -66,25 +67,6 @@ function rowsFromSale(sale: Sale & { sale_items?: SaleItem[] }, closeTime: Setti
     worker: sale.order_taken_by ?? '-',
     status: sale.status,
   }));
-}
-
-function weekStartFromInput(value: string) {
-  const [yearText, weekText] = value.split('-W');
-  const year = Number(yearText);
-  const week = Number(weekText);
-  const weekOne = startOfWeek(new Date(year, 0, 4), { weekStartsOn: 1 });
-  return addWeeks(weekOne, Math.max(week - 1, 0));
-}
-
-function inRange(date: string, period: Period, selectedDate: string, selectedWeek: string, selectedMonth: string, customStart: string, customEnd: string) {
-  if (date === '-') return false;
-  if (period === 'day') return date === selectedDate;
-  if (period === 'month') return date.startsWith(selectedMonth);
-  if (period === 'custom') return date >= customStart && date <= customEnd;
-  const weekStart = weekStartFromInput(selectedWeek);
-  const weekEnd = addDays(weekStart, 6);
-  const parsed = parseISO(date);
-  return parsed >= weekStart && parsed <= weekEnd;
 }
 
 export default function StockOutReport({ settings }: { settings: SettingsMap }) {
@@ -179,22 +161,20 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
     intervalMs: 15000,
   });
 
-  const filteredOutRows = stockOutRows.filter((row) => inRange(row.date, period, selectedDate, selectedWeek, selectedMonth, customStart, customEnd));
-  const filteredInRows = stockInRows.filter((row) => inRange(row.date, period, selectedDate, selectedWeek, selectedMonth, customStart, customEnd));
+  const periodValue = period === 'day' ? selectedDate : period === 'week' ? selectedWeek : period === 'month' ? selectedMonth : customStart;
+  const selection = barPeriodRange(period, periodValue, customEnd);
+  const inRange = (date: string) => !!selection.range && date >= selection.range.from && date <= selection.range.to;
+  const filteredOutRows = stockOutRows.filter(row => inRange(row.date));
+  const filteredInRows = stockInRows.filter(row => inRange(row.date));
   const activeOutRows = filteredOutRows.filter((row) => row.status === 'completed');
 
   function shiftPeriod(direction: -1 | 1) {
-    if (period === 'day') {
-      setSelectedDate(format(addDays(parseISO(selectedDate), direction), 'yyyy-MM-dd'));
-      return;
-    }
-    if (period === 'week') {
-      setSelectedWeek(format(addWeeks(weekStartFromInput(selectedWeek), direction), "RRRR-'W'II"));
-      return;
-    }
-    if (period === 'month') {
-      setSelectedMonth(format(addMonths(new Date(`${selectedMonth}-01T00:00:00`), direction), 'yyyy-MM'));
-    }
+    if (period === 'custom') return;
+    const next = shiftBarPeriod(period, periodValue, direction);
+    if (!next) return;
+    if (period === 'day') setSelectedDate(next);
+    else if (period === 'week') setSelectedWeek(next);
+    else setSelectedMonth(next);
   }
 
   return (
@@ -229,17 +209,18 @@ export default function StockOutReport({ settings }: { settings: SettingsMap }) 
 
       {mode === 'in' ? <div className="mb-5 sm:mb-8"><StockIn settings={settings} embedded onSaved={loadRows} /></div> : null}
       <BarPeriodControl period={period} onPeriod={setPeriod}
-        value={period === 'day' ? selectedDate : period === 'week' ? selectedWeek : selectedMonth}
+        value={periodValue} error={periodProblemLabel(selection.problem, text)}
+        previousDisabled={period !== 'custom' && !shiftBarPeriod(period, periodValue, -1)} nextDisabled={period !== 'custom' && !shiftBarPeriod(period, periodValue, 1)}
         onValue={value => { if (period === 'day') setSelectedDate(value); else if (period === 'week') setSelectedWeek(value); else setSelectedMonth(value); }}
         onShift={shiftPeriod} custom={{ start: customStart, end: customEnd, onStart: setCustomStart, onEnd: setCustomEnd }} />
       {loading ? <p role="status" className="py-4 text-sm text-muted">{text('Checking Stock Records...', 'Menyemak Rekod Stok...')}</p> : null}
-      {!loading && !loadError && mode === 'out' ? <StaffSummary items={[
+      {!loading && !loadError && selection.range && mode === 'out' ? <StaffSummary items={[
         { label: text('Units Out', 'Unit Keluar'), value: activeOutRows.reduce((sum, row) => sum + row.qty, 0) },
         { label: text('Revenue', 'Hasil'), value: money(activeOutRows.filter(row => row.method !== 'complimentary').reduce((sum, row) => sum + row.total, 0), String(settings.currency_symbol)) },
         { label: text('FOC Value', 'Nilai FOC'), value: money(activeOutRows.filter(row => row.method === 'complimentary').reduce((sum, row) => sum + row.total, 0), String(settings.currency_symbol)) },
       ]} /> : null}
 
-      {!loading && !loadError ? mode === 'in' ? (
+      {!loading && !loadError && selection.range ? mode === 'in' ? (
         <>
           <StaffSummary items={[
             { label: text('Units Added', 'Unit Ditambah'), value: filteredInRows.reduce((sum, row) => sum + row.qty, 0) },

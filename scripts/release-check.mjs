@@ -48,6 +48,7 @@ try{
  await stage('Exact POS discount amounts and cent arithmetic','unit',()=>command(['scripts/test-pos-money.mjs']));
  await stage('Exact stock history values and historical carton labels','unit',()=>command(['scripts/test-stock-history.mjs']));
  await stage('Verified stock balances and overview responses','unit',()=>command(['scripts/test-stock-view.mjs']));
+ await stage('Validated bar calendar periods and report ranges','unit',()=>command(['scripts/test-bar-report-period.mjs']));
  await stage('Stock-out recovery','unit',()=>command(['scripts/test-stock-out.mjs']));
  await stage('Receiving units and measured pieces','unit',()=>command(['scripts/test-delivery-entry.mjs']));
  await stage('Durable delivery identity and recovery','unit',()=>command(['scripts/test-delivery-recovery.mjs']));
@@ -90,6 +91,7 @@ try{
  await stage('Reviewed POS prices and discounts on mobile','sample-browser',()=>sampleCommand(['scripts/test-pos-money-ui.mjs']));
  await stage('Verified Stock Activity values and mobile history','local-browser-contract',()=>command(['scripts/test-stock-history-ui.mjs']));
  await stage('Stock Hub and Overview unavailable-data safeguards','local-browser-contract',()=>command(['scripts/test-stock-view-ui.mjs']));
+ await stage('Validated report-date controls and safe downloads','local-browser-contract',()=>command(['scripts/test-bar-report-period-ui.mjs']));
  await stage('Measured receiving review and recovery','sample-browser',()=>sampleCommand(['scripts/test-measured-receiving-ui.mjs']));
  await stage('Finance exports and report scope','sample-browser-and-read-fixture',()=>sampleCommand(['scripts/test-finance-export-ui.mjs']));
  await stage('Supplier payments and Finance follow-up','sample-browser',()=>sampleCommand(['scripts/test-purchase-payment-ui.mjs']));

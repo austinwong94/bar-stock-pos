@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { addDays, addMonths, addWeeks, endOfMonth, format, startOfWeek } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { AlertTriangle, PackageCheck, RefreshCw } from 'lucide-react';
 import { PageHeader } from '../components/Page';
 import { WorkflowHelp } from '../components/WorkflowHelp';
@@ -14,6 +14,7 @@ import { useSharedRefresh } from '../lib/useSharedRefresh';
 import { BarPeriodControl } from '../components/BarPeriodControl';
 import { iconButtonClass, secondaryButtonClass } from '../components/Form';
 import { barCategoryLabel, barStockRows, overviewMoneyCents, readBarOverview, stockStatusLabel, stockViewSummary, type StockViewRow } from '../lib/barStockView';
+import { barPeriodRange, periodProblemLabel, shiftBarPeriod } from '../lib/barReportPeriod';
 
 type DashboardSale = {
   payment_method: string;
@@ -33,22 +34,24 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
   const [selectedMonth, setSelectedMonth] = useState(() => businessToday.slice(0, 7));
   const [totals, setTotals] = useState({ cash: 0, qr: 0, focCost: 0, tx: 0, paidRevenue: 0 });
   const [stockOutTodayByProduct, setStockOutTodayByProduct] = useState<Record<string, number>>({});
-  const { text } = useLanguage();
+  const { text, language } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const scope = JSON.stringify([period, selectedDate, selectedWeek, selectedMonth, businessToday, settings.business_day_close_time]);
   const [verifiedScope, setVerifiedScope] = useState<string | null>(null);
   const generation = useRef(0);
+  const periodValue = period === 'day' ? selectedDate : period === 'week' ? selectedWeek : selectedMonth;
+  const selection = barPeriodRange(period, periodValue);
 
   async function refreshDashboard(background = false) {
     const ticket = ++generation.current;
+    if (!selection.range) { setLoading(false); return; }
     if (!background) setLoading(true);
     try {
       const [loadedProducts, recipes] = await Promise.all([loadProducts(true), loadRecipeProductIds()]);
       const nextRows = barStockRows(loadedProducts, recipes);
       if (isSupabaseConfigured) {
-        const from = period === 'day' ? selectedDate : period === 'week' ? format(weekStartFromInput(selectedWeek), 'yyyy-MM-dd') : `${selectedMonth}-01`;
-        const to = period === 'day' ? from : period === 'week' ? format(addDays(weekStartFromInput(selectedWeek), 6), 'yyyy-MM-dd') : format(endOfMonth(new Date(`${from}T00:00:00`)), 'yyyy-MM-dd');
+        const { from, to } = selection.range;
         const { data, error: readError } = await supabase.rpc('read_bar_overview', { p_from: from, p_to: to, p_today: businessToday });
         if (readError) throw readError;
         const overview = readBarOverview(data);
@@ -113,28 +116,20 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
     intervalMs: 15000,
   });
 
-  const readable = !loading && !error && verifiedScope === scope;
+  const readable = !!selection.range && !loading && !error && verifiedScope === scope;
   const lowStock = stockRows.filter(row => row.status === 'low');
   const activeRows = stockRows.filter(row => row.product.active);
   const stockSummary = stockViewSummary(stockRows);
-  const placeholder = loading || verifiedScope !== scope ? '...' : '-';
-  const selectedDateObject = new Date(`${selectedDate}T00:00:00`);
-  const selectedDayLabel = format(selectedDateObject, 'EEE, d MMM yyyy');
-  const selectedWeekStart = weekStartFromInput(selectedWeek);
-  const selectedWeekEnd = addDays(selectedWeekStart, 6);
-  const selectedWeekLabel = `${format(selectedWeekStart, 'd MMM yyyy')} - ${format(selectedWeekEnd, 'd MMM yyyy')}`;
-  const periodTitle = period === 'day' ? selectedDayLabel : period === 'week' ? selectedWeekLabel : format(new Date(`${selectedMonth}-01T00:00:00`), 'MMMM yyyy');
+  const placeholder = selection.range && (loading || verifiedScope !== scope) ? '...' : '-';
+  const dateLabel = (value: string, monthOnly = false) => new Intl.DateTimeFormat(language === 'ms' ? 'ms-MY' : 'en-GB', monthOnly ? { month: 'long', year: 'numeric' } : { day: 'numeric', month: 'short', year: 'numeric', ...(period === 'day' ? { weekday: 'short' as const } : {}) }).format(parseISO(value));
+  const periodTitle = !selection.range ? '-' : period === 'month' ? dateLabel(selection.range.from, true) : period === 'week' ? `${dateLabel(selection.range.from)} - ${dateLabel(selection.range.to)}` : dateLabel(selection.range.from);
 
   function shiftPeriod(direction: -1 | 1) {
-    if (period === 'day') {
-      setSelectedDate(format(addDays(selectedDateObject, direction), 'yyyy-MM-dd'));
-      return;
-    }
-    if (period === 'week') {
-      setSelectedWeek(format(addWeeks(selectedWeekStart, direction), "RRRR-'W'II"));
-      return;
-    }
-    setSelectedMonth(format(addMonths(new Date(`${selectedMonth}-01T00:00:00`), direction), 'yyyy-MM'));
+    const next = shiftBarPeriod(period, periodValue, direction);
+    if (!next) return;
+    if (period === 'day') setSelectedDate(next);
+    else if (period === 'week') setSelectedWeek(next);
+    else setSelectedMonth(next);
   }
 
   return (
@@ -142,10 +137,11 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
       <PageHeader title={text('Bar Overview', 'Ringkasan Bar')}
         actions={<><button type="button" className={iconButtonClass} disabled={loading} aria-label={text('Refresh Overview', 'Muat Semula Ringkasan')} title={text('Refresh', 'Muat Semula')} onClick={() => void refreshDashboard()}><RefreshCw size={16} /></button><WorkflowHelp area="bar" /></>} />
       <BarPeriodControl period={period} onPeriod={setPeriod}
-        value={period === 'day' ? selectedDate : period === 'week' ? selectedWeek : selectedMonth}
+        value={periodValue} error={periodProblemLabel(selection.problem, text)}
+        previousDisabled={!shiftBarPeriod(period, periodValue, -1)} nextDisabled={!shiftBarPeriod(period, periodValue, 1)}
         onValue={value => { if (period === 'day') setSelectedDate(value); else if (period === 'week') setSelectedWeek(value); else setSelectedMonth(value); }}
         onShift={shiftPeriod} />
-      {error && !loading ? <div role="alert" className="mb-3 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border border-danger/30 p-3 text-sm text-danger"><span>{error}</span><button className={secondaryButtonClass} onClick={() => void refreshDashboard()}><RefreshCw size={16} />{text('Retry', 'Cuba Lagi')}</button></div> : null}
+      {selection.range && error && !loading ? <div role="alert" className="mb-3 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border border-danger/30 p-3 text-sm text-danger"><span>{error}</span><button className={secondaryButtonClass} onClick={() => void refreshDashboard()}><RefreshCw size={16} />{text('Retry', 'Cuba Lagi')}</button></div> : null}
       <section className="bar-revenue" aria-busy={loading}>
         <div>
           <p className="bar-caption">{periodTitle}</p>
@@ -197,10 +193,3 @@ export default function Dashboard({ settings }: { settings: SettingsMap }) {
   );
 }
 
-function weekStartFromInput(value: string) {
-  const [yearText, weekText] = value.split('-W');
-  const year = Number(yearText);
-  const week = Number(weekText);
-  const weekOne = startOfWeek(new Date(year, 0, 4), { weekStartsOn: 1 });
-  return addWeeks(weekOne, Math.max(week - 1, 0));
-}
