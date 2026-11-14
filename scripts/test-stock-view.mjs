@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+import {build} from 'esbuild';
+const built=await build({entryPoints:['src/lib/barStockView.ts'],bundle:true,write:false,format:'cjs',platform:'node'}),m={exports:{}};new Function('module','exports',built.outputFiles[0].text)(m,m.exports);
+const {barStockRows,stockViewSummary,readBarOverview,overviewMoneyCents,stockStatusLabel,barCategoryLabel}=m.exports;
+const p={id:'product',name:'Stock Test (Sample)',active:true,low_stock_threshold:5,categories:{name:'Beer'},inventory_balances:{quantity_on_hand:17}};
+assert.equal(barStockRows([p],new Set())[0].status,'available');
+const zero=barStockRows([{...p,inventory_balances:{quantity_on_hand:0}}],new Set())[0];assert.equal(zero.balance,0);assert.equal(zero.status,'low');
+for(const value of [null,undefined,'',true,false,NaN,Infinity,'1e2','1.5',2147483648]){const row=barStockRows([{...p,inventory_balances:{quantity_on_hand:value}}],new Set())[0];assert.equal(row.balance,null);assert.equal(row.status,'unavailable');assert.deepEqual(stockViewSummary([row]),{products:1,units:null,low:null,unknown:1});}
+assert.equal(barStockRows([{...p,inventory_balances:null}],new Set())[0].balance,null);
+const negative=barStockRows([{...p,inventory_balances:{quantity_on_hand:-3}}],new Set())[0];assert.equal(negative.balance,-3);assert.equal(negative.status,'low');
+for(const value of [null,undefined,-1,'',true,1.5])assert.equal(barStockRows([{...p,low_stock_threshold:value}],new Set())[0].status,'alert-unset');
+const inactive=barStockRows([{...p,active:false,inventory_balances:{quantity_on_hand:0}}],new Set())[0];assert.equal(inactive.status,'inactive');assert.deepEqual(stockViewSummary([inactive]),{products:0,units:0,low:0,unknown:0});
+const recipe=barStockRows([{...p,inventory_balances:null}],new Set(['product']))[0];assert.equal(recipe.status,'recipe');assert.deepEqual(stockViewSummary([recipe]),{products:1,units:0,low:0,unknown:0});
+assert.equal(barStockRows([{...p,categories:{name:'Cocktail'}}],new Set())[0].status,'recipe-needed');
+assert.throws(()=>barStockRows([p,p],new Set()));for(const value of [null,{}, {...p,active:null},{...p,name:''}])assert.throws(()=>barStockRows([value],new Set()));
+const source=[p,{...p,id:'missing',inventory_balances:null}],before=JSON.stringify(source);barStockRows(source,new Set());assert.equal(JSON.stringify(source),before);
+assert.deepEqual(stockViewSummary(barStockRows([p,{...p,id:'zero',inventory_balances:{quantity_on_hand:0}}],new Set())),{products:2,units:17,low:1,unknown:0});
+const valid={totals:{cash:24,qr:12,focCost:4,paidRevenue:36,tx:4},soldToday:{product:2}};assert.deepEqual(readBarOverview(valid),valid);assert.deepEqual(readBarOverview({totals:{cash:0,qr:0,focCost:0,paidRevenue:0,tx:0},soldToday:{}}).totals,{cash:0,qr:0,focCost:0,paidRevenue:0,tx:0});
+for(const field of ['cash','qr','focCost','paidRevenue'])for(const value of [null,undefined,true,false,'',-1,NaN,Infinity,'1.001','1e2'])assert.throws(()=>readBarOverview({...valid,totals:{...valid.totals,[field]:value}}));
+for(const value of [null,undefined,true,'0',-1,1.5,NaN])assert.throws(()=>readBarOverview({...valid,totals:{...valid.totals,tx:value}}));
+assert.throws(()=>readBarOverview({...valid,totals:{...valid.totals,paidRevenue:37}}));for(const soldToday of [null,[],true,{product:null},{product:-1},{product:1.5},{'':1}])assert.throws(()=>readBarOverview({...valid,soldToday}));
+for(let cents=0;cents<10000;cents+=7)assert.equal(overviewMoneyCents(cents/100),cents);
+assert.equal(stockStatusLabel('recipe-needed',(en,ms)=>ms),'Perlu Resipi');assert.equal(barCategoryLabel('Beer',(en,ms)=>ms),'Bir');assert.equal(barCategoryLabel('Other',(en,ms)=>ms),'Lain-Lain');
+console.log('PASS stock view: confirmed zero vs missing/malformed balances, negative stock, recipe vs physical units, inactive/unknown alerts, duplicate products, unchanged inputs, exact overview money, reconciled totals, invalid sold counts and EN/MS labels. Read-only.');

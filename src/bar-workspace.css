@@ -61,6 +61,7 @@
 .bar-stock-table td:not(:first-child) { text-align: right; }
 .bar-stock-table strong { display: block; overflow-wrap: anywhere; font-weight: 600; }
 .bar-stock-table tbody tr:nth-child(even) { background: #fff; }
+.bar-stock-mobile-status { display: none; }
 .bar-unit { color: #786572; font-size: 12px; }
 .bar-stock-warning, .bar-notice { display: flex; align-items: flex-start; gap: 8px; padding: 10px 0; color: #996008; font-size: 12px; }
 .bar-stock-warning svg { flex-shrink: 0; }
@@ -145,7 +146,11 @@
   .bar-revenue-breakdown { padding-left: 0; border-left: 0; gap: 14px; }
   .bar-section-heading { align-items: flex-start; flex-direction: column; }
   .bar-inline-stats { width: 100%; justify-content: space-between; }
-  .bar-stock-table th:first-child { width: 38%; }
+  .bar-stock-table th:first-child { width: 48%; }
+  .bar-stock-table th:nth-child(2) { width: 22%; }
+  .bar-stock-table th:nth-child(3) { width: 30%; }
+  .bar-stock-status-column { display: none; }
+  .bar-stock-mobile-status { display: inline-block; max-width: 100%; overflow-wrap: normal; }
   .bar-stock-table :is(th,td) { padding: 10px 5px !important; font-size: 12px; }
   .bar-custom-form { grid-template-columns: minmax(0,1fr) 110px; }
   .bar-custom-form button { grid-column: 1 / -1; }

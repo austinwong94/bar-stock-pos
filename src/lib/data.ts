@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 import { isSupabaseConfigured } from './supabase';
-import { loadLocalProducts, loadLocalSettings } from './localStore';
+import { loadLocalProducts, loadLocalRecipeIngredients, loadLocalSettings } from './localStore';
 import type { ProductWithStock, SettingsMap } from './types';
 import { readAllRows } from './readAllRows';
 
@@ -74,6 +74,12 @@ export async function loadProducts(includeInactive = false): Promise<ProductWith
 
   if (!includeInactive) query = query.eq('active', true);
   return await readAllRows<ProductWithStock>((from,to)=>query.range(from,to));
+}
+
+export async function loadRecipeProductIds(): Promise<Set<string>> {
+  const rows = !isSupabaseConfigured ? loadLocalRecipeIngredients() : await readAllRows<{ product_id: string }>((from, to) => supabase.from('recipe_ingredients').select('product_id').order('id').range(from, to));
+  if (rows.some(row => !row || typeof row.product_id !== 'string' || !row.product_id)) throw new Error('Product recipes are incomplete.');
+  return new Set(rows.map(row => row.product_id));
 }
 
 export function groupByCategory(products: ProductWithStock[]) {
