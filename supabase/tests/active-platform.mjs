@@ -7,6 +7,7 @@ const owner='11111111-1111-1111-1111-111111111111',cook='88888888-8888-8888-8888
 const value=async(db,sql,args=[])=>Object.values((await db.query(sql,args)).rows[0]??{})[0];
 const as=async(db,id)=>{await db.query('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id??'']);await db.query(id?'set role authenticated':'set role anon');};
 const denied=(operation)=>assert.rejects(operation,error=>error.code==='42501');
+async function saleAction(db,id,action,reason=null){const version=await value(db,'select review_version from sales where id=$1',[id]);return value(db,'select review_bar_sale_action($1,$2,$3,$4,$5,auth.uid())',[id,action,reason,version,randomUUID()]);}
 let workLibrary;
 async function readWorkQueue(db,forcePermissions=false){
   if(!workLibrary){const bundled=await build({entryPoints:[new URL('../../src/lib/kitchenWorkQueue.ts',import.meta.url).pathname],bundle:true,write:false,format:'cjs',platform:'node'});const m={exports:{}};new Function('module','exports',bundled.outputFiles[0].text)(m,m.exports);workLibrary=m.exports;}
@@ -48,7 +49,7 @@ async function barJourney(db,connect){
   await value(db,'select save_product_recipe($1,$2::jsonb)',[cocktail,JSON.stringify([{ingredient_id:gin,quantity_per_unit:50}])]);
   const cocktailSale=await pay({key:randomUUID(),items:[{product_id:cocktail,quantity:2,expected_unit_price:28}]});
   assert.equal(Number(await value(db,'select quantity_on_hand from ingredient_balances where ingredient_id=$1',[gin])),2400);
-  await value(db,'select void_sale($1,$2)',[cocktailSale.sale_id,'Checked correction']);
+  await saleAction(db,cocktailSale.sale_id,'void','Checked correction');
   assert.equal(Number(await value(db,'select quantity_on_hand from ingredient_balances where ingredient_id=$1',[gin])),2500);
   const bundle=[{bundle:true,quantity:1,expected_bundle_price:40,expected_bundle_units:4,components:[{product_id:beer,quantity:4}]}];
   const bundleSale=await pay({key:randomUUID(),items:bundle});assert.equal(bundleSale.total_amount,40);
@@ -76,7 +77,7 @@ async function barJourney(db,connect){
   await assert.rejects(()=>pay({...qr,key:randomUUID()}),e=>e.code==='LP001');
   await assert.rejects(()=>pay({...qr,qrType:'Grab'}),e=>e.code==='LP001');
   await assert.rejects(()=>db.query("delete from storage.objects where name='audit/qr.jpg'"),/must be retained/);
-  await value(db,"select verify_qr_payment($1,'verified',null)",[qrSale.sale_id]);
+  await saleAction(db,qrSale.sale_id,'verified');
   const today=await value(db,'select get_business_date()::text');
   await db.query('reset role');await db.query('insert into cash_sessions(business_date,opening_float,opened_by) values($1,100,$2) on conflict(business_date) do update set opening_float=100',[today,owner]);await as(db,owner);
   const stale=await value(db,'select read_bar_closing($1::date)',[today]);
@@ -88,8 +89,8 @@ async function barJourney(db,connect){
   assert.equal(Number(closed.expected_cash),100+reviewed.sales.filter(s=>s.status==='completed'&&s.payment_method==='cash').reduce((n,s)=>n+Number(s.paid_amount),0));
   assert.equal(Number(await value(db,"select count(*) from audit_logs where action='close_daily_report'")),1);
   await assert.rejects(()=>pay({key:randomUUID(),items:currentItems}),/day is closed/);
-  await assert.rejects(()=>value(db,'select void_sale($1,$2)',[later.sale_id,'Correction']),/day is closed/);
-  await value(db,'select reopen_daily_report($1,$2)',[today,'Audit correction']);await value(db,'select void_sale($1,$2)',[later.sale_id,'Correction']);
+  await assert.rejects(()=>saleAction(db,later.sale_id,'void','Correction'),/day is closed/);
+  await value(db,'select reopen_daily_report($1,$2)',[today,'Audit correction']);await saleAction(db,later.sale_id,'void','Correction');
   const fresh=await value(db,'select read_bar_closing($1::date)',[today]);await as(a,owner);await as(b,owner);
   const closes=await Promise.allSettled([close(fresh,randomUUID(),a),close(fresh,randomUUID(),b)]);
   assert.equal(closes.filter(r=>r.status==='fulfilled').length,1);assert.equal(closes.find(r=>r.status==='rejected').reason.code,'40001');

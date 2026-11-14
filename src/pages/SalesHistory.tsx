@@ -8,19 +8,24 @@ import { QrReceiptPreview } from '../components/QrReceiptPreview';
 import { readClosingSnapshot } from '../lib/barClosing';
 import { barPeriodRange, shiftBarPeriod } from '../lib/barReportPeriod';
 import { checkedHistorySales, historyItemName, historyTotals, saleFingerprint, saleMatches, saleTime, type HistorySale } from '../lib/barSalesHistory';
-import { useToast } from '../components/Toast';
 import { malaysiaBusinessDateInputValue, money } from '../lib/format';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
-import { loadLocalSaleItems, loadLocalSales, updateLocalQrPayment, voidLocalSale } from '../lib/localStore';
+import { loadLocalSaleItems, loadLocalSales } from '../lib/localStore';
 import { useAccess } from '../lib/access';
 import type { PaymentMethod, SettingsMap } from '../lib/types';
 import { useLanguage } from '../lib/language';
 import { useSharedRefresh } from '../lib/useSharedRefresh';
+import { useSaleAction } from '../lib/useSaleAction';
+import { SaleActionRecovery } from '../components/SaleActionRecovery';
 
 type Selection = { scope: string; id: string; fingerprint: string };
 
 export default function SalesHistory({ settings, embedded = false }: { settings: SettingsMap; embedded?: boolean }) {
-  const toast = useToast();
+  const {profile} = useAccess();
+  return <SalesHistoryWorkspace key={profile?.id ?? 'no-account'} settings={settings} embedded={embedded}/>;
+}
+
+function SalesHistoryWorkspace({ settings, embedded }: { settings: SettingsMap; embedded: boolean }) {
   const { text, language } = useLanguage();
   const { can, profile } = useAccess();
   const [date, setDate] = useState(() => malaysiaBusinessDateInputValue(new Date(), settings.business_day_close_time));
@@ -29,8 +34,10 @@ export default function SalesHistory({ settings, embedded = false }: { settings:
   const [verifiedScope, setVerifiedScope] = useState(''), [failedScope, setFailedScope] = useState<string | null>(null);
   const [reading, setReading] = useState(true);
   const [preview, setPreview] = useState<Selection | null>(null), [voiding, setVoiding] = useState<Selection | null>(null);
-  const [reason, setReason] = useState(''), [busy, setBusy] = useState(false);
-  const busyRef = useRef(false), generation = useRef(0);
+  const [reason, setReason] = useState('');
+  const generation = useRef(0);
+  const saleAction = useSaleAction(profile?.id ?? null, async () => { setVoiding(null); setReason(''); await refresh(); });
+  const busy = saleAction.blocked;
   const scope = JSON.stringify([profile?.id, date]);
   const currentScope = useRef(scope); currentScope.current = scope;
   const validDate = !!barPeriodRange('day', date).range;
@@ -56,7 +63,7 @@ export default function SalesHistory({ settings, embedded = false }: { settings:
       setSales(rows); setVerifiedScope(scope); setFailedScope(null);
       const stillMatches = (selected: Selection | null) => selected?.scope === scope && rows.some(row => row.id === selected.id && saleFingerprint(row) === selected.fingerprint);
       setPreview(selected => stillMatches(selected) ? selected : null);
-      if (!busyRef.current) setVoiding(selected => stillMatches(selected) ? selected : null);
+      if (!saleAction.blocked) setVoiding(selected => stillMatches(selected) ? selected : null);
     } catch {
       if (ticket === generation.current && currentScope.current === scope) { setFailedScope(scope); setPreview(null); }
     } finally { if (ticket === generation.current && currentScope.current === scope) setReading(false); }
@@ -72,7 +79,7 @@ export default function SalesHistory({ settings, embedded = false }: { settings:
   const limit = windowState.key === filterScope ? windowState.count : 50;
   const visible = filtered.slice(0, limit);
   function changeFilter(action: () => void) {
-    if (busyRef.current) return;
+    if (saleAction.blocked) return;
     setPreview(null); setVoiding(null); setReason(''); setWindowState({ key: '', count: 50 }); action();
   }
   const selection = (sale: HistorySale): Selection => ({ scope, id: sale.id, fingerprint: saleFingerprint(sale) });
@@ -83,31 +90,12 @@ export default function SalesHistory({ settings, embedded = false }: { settings:
 
   async function voidSale() {
     const sale = voidSaleRecord;
-    if (!sale || sale.status !== 'completed' || !reason.trim() || !can('bar.pos.void') || busyRef.current) return;
-    busyRef.current = true; setBusy(true);
-    try {
-      if (isSupabaseConfigured) {
-        const result = await supabase.rpc('void_sale', { p_sale_id: sale.id, p_reason: reason });
-        if (result.error) throw result.error;
-      } else if (!voidLocalSale(sale.id, reason.trim())) throw new Error('Sale could not be voided.');
-      if (currentScope.current !== scope) return;
-      setVoiding(null); setReason(''); await refresh();
-      toast.success(text('Sale voided and stock reversed.', 'Jualan dibatalkan dan stok dibalikkan.'));
-    } catch { if (currentScope.current === scope) toast.error(text('Could not confirm the result. Refresh and check this sale before trying again.', 'Keputusan tidak dapat disahkan. Muat semula dan semak jualan ini sebelum mencuba lagi.')); }
-    finally { busyRef.current = false; setBusy(false); }
+    if (!sale || sale.status !== 'completed' || !reason.trim() || !can('bar.pos.void') || busy) return;
+    await saleAction.run(sale, 'void', reason);
   }
   async function verifyQr(sale: HistorySale, status: 'verified' | 'mismatch') {
-    if (!selectedSale(selection(sale)) || sale.status !== 'completed' || sale.payment_method !== 'qr' || !can('bar.closing.manage') || busyRef.current) return;
-    busyRef.current = true; setBusy(true);
-    try {
-      if (isSupabaseConfigured) {
-        const result = await supabase.rpc('verify_qr_payment', { p_sale_id: sale.id, p_status: status, p_notes: null });
-        if (result.error) throw result.error;
-      } else updateLocalQrPayment(sale.id, status);
-      if (currentScope.current !== scope) return;
-      await refresh(); toast.success(text('QR status updated.', 'Status QR dikemas kini.'));
-    } catch { if (currentScope.current === scope) toast.error(text('Could not confirm the result. Refresh and check this sale before trying again.', 'Keputusan tidak dapat disahkan. Muat semula dan semak jualan ini sebelum mencuba lagi.')); }
-    finally { busyRef.current = false; setBusy(false); }
+    if (!selectedSale(selection(sale)) || sale.status !== 'completed' || sale.payment_method !== 'qr' || !can('bar.closing.manage') || busy) return;
+    await saleAction.run(sale, status);
   }
 
   const methodLabel = (value: PaymentMethod | 'all') => value === 'all' ? text('All', 'Semua') : value === 'cash' ? text('Cash', 'Tunai') : value === 'qr' ? 'QR' : 'FOC';
@@ -123,6 +111,7 @@ export default function SalesHistory({ settings, embedded = false }: { settings:
 
   return <div className="bar-sales-history">
     {!embedded ? <PageHeader title={text('Sales History', 'Sejarah Jualan')} /> : null}
+    <SaleActionRecovery action={saleAction} currency={currency}/>
     <div className="bar-sales-toolbar">
       <div><label className="mb-1 block text-xs text-muted" htmlFor="sales-business-date">{text('Business Date', 'Tarikh Perniagaan')} · MYT</label><div className="bar-date-stepper">
         {([-1, 0, 1] as const).map(direction => direction === 0 ? <input key="date" id="sales-business-date" type="date" value={date} disabled={busy} onChange={event => changeFilter(() => setDate(event.target.value))} /> : <button type="button" key={direction} disabled={busy || !shiftBarPeriod('day', date, direction)} title={direction < 0 ? text('Previous Day', 'Hari Sebelumnya') : text('Next Day', 'Hari Seterusnya')} aria-label={direction < 0 ? text('Previous Day', 'Hari Sebelumnya') : text('Next Day', 'Hari Seterusnya')} onClick={() => { const next = shiftBarPeriod('day', date, direction); if (next) changeFilter(() => setDate(next)); }}>{direction < 0 ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}</button>)}
@@ -142,6 +131,6 @@ export default function SalesHistory({ settings, embedded = false }: { settings:
       {visible.length < filtered.length ? <button className={secondaryButtonClass + ' mt-3 w-full sm:w-auto'} onClick={() => setWindowState({ key: filterScope, count: limit + 50 })}><ChevronDown size={16} />{text('Show More', 'Lihat Lagi')}</button> : null}
     </> : null}
     {previewSale ? <QrReceiptPreview key={preview!.scope + preview!.id + preview!.fingerprint} sale={previewSale} currency={currency} onClose={() => setPreview(null)} /> : null}
-    {voidSaleRecord ? <Modal title={text('Void Sale', 'Batalkan Jualan') + ' · ' + voidSaleRecord.sale_number} onClose={() => { if (!busyRef.current) setVoiding(null); }} footer={<><button type="button" className={secondaryButtonClass} disabled={busy} onClick={() => setVoiding(null)}>{text('Cancel', 'Batal')}</button><button type="button" className={dangerButtonClass} disabled={busy || !reason.trim()} onClick={() => void voidSale()}><Ban size={16} />{busy ? text('Saving...', 'Menyimpan...') : text('Void Sale', 'Batalkan Jualan')}</button></>}><Field label={text('Reason', 'Sebab')}><textarea className={inputClass} disabled={busy} value={reason} onChange={event => setReason(event.target.value)} /></Field></Modal> : null}
+    {voidSaleRecord && !saleAction.pending && !saleAction.error ? <Modal title={text('Void Sale', 'Batalkan Jualan') + ' · ' + voidSaleRecord.sale_number} onClose={() => { if (!saleAction.busy) setVoiding(null); }} footer={<><button type="button" className={secondaryButtonClass} disabled={busy} onClick={() => setVoiding(null)}>{text('Cancel', 'Batal')}</button><button type="button" className={dangerButtonClass} disabled={busy || !reason.trim()} onClick={() => void voidSale()}><Ban size={16} />{busy ? text('Saving...', 'Menyimpan...') : text('Void Sale', 'Batalkan Jualan')}</button></>}><Field label={text('Reason', 'Sebab')}><textarea className={inputClass} disabled={busy} value={reason} onChange={event => setReason(event.target.value)} /></Field></Modal> : null}
   </div>;
 }

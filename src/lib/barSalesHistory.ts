@@ -13,6 +13,7 @@ export function checkedHistorySales(rows: Array<Sale & { sale_items?: SaleItem[]
   const result = rows.map(sale => {
     if (!sale || typeof sale.id !== 'string' || !sale.id.trim() || ids.has(sale.id) || typeof sale.sale_number !== 'string' || !sale.sale_number.trim() || sale.business_date !== date || !['cash', 'qr', 'complimentary'].includes(sale.payment_method) || !['completed', 'voided'].includes(sale.status)) throw new Error('Sale references are inconsistent.');
     ids.add(sale.id); saleTimestamp(sale.created_at);
+    if (sale.review_version != null && (!Number.isSafeInteger(sale.review_version) || sale.review_version < 0)) throw new Error('Sale review version is incomplete.');
     for (const value of [sale.order_taken_by, sale.table_number, sale.qr_reference, sale.qr_payment_type, sale.qr_receipt_image_path, sale.void_reason, sale.voided_at, sale.complimentary_reason]) if (value != null && typeof value !== 'string') throw new Error('Sale details are incomplete.');
     if (!['not_required', 'pending', 'verified', 'mismatch'].includes(sale.qr_status)) throw new Error('QR status is incomplete.');
     const total = reportMoneyCents(sale.total_amount), paid = reportMoneyCents(sale.paid_amount), discount = reportMoneyCents(sale.discount_amount);
@@ -48,7 +49,7 @@ export function historyTotals(sales: HistorySale[]) {
 }
 
 export function saleFingerprint(sale: HistorySale) {
-  return JSON.stringify([sale.id, sale.business_date, sale.sale_number, sale.status, sale.payment_method, sale.total_amount, sale.paid_amount, sale.discount_amount, sale.created_at, sale.order_taken_by, sale.table_number, sale.qr_status, sale.qr_reference, sale.qr_payment_type, sale.qr_receipt_image_path, sale.void_reason, sale.voided_at, sale.complimentary_reason, sale.sale_items]);
+  return JSON.stringify([sale.review_version, sale.id, sale.business_date, sale.sale_number, sale.status, sale.payment_method, sale.total_amount, sale.paid_amount, sale.discount_amount, sale.created_at, sale.order_taken_by, sale.table_number, sale.qr_status, sale.qr_reference, sale.qr_payment_type, sale.qr_receipt_image_path, sale.void_reason, sale.voided_at, sale.complimentary_reason, sale.sale_items]);
 }
 export function historyItemName(item: SaleItem) {
   return item.products?.name?.trim() || item.custom_item_name?.trim() || item.product_id || '';

@@ -41,7 +41,7 @@ export async function admission(){
  const files=await migrationFiles();if(files.length!==Object.keys(expected).length)throw new Error('Update the migration manifest by adding the new forward migration; never change an old checksum.');
  for(const file of files){const actual=createHash('sha256').update(await readFile(path.join(root,'supabase/migrations',file))).digest('hex');if(expected[file]!==actual)throw new Error('Migration checksum mismatch: '+file);}
  const inventory=await frontendInventory();
- const retired=new Set(['complete_sale','create_stock_in_draft','close_daily_report','record_kitchen_usage_checked','submit_kitchen_production_checked','save_expense_receipt']);
+ const retired=new Set(['complete_sale','create_stock_in_draft','close_daily_report','record_kitchen_usage_checked','submit_kitchen_production_checked','save_expense_receipt','void_sale','verify_qr_payment']);
  for(const call of inventory.calls)if(retired.has(call.name))throw new Error('Active UI calls retired authority '+call.name+' in '+call.file);
  const productionKey=process.env.VITE_SUPABASE_ANON_KEY??'';
  if(productionKey.startsWith('sb_secret_')||productionKey.startsWith('sk-'))throw new Error('Frontend credentials must be a public Supabase key.');

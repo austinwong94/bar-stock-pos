@@ -168,6 +168,7 @@ export type ProductPriceHistory = {
 };
 
 export type Sale = {
+  review_version?: number;
   id: string;
   sale_number: string;
   business_date: string;
@@ -506,6 +507,7 @@ export type Database = {
         Returns: CompleteSaleResult;
       };
       void_sale: { Args: { p_sale_id: string; p_reason: string }; Returns: Sale };
+      review_bar_sale_action: { Args: {p_sale_id: string; p_action: 'void' | 'verified' | 'mismatch'; p_reason: string | null; p_expected_version: number; p_request_id: string; p_expected_actor_id: string}; Returns: {request_id: string; actor_id: string; action: string; sale: Sale} };
       verify_qr_payment: {
         Args: { p_sale_id: string; p_status: 'verified' | 'mismatch'; p_notes?: string | null };
         Returns: Sale;

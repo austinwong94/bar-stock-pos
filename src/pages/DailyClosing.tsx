@@ -10,7 +10,7 @@ import { useToast } from '../components/Toast';
 import { malaysiaBusinessDateInputValue, money } from '../lib/format';
 import { supabase } from '../lib/supabase';
 import { isSupabaseConfigured } from '../lib/supabase';
-import { loadLocalDailyReports, loadLocalProducts, loadLocalSaleItems, loadLocalSales, saveLocalDailyReport, updateLocalQrPayment } from '../lib/localStore';
+import { loadLocalDailyReports, loadLocalProducts, loadLocalSaleItems, loadLocalSales, saveLocalDailyReport } from '../lib/localStore';
 import type { DailyReport, Sale, SaleItem, SettingsMap } from '../lib/types';
 import { useLanguage } from '../lib/language';
 import { assetPath } from '../lib/assets';
@@ -19,6 +19,8 @@ import { useSharedRefresh } from '../lib/useSharedRefresh';
 import { useAccess } from '../lib/access';
 import { readClosingAttempt, readClosingSnapshot, storeClosingAttempt, submitClosing, type ClosingAttempt } from '../lib/barClosing';
 import { definitiveInitialSaveFailure } from '../lib/saveAttempt';
+import { useSaleAction } from '../lib/useSaleAction';
+import { SaleActionRecovery } from '../components/SaleActionRecovery';
 
 type SaleWithItems = Sale & { sale_items?: SaleItem[] };
 
@@ -78,6 +80,11 @@ function savedItemSales(report: DailyReport | null): ItemSalesBreakdown[] {
 }
 
 export default function DailyClosing({ settings }: { settings: SettingsMap }) {
+  const {profile} = useAccess();
+  return <DailyClosingWorkspace key={profile?.id ?? 'no-account'} settings={settings}/>;
+}
+
+function DailyClosingWorkspace({ settings }: { settings: SettingsMap }) {
   const toast = useToast();
   const { text } = useLanguage();
   const { profile } = useAccess();
@@ -100,7 +107,8 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
   const [correctionMode, setCorrectionMode] = useState(false);
   const [receiptPreview, setReceiptPreview] = useState<{ sale: Sale; url: string } | null>(null);
   const [saving, setSaving] = useState(false);
-  const [verifyingQrKey, setVerifyingQrKey] = useState<string | null>(null);
+  const saleAction = useSaleAction(profile?.id ?? null, async () => { await refresh(); });
+  const verifyingQrKey = saleAction.busy && saleAction.pending ? `${saleAction.pending.args.p_sale_id}:${saleAction.pending.args.p_action}` : null;
   const [loadingReceiptId, setLoadingReceiptId] = useState<string | null>(null);
   const isClosed = Boolean(report && report.status === 'closed');
   const isLocked = isClosed && !correctionMode;
@@ -270,7 +278,7 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
   );
 
   async function closeReport() {
-    if (saving || closingBusy.current || reading || readError || pendingClosing) return;
+    if (saving || closingBusy.current || reading || readError || pendingClosing || saleAction.blocked) return;
     if (!actualCashValid) {
       toast.error(text('Enter a valid actual cash counted amount.', 'Masukkan jumlah tunai sebenar yang betul.'));
       return;
@@ -375,26 +383,8 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
   }
 
   async function verifyQrPayment(sale: Sale, status: 'verified' | 'mismatch') {
-    const actionKey = `${sale.id}:${status}`;
-    if (verifyingQrKey) return;
-    setVerifyingQrKey(actionKey);
-    if (!isSupabaseConfigured) {
-      updateLocalQrPayment(sale.id, status);
-      setSales((items) => items.map((item) => (item.id === sale.id ? { ...item, qr_status: status } : item)));
-      setVerifyingQrKey(null);
-      toast.success(text('QR Payment status updated.', 'Status Bayaran QR dikemas kini.'));
-      return;
-    }
-    const { error } = await supabase.rpc('verify_qr_payment', { p_sale_id: sale.id, p_status: status, p_notes: null });
-    if (error) {
-      setVerifyingQrKey(null);
-      toast.error(error.message);
-    }
-    else {
-      toast.success(text('QR Payment status updated.', 'Status Bayaran QR dikemas kini.'));
-      await refresh();
-      setVerifyingQrKey(null);
-    }
+    if (saleAction.blocked || pendingClosing || saving || reading || readError || isClosed) return;
+    await saleAction.run(sale, status);
   }
 
   async function viewQrReceipt(sale: Sale) {
@@ -428,6 +418,7 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
         title={text('Daily Closing', 'Tutup Harian')}
         actions={<WorkflowHelp area="bar" />}
       />
+      <SaleActionRecovery action={saleAction} currency={String(settings.currency_symbol)}/>
       {readError?<div role="alert" className="mb-3 text-sm text-danger">{readError} <button className={secondaryButtonClass} onClick={()=>void refresh()}>{text('Retry','Cuba Lagi')}</button></div>:null}
       {reading?<p role="status" className="mb-3 text-sm text-muted">{text('Loading Closing...','Memuatkan Tutup...')}</p>:null}
       {pendingClosing?<section role="status" className="mb-3 border-y border-line py-3"><p className="text-sm font-semibold">{text('Closing Confirmation Pending','Pengesahan Tutup Belum Diterima')} · {pendingClosing.payload.p_business_date}</p><p className="my-2 text-sm">{text('Your original closing is kept. Check it before making another closing.','Rekod tutup asal dikekalkan. Semak sebelum membuat tutup lain.')}</p><button className={buttonClass} disabled={saving} onClick={()=>void resolveClosing(pendingClosing)}>{text('Check Closing','Semak Tutup')}</button></section>:null}
@@ -476,7 +467,7 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
                 {text('Cannot close until all QR Payment sales are verified or marked mismatch.', 'Tidak boleh tutup sehingga semua Bayaran QR disahkan atau ditanda tidak padan.')}
               </p>
             ) : <span />}
-            <button className={`${buttonClass} w-full justify-center sm:w-auto`} disabled={saving || reading || !!readError || !!pendingClosing || !actualCashValid || totals.qrPending > 0} onClick={() => { setDetailsConfirmed(false); setConfirming(true); }}>
+            <button className={`${buttonClass} w-full justify-center sm:w-auto`} disabled={saving || reading || !!readError || !!pendingClosing || saleAction.blocked || !actualCashValid || totals.qrPending > 0} onClick={() => { setDetailsConfirmed(false); setConfirming(true); }}>
               {saving ? text('Saving...', 'Menyimpan...') : correctionMode ? text('Close corrected report', 'Tutup laporan pembetulan') : text('Close Daily Report', 'Tutup Laporan Harian')}
             </button>
           </div>
@@ -598,7 +589,7 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
             <div className="mt-3 grid gap-2">
               {pendingQrSales.map((sale) => {
                 const hasReceipt = Boolean(sale.qr_receipt_image_path);
-                const isQrUpdating = verifyingQrKey?.startsWith(`${sale.id}:`) ?? false;
+                const isQrUpdating = saleAction.blocked || !!pendingClosing || saving || reading || !!readError || isClosed;
                 const isReceiptLoading = loadingReceiptId === sale.id;
                 return (
                   <div key={`pending-qr-${sale.id}`} className="grid gap-2 rounded-lg border border-line bg-white/95 p-3 shadow-none lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
@@ -639,7 +630,7 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
               <tbody>
                 {completedQrSales.map((sale) => {
                   const hasReceipt = Boolean(sale.qr_receipt_image_path);
-                  const isQrUpdating = verifyingQrKey?.startsWith(`${sale.id}:`) ?? false;
+                  const isQrUpdating = saleAction.blocked || !!pendingClosing || saving || reading || !!readError || isClosed;
                   const isReceiptLoading = loadingReceiptId === sale.id;
                   return (
                     <Fragment key={`mobile-qr-${sale.id}`}>
@@ -691,7 +682,7 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
               ) : null}
               {completedQrSales.map((sale) => {
                 const hasReceipt = Boolean(sale.qr_receipt_image_path);
-                const isQrUpdating = verifyingQrKey?.startsWith(`${sale.id}:`) ?? false;
+                const isQrUpdating = saleAction.blocked || !!pendingClosing || saving || reading || !!readError || isClosed;
                 const isReceiptLoading = loadingReceiptId === sale.id;
                 return (
                 <tr key={sale.id} className="border-t border-line">
@@ -729,7 +720,7 @@ export default function DailyClosing({ settings }: { settings: SettingsMap }) {
           footer={
             <div className="grid w-full gap-2 sm:flex sm:justify-end">
               <button className={secondaryButtonClass} disabled={saving} onClick={() => { setConfirming(false); setDetailsConfirmed(false); }}>{text('Cancel', 'Batal')}</button>
-              <button className={buttonClass} disabled={saving || reading || !!readError || !!pendingClosing || !detailsConfirmed} onClick={closeReport}>{saving ? text('Closing...', 'Menutup...') : text('Yes, close report', 'Ya, tutup laporan')}</button>
+              <button className={buttonClass} disabled={saving || reading || !!readError || !!pendingClosing || saleAction.blocked || !detailsConfirmed} onClick={closeReport}>{saving ? text('Closing...', 'Menutup...') : text('Yes, close report', 'Ya, tutup laporan')}</button>
             </div>
           }
         >

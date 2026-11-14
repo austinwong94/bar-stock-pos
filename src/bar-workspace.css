@@ -257,3 +257,4 @@
 .bar-settings button { overflow-wrap: anywhere; }
 .bar-settings input:not([type="checkbox"]) { font-size: 16px; }
 .bar-settings fieldset { margin: 0; }
+.bar-sale-recovery button { min-height: 44px; min-width: 44px; overflow-wrap: anywhere; }
