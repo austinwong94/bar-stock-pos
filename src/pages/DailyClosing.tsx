@@ -22,6 +22,8 @@ import { SaleActionRecovery } from '../components/SaleActionRecovery';
 import { QrReceiptPreview } from '../components/QrReceiptPreview';
 import { historyTotals, saleFingerprint } from '../lib/barSalesHistory';
 import { barPeriodRange } from '../lib/barReportPeriod';
+import { useReportReopen } from '../lib/useReportReopen';
+import { ReportReopenRecovery } from '../components/ReportReopenRecovery';
 
 type SaleWithItems = Sale & { sale_items?: SaleItem[] };
 const receiptFingerprint = (sale: SaleWithItems) => saleFingerprint({ ...sale, sale_items: sale.sale_items ?? [] });
@@ -100,9 +102,13 @@ function DailyClosingWorkspace({ settings }: { settings: SettingsMap }) {
   const [openingFloat,setOpeningFloat] = useState(0);
   const readGeneration=useRef(0),closingBusy=useRef(false);
   const [searchParams] = useSearchParams();
-  const [businessDate, setBusinessDate] = useState(() => restored.attempt?.payload.p_business_date ?? searchParams.get('date') ?? malaysiaBusinessDateInputValue(new Date(), settings.business_day_close_time));
+  const reopening = useReportReopen(profile?.id ?? null, async () => {
+    const fresh = await refresh(currentDate.current, true);
+    if (fresh?.status === 'reopened') enableCorrection(fresh);
+  });
+  const [businessDate, setBusinessDate] = useState(() => reopening.pending?.args.p_business_date ?? restored.attempt?.payload.p_business_date ?? searchParams.get('date') ?? malaysiaBusinessDateInputValue(new Date(), settings.business_day_close_time));
   const currentDate = useRef(businessDate); currentDate.current = businessDate;
-  const reviewedVersion = useRef(''), requestedCorrection = useRef<string | null>(null);
+  const reviewedVersion = useRef(''), requestedCorrection = useRef<string | null>(null), processedRoute = useRef<string | null>(null);
   const validDate = !!barPeriodRange('day', businessDate).range;
   const [actualCash, setActualCash] = useState('');
   const [notes, setNotes] = useState('');
@@ -173,33 +179,20 @@ function DailyClosingWorkspace({ settings }: { settings: SettingsMap }) {
     } finally { if(generation===readGeneration.current && currentDate.current === date)setReading(false); }
   }
 
+  function enableCorrection(loadedReport: DailyReport) {
+    if (loadedReport.business_date !== currentDate.current) return;
+    setCorrectionMode(true);
+    setActualCash(loadedReport.actual_cash_counted == null ? '' : String(loadedReport.actual_cash_counted));
+    setNotes(loadedReport.notes ?? '');
+  }
+
   async function openCorrectionFromReports(date: string, loadedReport: DailyReport | null) {
     if (!loadedReport || currentDate.current !== date || loadedReport.business_date !== date) return;
-    if (!isSupabaseConfigured) {
-      setCorrectionMode(true);
-      setActualCash(loadedReport.actual_cash_counted == null ? '' : String(loadedReport.actual_cash_counted));
-      setNotes(loadedReport.notes ?? '');
-      toast.success('Report unlocked for editing.');
+    if (!isSupabaseConfigured || loadedReport.status === 'reopened') {
+      enableCorrection(loadedReport);
       return;
     }
-    setSaving(true);
-    const { data, error } = await supabase.rpc('reopen_daily_report', {
-      p_business_date: date,
-      p_reason: 'Admin correction from Reports',
-    });
-    setSaving(false);
-    if (currentDate.current !== date) return;
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    setReport(data);
-    await refresh(date,true);
-    if (currentDate.current !== date) return;
-    setCorrectionMode(true);
-    setActualCash(data.actual_cash_counted == null ? '' : String(data.actual_cash_counted));
-    setNotes(data.notes ?? '');
-    toast.success('Report unlocked for editing.');
+    await reopening.run(loadedReport, closingVersion);
   }
 
   function consumeReportEditUnlock(date: string) {
@@ -210,15 +203,18 @@ function DailyClosingWorkspace({ settings }: { settings: SettingsMap }) {
   }
 
   useEffect(() => {
-    const queryDate = pendingClosing?.payload.p_business_date ?? searchParams.get('date') ?? malaysiaBusinessDateInputValue(new Date(), settings.business_day_close_time);
-    const editFromReports = searchParams.get('edit') === '1';
-    requestedCorrection.current = null;
-    if (editFromReports && barPeriodRange('day', queryDate).range && !pendingClosing) {
-      if (consumeReportEditUnlock(queryDate)) requestedCorrection.current = queryDate;
-      else toast.error(text('Open edit from Reports and enter the admin password first.', 'Buka sunting daripada Laporan dan masukkan kata laluan admin dahulu.'));
+    const queryDate = reopening.pending?.args.p_business_date ?? pendingClosing?.payload.p_business_date ?? searchParams.get('date') ?? malaysiaBusinessDateInputValue(new Date(), settings.business_day_close_time);
+    const route = searchParams.toString();
+    if (processedRoute.current !== route) {
+      processedRoute.current = route;
+      requestedCorrection.current = null;
+      if (searchParams.get('edit') === '1' && barPeriodRange('day', queryDate).range && !pendingClosing && !reopening.blocked) {
+        if (consumeReportEditUnlock(queryDate)) requestedCorrection.current = queryDate;
+        else toast.error(text('Open edit from Reports and enter the admin password first.', 'Buka sunting daripada Laporan dan masukkan kata laluan admin dahulu.'));
+      }
     }
     changeBusinessDate(queryDate);
-  }, [searchParams, settings.business_day_close_time]);
+  }, [searchParams, settings.business_day_close_time, reopening.pending?.args.p_business_date]);
 
   useEffect(() => {
     void refresh();
@@ -226,10 +222,10 @@ function DailyClosingWorkspace({ settings }: { settings: SettingsMap }) {
   }, [businessDate]);
 
   useEffect(() => {
-    if (!readable || requestedCorrection.current !== businessDate || pendingClosing || saleAction.blocked) return;
+    if (!readable || requestedCorrection.current !== businessDate || pendingClosing || saleAction.blocked || reopening.blocked) return;
     requestedCorrection.current = null;
     if (report) void openCorrectionFromReports(businessDate, report);
-  }, [businessDate, readable, report, pendingClosing, saleAction.blocked, searchParams]);
+  }, [businessDate, readable, report, pendingClosing, saleAction.blocked, reopening.blocked, searchParams]);
 
   useSharedRefresh(() => refresh(businessDate,true), {
     tables: ['sales', 'sale_items', 'daily_reports', 'cash_sessions', 'stock_movements'],
@@ -290,7 +286,7 @@ function DailyClosingWorkspace({ settings }: { settings: SettingsMap }) {
   );
 
   async function closeReport() {
-    if (saving || closingBusy.current || !readable || pendingClosing || saleAction.blocked) return;
+    if (saving || closingBusy.current || !readable || pendingClosing || saleAction.blocked || reopening.blocked) return;
     if (!actualCashValid) {
       toast.error(text('Enter a valid actual cash counted amount.', 'Masukkan jumlah tunai sebenar yang betul.'));
       return;
@@ -395,7 +391,7 @@ function DailyClosingWorkspace({ settings }: { settings: SettingsMap }) {
   }
 
   async function verifyQrPayment(sale: Sale, status: 'verified' | 'mismatch') {
-    if (saleAction.blocked || pendingClosing || saving || !readable || isClosed) return;
+    if (saleAction.blocked || reopening.blocked || pendingClosing || saving || !readable || isClosed) return;
     await saleAction.run(sale, status);
   }
 
@@ -411,8 +407,9 @@ function DailyClosingWorkspace({ settings }: { settings: SettingsMap }) {
         actions={<WorkflowHelp area="bar" />}
       />
       <SaleActionRecovery action={saleAction} currency={String(settings.currency_symbol)}/>
+      <ReportReopenRecovery action={reopening}/>
       <div className="mb-3 max-w-xs"><Field label={text('Business date', 'Tarikh bisnes')}>
-        <input className={inputClass} type="date" value={businessDate} disabled={!!pendingClosing || saving} aria-invalid={!validDate} onChange={event => changeBusinessDate(event.target.value)} />
+        <input className={inputClass} type="date" value={businessDate} disabled={!!pendingClosing || saving || reopening.blocked} aria-invalid={!validDate} onChange={event => changeBusinessDate(event.target.value)} />
       </Field></div>
       {validDate && readError?<div role="alert" className="mb-3 text-sm text-danger">{readErrorLabel} <button className={secondaryButtonClass} onClick={()=>void refresh()}>{text('Retry','Cuba Lagi')}</button></div>:null}
       {reading?<p role="status" className="mb-3 text-sm text-muted">{text('Loading Closing...','Memuatkan Tutup...')}</p>:null}
@@ -441,10 +438,10 @@ function DailyClosingWorkspace({ settings }: { settings: SettingsMap }) {
         </div>
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
           <Field label={text('Actual cash counted', 'Tunai sebenar dikira')}>
-            <input className={inputClass} type="number" min={0} step="0.01" value={actualCash} onChange={(event) => setActualCash(event.target.value)} disabled={isLocked||!!pendingClosing||saving} />
+            <input className={inputClass} type="number" min={0} step="0.01" value={actualCash} onChange={(event) => setActualCash(event.target.value)} disabled={isLocked||!!pendingClosing||saving||reopening.blocked} />
           </Field>
           <Field label={text('Notes', 'Nota')}>
-            <input className={inputClass} value={notes} onChange={(event) => setNotes(event.target.value)} disabled={isLocked||!!pendingClosing||saving} />
+            <input className={inputClass} value={notes} onChange={(event) => setNotes(event.target.value)} disabled={isLocked||!!pendingClosing||saving||reopening.blocked} />
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
@@ -460,7 +457,7 @@ function DailyClosingWorkspace({ settings }: { settings: SettingsMap }) {
                 {text('Cannot close until all QR Payment sales are verified or marked mismatch.', 'Tidak boleh tutup sehingga semua Bayaran QR disahkan atau ditanda tidak padan.')}
               </p>
             ) : <span />}
-            <button className={`${buttonClass} w-full justify-center sm:w-auto`} disabled={saving || reading || !!readError || !!pendingClosing || saleAction.blocked || !actualCashValid || totals.qrPending > 0} onClick={() => { setDetailsConfirmed(false); setConfirming(true); }}>
+            <button className={`${buttonClass} w-full justify-center sm:w-auto`} disabled={saving || reading || !!readError || !!pendingClosing || saleAction.blocked || reopening.blocked || !actualCashValid || totals.qrPending > 0} onClick={() => { setDetailsConfirmed(false); setConfirming(true); }}>
               {saving ? text('Saving...', 'Menyimpan...') : correctionMode ? text('Close corrected report', 'Tutup laporan pembetulan') : text('Close Daily Report', 'Tutup Laporan Harian')}
             </button>
           </div>
@@ -582,7 +579,7 @@ function DailyClosingWorkspace({ settings }: { settings: SettingsMap }) {
             <div className="mt-3 grid gap-2">
               {pendingQrSales.map((sale) => {
                 const hasReceipt = Boolean(sale.qr_receipt_image_path);
-                const isQrUpdating = saleAction.blocked || !!pendingClosing || saving || reading || !!readError || isClosed;
+                const isQrUpdating = saleAction.blocked || reopening.blocked || !!pendingClosing || saving || reading || !!readError || isClosed;
                 return (
                   <div key={`pending-qr-${sale.id}`} className="grid gap-2 rounded-lg border border-line bg-white/95 p-3 shadow-none lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
                     <div className="min-w-0">
@@ -622,7 +619,7 @@ function DailyClosingWorkspace({ settings }: { settings: SettingsMap }) {
               <tbody>
                 {completedQrSales.map((sale) => {
                   const hasReceipt = Boolean(sale.qr_receipt_image_path);
-                  const isQrUpdating = saleAction.blocked || !!pendingClosing || saving || reading || !!readError || isClosed;
+                  const isQrUpdating = saleAction.blocked || reopening.blocked || !!pendingClosing || saving || reading || !!readError || isClosed;
                   return (
                     <Fragment key={`mobile-qr-${sale.id}`}>
                       <tr className="border-t border-line align-top">
@@ -673,7 +670,7 @@ function DailyClosingWorkspace({ settings }: { settings: SettingsMap }) {
               ) : null}
               {completedQrSales.map((sale) => {
                 const hasReceipt = Boolean(sale.qr_receipt_image_path);
-                const isQrUpdating = saleAction.blocked || !!pendingClosing || saving || reading || !!readError || isClosed;
+                const isQrUpdating = saleAction.blocked || reopening.blocked || !!pendingClosing || saving || reading || !!readError || isClosed;
                 return (
                 <tr key={sale.id} className="border-t border-line">
                   <td className="whitespace-nowrap font-semibold">{sale.sale_number}</td>
@@ -710,7 +707,7 @@ function DailyClosingWorkspace({ settings }: { settings: SettingsMap }) {
           footer={
             <div className="grid w-full gap-2 sm:flex sm:justify-end">
               <button className={secondaryButtonClass} disabled={saving} onClick={() => { setConfirming(false); setDetailsConfirmed(false); }}>{text('Cancel', 'Batal')}</button>
-              <button className={buttonClass} disabled={saving || reading || !!readError || !!pendingClosing || saleAction.blocked || !detailsConfirmed} onClick={closeReport}>{saving ? text('Closing...', 'Menutup...') : text('Yes, close report', 'Ya, tutup laporan')}</button>
+              <button className={buttonClass} disabled={saving || reading || !!readError || !!pendingClosing || saleAction.blocked || reopening.blocked || !detailsConfirmed} onClick={closeReport}>{saving ? text('Closing...', 'Menutup...') : text('Yes, close report', 'Ya, tutup laporan')}</button>
             </div>
           }
         >

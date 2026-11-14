@@ -516,6 +516,10 @@ export type Database = {
         Args: { p_business_date: string; p_actual_cash_counted: number; p_notes?: string | null };
         Returns: DailyReport;
       };
+      reopen_daily_report_checked: {
+        Args: { p_business_date: string; p_report_id: string; p_expected_version: string; p_reason: string; p_request_id: string; p_expected_actor_id: string };
+        Returns: { request_id: string; actor_id: string; report: DailyReport };
+      };
       reopen_daily_report: {
         Args: { p_business_date: string; p_reason?: string | null };
         Returns: DailyReport;

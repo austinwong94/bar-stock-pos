@@ -99,7 +99,9 @@ async function barJourney(db,connect){
   assert.equal(Number(await value(db,"select count(*) from audit_logs where action='close_daily_report'")),1);
   await assert.rejects(()=>pay({key:randomUUID(),items:currentItems}),/day is closed/);
   await assert.rejects(()=>saleAction(db,later.sale_id,'void','Correction'),/day is closed/);
-  await value(db,'select reopen_daily_report($1,$2)',[today,'Audit correction']);await saleAction(db,later.sale_id,'void','Correction');
+  await db.query('reset role');await db.query("update profiles set admin_access_expires_at=now()+interval '2 hours' where id=$1",[owner]);await as(db,owner);
+  const reopenReview=await value(db,'select read_bar_closing($1)',[today]);
+  await value(db,'select reopen_daily_report_checked($1,$2,$3,$4,$5,$6)',[today,closed.id,reopenReview.version,'Audit correction',randomUUID(),owner]);await saleAction(db,later.sale_id,'void','Correction');
   const fresh=await value(db,'select read_bar_closing($1::date)',[today]);await as(a,owner);await as(b,owner);
   assert.equal(checkedClosing(fresh,today).report.status,'reopened');
   const closes=await Promise.allSettled([close(fresh,randomUUID(),a),close(fresh,randomUUID(),b)]);

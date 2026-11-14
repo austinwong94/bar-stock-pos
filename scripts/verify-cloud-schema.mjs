@@ -6,6 +6,6 @@ try{
  const response=await fetch(new URL('/rest/v1/rpc/read_platform_schema_version',url),{method:'POST',headers:{apikey:key,'Content-Type':'application/json'},body:'{}',signal:AbortSignal.timeout(10000)});
  if(!response.ok)throw new Error('Cloud schema probe failed (HTTP '+response.status+'). Apply the reviewed forward migrations before deploying this frontend.');
  const status=await response.json();
- if(status.schema_version!=='202610140073'||!status.measured_piece_receiving||!status.sale_action_recovery||!status.private_payment_receipts||!status.private_purchase_evidence||!status.retired_writes_private)throw new Error('The cloud database does not meet this frontend release contract.');
+ if(status.schema_version!=='202610140073'||!status.measured_piece_receiving||!status.sale_action_recovery||!status.report_reopen_recovery||!status.private_payment_receipts||!status.private_purchase_evidence||!status.retired_writes_private)throw new Error('The cloud database does not meet this frontend release contract.');
  console.log('Cloud schema and private-bucket configuration match. This probe does not certify Auth, physical uploads or production acceptance.');
 }catch(error){console.error(error.message);process.exitCode=1;}
