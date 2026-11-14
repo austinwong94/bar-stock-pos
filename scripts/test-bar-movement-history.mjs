@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict';
+import {build} from 'esbuild';
+import vm from 'node:vm';
+const bundle=await build({entryPoints:['src/lib/barMovementHistory.ts'],bundle:true,write:false,platform:'node',format:'cjs'}),module={exports:{}};
+vm.runInNewContext(bundle.outputFiles[0].text,{module,exports:module.exports});
+const {movementBounds,checkedMovements,readBarMovements,movementInputLabel,movementNotes,movementMatches,movementTime,movementBusinessDate,movementLabel}=module.exports;
+const en=(a)=>a,ms=(_,b)=>b,plain=v=>JSON.parse(JSON.stringify(v));
+const row={id:'sample',product_id:'product',movement_type:'stock_in',quantity_change:24,quantity_before:10,quantity_after:34,unit_input:'carton',input_quantity:1,carton_size_at_time:24,reference_type:'stock_in_draft',reference_id:'reference',reason:'Delivery checked',notes:'Two cartons still waiting',entered_by:'Sample Staff',created_by:'sample-actor',created_at:'2026-11-14T05:00:00.000Z',products:{name:'Lager (Sample)'}};
+const original=process.env.TZ;
+try{for(const zone of ['Asia/Kuala_Lumpur','UTC','America/New_York','Pacific/Auckland']){
+ process.env.TZ=zone;
+ const b=movementBounds({from:'2026-11-14',to:'2026-11-14'},'04:00');assert.deepEqual(plain(b),{startIso:'2026-11-13T20:00:00.000Z',endIso:'2026-11-14T20:00:00.000Z'});
+ const dst=movementBounds({from:'2026-03-07',to:'2026-03-09'},'00:00');assert.equal(Date.parse(dst.endIso)-Date.parse(dst.startIso),72*3600000);
+ assert.equal(checkedMovements([row],b)[0],row);assert.equal(checkedMovements([{...row,created_at:b.startIso}],b).length,1);assert.throws(()=>checkedMovements([{...row,created_at:b.endIso}],b));
+ assert.throws(()=>checkedMovements([{...row,created_at:'2026-11-13T19:59:59.999999Z'}],b));
+ const early={...row,created_at:'2026-11-13T19:00:00Z'};assert.equal(movementBusinessDate(early,'04:00').date,'2026-11-13');assert.equal(movementBusinessDate(early,'04:00').crossesMidnight,true);assert.match(movementTime(early,'en'),/14 Nov 2026.*03:00:00/);
+ assert.match(movementTime({...row,created_at:'2026-11-13T16:00:00Z'},'ms'),/00:00:00/);
+ }}finally{if(original===undefined)delete process.env.TZ;else process.env.TZ=original;}
+const bounds=movementBounds({from:'2026-11-14',to:'2026-11-14'},'00:00');const snapshot=JSON.stringify(row);
+for(const value of ['',null,undefined,true,'4:00','24:00','00:60','04:00:01'])assert.throws(()=>movementBounds({from:'2026-11-14',to:'2026-11-14'},value));
+assert.deepEqual(plain(movementBounds({from:'2026-11-14',to:'2026-11-14'},'04:00:00')),plain(movementBounds({from:'2026-11-14',to:'2026-11-14'},'04:00')));
+assert.throws(()=>movementBounds({from:'2026-11-14',to:'2026-11-13'},'00:00'));assert.throws(()=>movementBounds({from:'2024-01-01',to:'2025-01-01'},'00:00'));
+for(const field of ['quantity_before','quantity_after','quantity_change'])for(const bad of [null,undefined,'0',true,NaN,Infinity,.5,2147483648])assert.throws(()=>checkedMovements([{...row,[field]:bad}],bounds));
+for(const changed of [{id:''},{movement_type:'unknown'},{quantity_after:33},{quantity_before:30,quantity_after:6,quantity_change:-24},{entered_by:7},{products:{name:8}},{unit_input:'kg'},{created_at:'2026-11-14T05:00:00'},{created_at:'2026-02-30T05:00:00Z'},{created_at:'2026-11-14T25:00:00Z'}])assert.throws(()=>checkedMovements([{...row,...changed}],bounds));
+assert.throws(()=>checkedMovements([row,row],bounds));assert.throws(()=>checkedMovements(null,bounds));
+for(const [type,change]of [['stock_in',2],['sale',-2],['complimentary',-1],['void_sale',2],['adjustment',0]])assert.equal(checkedMovements([{...row,movement_type:type,quantity_change:change,quantity_before:20,quantity_after:20+change}],bounds).length,1);
+assert.equal(checkedMovements([{...row,quantity_before:-3,quantity_change:2,quantity_after:-1}],bounds).length,1,'Negative historical balances are not silently clamped');
+assert.equal(movementInputLabel(row,en),'1 Carton');assert.equal(movementInputLabel({...row,input_quantity:null,quantity_change:72},ms),'3 Karton');assert.equal(movementInputLabel({...row,input_quantity:null,carton_size_at_time:null},en),'Carton Count Unavailable');assert.equal(movementInputLabel({...row,input_quantity:3},en),'Carton Count Unavailable');
+assert.equal(movementInputLabel({...row,movement_type:'adjustment',input_quantity:2,quantity_change:8,quantity_before:40,quantity_after:48},en),'2 Cartons','Count input is not inferred from the adjustment delta');
+assert.equal(movementInputLabel({...row,movement_type:'adjustment',unit_input:'can',input_quantity:0},en),'0 Units');assert.equal(movementInputLabel({...row,unit_input:'can',input_quantity:null},ms),'Input Tidak Direkod');assert.equal(movementInputLabel({...row,unit_input:'system'},en),'-');
+assert.deepEqual(plain(movementNotes(row)),['Delivery checked','Two cartons still waiting']);assert.deepEqual(plain(movementNotes({...row,reason:' same ',notes:'same'})),['same']);
+for(const q of ['lager',' SAMPLE STAFF ','cartons still','reference','sample','product'])assert(movementMatches(row,q));assert(!movementMatches(row,'unrelated'));assert.equal(movementLabel('void_sale',ms),'Pulangan Batal');
+const rows=Array.from({length:1263},(_,i)=>({...row,id:'row-'+i}));const calls=[];
+const result=await readBarMovements(bounds,async(from,to)=>{calls.push({from,to});return{data:rows.slice(from,Math.min(to+1,from+37)),error:null}});assert.equal(result.length,1263);assert(calls.some(c=>c.from>1000));
+let reads=0;await assert.rejects(()=>readBarMovements(bounds,async()=>({data:[row],error:null})));await assert.rejects(()=>readBarMovements(bounds,async()=>({data:null,error:null})));await assert.rejects(()=>readBarMovements(bounds,async()=>({data:[],error:{message:'Unavailable'}})));
+await assert.rejects(()=>readBarMovements({...bounds,endIso:bounds.startIso},async()=>{reads++;return{data:[],error:null}}));assert.equal(reads,0);assert.equal((await readBarMovements(bounds,async()=>({data:[],error:null}))).length,0);assert.equal(JSON.stringify(row),snapshot);
+console.log('PASS movement history: Malaysia business-day/DST boundaries, strict reconciled signed balances, missing/duplicate/out-of-period records denied, immutable input and notes, exact historical cartons/count inputs, four time zones and 1,263 records through short pages. Read-only.');

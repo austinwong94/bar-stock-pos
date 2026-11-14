@@ -178,7 +178,7 @@ function PlatformRoutes({
         <Route path="/daily-closing" element={<Guard need={['bar.closing.manage']}><DailyClosing settings={settings} /></Guard>} />
         <Route path="/daily-report" element={<Guard need={['bar.reports.view']}><DailyReport settings={settings} /></Guard>} />
         <Route path="/sales" element={<Guard need={['bar.reports.view']}><SalesHistory settings={settings} /></Guard>} />
-        <Route path="/movements" element={<Guard need={['bar.stock.view']}><StockMovements /></Guard>} />
+        <Route path="/movements" element={<Guard need={['bar.stock.view']}><StockMovements settings={settings} /></Guard>} />
         <Route path="/settings" element={<Guard need={['bar.settings.manage']}><Settings settings={settings} onSaved={onSettingsSaved} /></Guard>} />
         <Route path="/users" element={<Navigate to="/admin/access" replace />} />
 
