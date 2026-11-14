@@ -80,6 +80,7 @@ try{
  await stage('Account identity changes','local-browser-contract',()=>command(['scripts/test-access-session-ui.mjs']));
  await stage('Admin staff accounts and username login','local-browser-contract',()=>command(['scripts/test-staff-accounts-ui.mjs']));
  await stage('Receipt upload completion and recovery','local-browser-contract',()=>command(['scripts/test-receipt-upload-ui.mjs']));
+ await stage('Receipt photo preview identity and retry','local-browser-contract',()=>command(['scripts/test-photo-preview-ui.mjs']));
  await stage('Financial failure and recovery screens','local-browser-contract',()=>command(['scripts/test-bar-financial-ui.mjs']));
  await stage('Mobile product setup without guessed values','local-browser-contract',()=>command(['scripts/test-product-setup-ui.mjs']));
  await stage('Mobile bundle setup and interrupted save recovery','local-browser-contract',()=>command(['scripts/test-bundle-setup-ui.mjs']));
