@@ -1,5 +1,5 @@
 import {spawn} from 'node:child_process';
-import {readFile,writeFile,mkdir} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,rm} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {admission,sourceFingerprint} from './release/admission.mjs';
 import {root, migrationFingerprint} from './release/database.mjs';
@@ -128,6 +128,9 @@ try{
  if(mode==='sample')await stage('Unlocked active route layouts','sample-browser',sampleLayouts);
  else receipt.stages.push({name:'Unlocked active route layouts',level:'sample-browser',status:'NOT RUN',reason:'Cloud artifact requires real hosted Auth; financial/account-switch UI contracts ran with controlled fixtures.'});
  if(await sourceFingerprint()!==initial.source)throw new Error('Candidate changed during verification. Preserve evidence and validate the changed inputs.');
+ // Delivery tests use Vite's internal manifest. It is not a runtime asset; remove it before binding the exact Pages payload.
+ await rm(root+'/dist/.vite',{recursive:true,force:true});
+ receipt.artifactScope='pages-payload-without-internal-vite-manifest';
  receipt.artifactIndex=createHash('sha256').update(await readFile(root+'/dist/index.html')).digest('hex');
  const artifact=createHash('sha256');for(const file of await walk(root+'/dist'))artifact.update(path.relative(root+'/dist',file)+'\0').update(await readFile(file));receipt.artifact=artifact.digest('hex');
  receipt.status='LOCALLY QUALIFIED';receipt.finishedAt=new Date().toISOString();
