@@ -1,0 +1,26 @@
+import assert from 'node:assert/strict';
+import {build} from 'esbuild';
+import vm from 'node:vm';
+const bundle=await build({entryPoints:['src/lib/barSalesHistory.ts'],bundle:true,write:false,platform:'node',format:'cjs'}),module={exports:{}};
+vm.runInNewContext(bundle.outputFiles[0].text,{module,exports:module.exports,URL});
+const {checkedHistorySales,historyTotals,saleTime,saleMatches,saleFingerprint,receiptSource,signedReceiptUrl}=module.exports,plain=v=>JSON.parse(JSON.stringify(v));
+const date='2026-11-14',sale={id:'sale',sale_number:'SAMPLE-001',business_date:date,status:'completed',payment_method:'cash',total_amount:'18.90',paid_amount:'18.90',discount_amount:'1.10',qr_status:'not_required',created_at:'2026-11-13T16:00:00.123456Z',order_taken_by:'Sample Cashier',table_number:'A12',sale_items:[{id:'item',sale_id:'sale',product_id:'product',products:{name:'Lager (Sample)'},quantity:2,unit_price:'10.00',line_total:'20.00'}]};
+const original=JSON.stringify(sale),checked=checkedHistorySales([sale],date)[0];assert.notEqual(checked,sale);assert.equal(JSON.stringify(sale),original);assert.equal(checked.paid_amount,18.9);
+const qr={...checked,id:'qr',payment_method:'qr',total_amount:27.5,paid_amount:27.5,discount_amount:0,sale_items:[{...checked.sale_items[0],id:'qr-item',sale_id:'qr',quantity:1,unit_price:27.5,line_total:27.5}]};
+const foc={...checked,id:'foc',payment_method:'complimentary',paid_amount:0,sale_items:[{...checked.sale_items[0],id:'foc-item',sale_id:'foc'}]};
+const voided={...checked,id:'void',status:'voided',sale_items:[]};
+assert.deepEqual(plain(historyTotals(checkedHistorySales([sale,qr,foc,voided],date))),{cash:18.9,qr:27.5,focCost:18.9,revenue:46.4,transactions:3,voided:1});
+assert.deepEqual(plain(historyTotals([])),{cash:0,qr:0,focCost:0,revenue:0,transactions:0,voided:0});
+for(const field of ['total_amount','paid_amount','discount_amount'])for(const bad of [null,undefined,NaN,Infinity,true,-1,'1.001','1e2'])assert.throws(()=>checkedHistorySales([{...sale,[field]:bad}],date));
+for(const changed of [{id:''},{sale_number:''},{business_date:'2026-11-13'},{status:'unknown'},{payment_method:'RMB'},{paid_amount:18.91},{qr_status:null},{sale_items:null},{sale_items:[]},{created_at:'2026-11-14T06:00:00'},{created_at:'2026-02-30T06:00:00Z'},{created_at:'2026-11-14T24:00:00Z'},{order_taken_by:5},{table_number:{}},{total_amount:20,paid_amount:20}])assert.throws(()=>checkedHistorySales([{...sale,...changed}],date));
+for(const changed of [{id:''},{sale_id:'other'},{quantity:0},{quantity:.5},{quantity:'2'},{quantity:2147483648},{product_id:{}},{products:{name:7}},{custom_item_name:7},{unit_price:null},{line_total:null}])assert.throws(()=>checkedHistorySales([{...sale,sale_items:[{...sale.sale_items[0],...changed}]}],date));
+assert.throws(()=>checkedHistorySales([sale,sale],date));assert.throws(()=>checkedHistorySales([{...sale,sale_items:[...sale.sale_items,...sale.sale_items]}],date));assert.throws(()=>checkedHistorySales(null,date));assert.throws(()=>checkedHistorySales([],'2026-02-30'));
+for(const query of ['sample-001','sample cashier','a12','lager',' product '])assert(saleMatches({...checked,sale_items:[{...checked.sale_items[0],products:null}]},query==='lager'?'product':query));
+assert(saleMatches(checked,'lager'));assert(!saleMatches(checked,'unrelated'));
+for(const changed of [{qr_receipt_image_path:'other'},{status:'voided'},{qr_status:'verified'},{voided_at:'2026-11-14T05:00:00Z'},{complimentary_reason:'Owner'},{paid_amount:1}])assert.notEqual(saleFingerprint(checked),saleFingerprint({...checked,...changed}));
+const zone=process.env.TZ;try{for(const tz of ['Asia/Kuala_Lumpur','UTC','America/New_York','Pacific/Auckland']){process.env.TZ=tz;assert.match(saleTime(checked,'en'),/14 Nov 2026.*00:00:00/);assert.match(saleTime(checked,'ms'),/00:00:00/);}}finally{if(zone===undefined)delete process.env.TZ;else process.env.TZ=zone;}
+const path='qr-receipts/2026-11-14/sample.jpg';assert.deepEqual(plain(receiptSource(path,true)),{kind:'stored',path});assert.equal(receiptSource('demo/sample.jpg',false).kind,'local');assert.equal(receiptSource('data:image/png;base64,AAAA',false).kind,'local');
+for(const path of ['',null,' https://test/','https://test/a','data:image/png;base64,AAAA','demo/sample.jpg','/absolute','../file','a/../file','a//file','a?token=x','a#b','a\\b','a\nfile'])assert.throws(()=>receiptSource(path,true));
+const url='https://fixture.test/storage/v1/object/sign/payment-receipts/'+path+'?token=sample';assert.equal(signedReceiptUrl(url,path),url);
+for(const url of [null,'http://fixture.test/storage/v1/object/sign/payment-receipts/'+path,'https://user:password@fixture.test/storage/v1/object/sign/payment-receipts/'+path,'https://fixture.test/storage/v1/object/sign/purchase-evidence/'+path,'https://fixture.test/storage/v1/object/sign/payment-receipts/other.jpg','javascript:alert(1)'])assert.throws(()=>signedReceiptUrl(url,path));
+console.log('PASS Sales History: exact cents and discounts, paid/FOC/void separation, required rows/items/dates, stable receipt identity, safe private paths, search, immutable inputs and Malaysia time across four browser zones.');

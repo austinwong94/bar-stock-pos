@@ -50,7 +50,9 @@ try{
   await page.screenshot({path:out+'/column-entry-'+locale+'-desktop-wide.png'});
   await page.getByRole('button',{name:'Show Sidebar',exact:true}).click();
   await page.setViewportSize({width:390,height:460});await box('Rice (Sample) Guest (kg)').focus();await box('Rice (Sample) Guest (kg)').evaluate(el=>el.scrollIntoView({block:'center'}));
-  await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+  // Resizing also triggers the sticky-header observer and Chromium's focus scroll.
+  // Assert their settled result, not an arbitrary two-frame intermediate layout.
+  await page.waitForFunction(()=>{const el=document.querySelector('input[aria-label="Rice (Sample) Guest (kg)"]'),scope=el?.closest('.supply-workspace');if(!el||!scope)return false;const r=el.getBoundingClientRect(),labels=scope.querySelector('.usage-column-labels').getBoundingClientRect(),footer=scope.querySelector('.kitchen-entry-footer').getBoundingClientRect();return r.top>=labels.bottom&&r.bottom<=footer.top;},{},{timeout:5000});
   assert(await box('Rice (Sample) Guest (kg)').evaluate(el=>{const scope=el.closest('.supply-workspace'),r=el.getBoundingClientRect(),labels=scope.querySelector('.usage-column-labels').getBoundingClientRect(),footer=scope.querySelector('.kitchen-entry-footer').getBoundingClientRect();return r.top>=labels.bottom&&r.bottom<=footer.top;}),'A smaller keyboard-height viewport keeps the active field between the labels and footer');
   await page.locator('input[data-usage-field="staff"]').last().focus();
   assert.equal(await page.locator('.usage-column-labels>span').nth(2).evaluate(el=>getComputedStyle(el).color),'rgb(159, 23, 75)');

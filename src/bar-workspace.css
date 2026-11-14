@@ -26,6 +26,29 @@
 .bar-workspace .island-panel { border: 0; border-radius: 0; background: transparent; padding-inline: 0; box-shadow: none; }
 .bar-workspace .island-card { border-radius: 8px; box-shadow: none; }
 .bar-workspace .page-heading { margin-bottom: 16px; }
+.bar-sales-history { min-width: 0; container-type: inline-size; }
+.bar-sales-history input[type="search"]::-webkit-search-cancel-button { display: none; }
+.bar-sales-toolbar { display: grid; grid-template-columns: minmax(0,1fr) 44px; align-items: end; gap: 12px 8px; margin-bottom: 12px; }
+.bar-sales-toolbar > :first-child { grid-column: 1 / -1; }
+.bar-sales-history .bar-date-stepper { width: 100%; grid-template-columns: 44px minmax(0,1fr) 44px; }
+.bar-sales-history .bar-date-stepper :is(button,input) { min-height: 44px; }
+.view-choices.bar-sales-methods { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); }
+.bar-sales-methods button { min-width: 0; min-height: 44px; padding-inline: 4px; }
+.bar-sale-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.bar-sale-actions button { min-height: 44px; min-width: 44px; }
+.bar-sales-history .bar-sales-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.bar-sales-mobile { display: grid; min-width: 0; }
+.bar-sales-desktop { display: none; }
+@container (min-width: 620px) {
+  .bar-sales-toolbar { grid-template-columns: 256px minmax(0,1fr) 44px; }
+  .bar-sales-toolbar > :first-child { grid-column: auto; }
+  .bar-sales-history .bar-sales-metrics { grid-template-columns: repeat(3,minmax(0,1fr)); }
+}
+@container (min-width: 1000px) {
+  .bar-sales-mobile { display: none; }
+  .bar-sales-desktop { display: block; }
+  .bar-sales-history .bar-sales-metrics { grid-template-columns: repeat(6,minmax(0,1fr)); }
+}
 .bar-caption { display: block; color: #786572; font-size: 12px; font-weight: 400; line-height: 1.4; }
 .bar-movement-history { min-width: 0; container-type: inline-size; }
 .bar-movement-history input[type="search"]::-webkit-search-cancel-button { display: none; }
