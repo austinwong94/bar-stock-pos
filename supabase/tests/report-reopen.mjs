@@ -12,7 +12,7 @@ export async function runReportReopenTests(){
   const snapshot=()=>scalar(db,'select read_bar_closing($1)',[day]);
   const close=async()=>scalar(db,'select close_daily_report_checked($1,90,$2,$3,$4)',[day,'Original counted note',(await snapshot()).version,randomUUID()]);
   await db.query('reset role');await db.query('insert into cash_sessions(business_date,opening_float,opened_by) values($1,100,$2)',[day,owner]);await as(db,owner);const closed=await close();
-  await db.query('reset role');const before=await records(db),migration=await readFile(root+'/supabase/migrations/20261114221919_recover_reviewed_report_reopening.sql','utf8');await db.query(migration);
+  await db.query('reset role');const before=await records(db),migration=(await Promise.all(['20261114221919_recover_reviewed_report_reopening.sql','20261114230215_recheck_report_reopen_permission_after_wait.sql'].map(file=>readFile(root+'/supabase/migrations/'+file,'utf8')))).join('\n');await db.query(migration);
   const upgraded=await records(db),copy=structuredClone(upgraded);delete copy.bar_report_reopen_requests;assert.deepEqual(copy,before,'Upgrade preserves all existing records');await db.query(migration);assert.deepEqual(await records(db),upgraded);
   await as(db,owner);const reviewed=await snapshot(),key=randomUUID(),reason='Correction from Reports';
   const run=(version=reviewed.version,request=key,client=db,actor=owner,note=reason,id=closed.id)=>scalar(client,'select reopen_daily_report_checked($1,$2,$3,$4,$5,$6)',[day,id,version,note,request,actor]);
@@ -37,8 +37,13 @@ export async function runReportReopenTests(){
   for(const sql of ["update daily_reports set status='closed' where business_date=$1","delete from daily_reports where business_date=$1","insert into daily_reports(business_date) values($1::date+1)"])await assert.rejects(()=>db.query(sql,[day]),e=>e.code==='42501');
   for(const user of [null,'88888888-8888-8888-8888-888888888888','99999999-9999-9999-9999-999999999999','33333333-3333-3333-3333-333333333333']){await as(db,user);await assert.rejects(()=>run(reviewed.version,key,db,user),e=>e.code==='42501');}
   await db.query('reset role');await db.query("update profiles set access_role_code='master_admin' where id=$1",[other]);await as(db,other);await assert.rejects(()=>run(reviewed.version,key,db,other),e=>e.code==='LP001');
-  await db.query('reset role');await db.query("update profiles set status='suspended' where id=$1",[owner]);await as(db,owner);await assert.rejects(()=>run(),e=>e.code==='42501');
+  await db.query('reset role');const waiterPid=await scalar(a,'select pg_backend_pid()');await db.query('begin');await db.query('select pg_advisory_xact_lock(77312,1)');
+  const queued=run(reviewed.version,key,a).then(value=>({value}),error=>({error}));
+  const deadline=Date.now()+5000;while(!await scalar(db,"select exists(select 1 from pg_stat_activity where pid=$1 and wait_event_type='Lock' and wait_event='advisory')",[waiterPid])){if(Date.now()>deadline)throw Error('Reopening did not reach the advisory lock');await new Promise(r=>setTimeout(r,10));}
+  await db.query("update profiles set status='suspended' where id=$1",[owner]);await db.query('commit');
+  assert.equal((await queued).error?.code,'42501','Queued recovery must recheck permission after a revocation commits');
+  await as(db,owner);await assert.rejects(()=>run(),e=>e.code==='42501');
   await db.query('reset role');const retained=await records(db);await db.query(migration);assert.deepEqual(await records(db),retained,'Replay preserves later business records');
  },{through:'20261114203706_recover_reviewed_bar_sale_actions.sql'});
- console.log('PASS native report reopening: preserved upgrade/replay, password expiry/current roles, two-connection exact replay and competing stale requests, immutable original money/notes, one audit, old proof cannot reopen newer closing, private engine/ledger and direct-write rejection.');
+ console.log('PASS native report reopening: preserved upgrade/replay, password expiry/current roles including queued revocation, two-connection exact replay and competing stale requests, immutable original money/notes, one audit, old proof cannot reopen newer closing, private engine/ledger and direct-write rejection.');
 }

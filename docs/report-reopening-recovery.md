@@ -1,5 +1,7 @@
 # Report correction recovery
 
+Permission is checked again after a queued request acquires the shared lock, before it can return even historical private proof. Independent connections test a suspension committed while the recovery is waiting.
+
 The normal flow stays Reports > edit > admin password > review the existing report.
 
 New reopen requests use `reopen_daily_report_checked`. The server checks the named account's current permission, the password-unlock expiry, the report ID and the reviewed full closing snapshot version. It locks against payments, closing and sale review, then records the original request and proof in one transaction. Original closing figures, notes and snapshot are retained; the correction reason remains in the audit log. The old reopening function is private. Browser table writes cannot bypass the checked operation.
