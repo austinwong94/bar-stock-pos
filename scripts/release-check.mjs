@@ -104,7 +104,7 @@ try{
  await stage('Stock Hub and Overview unavailable-data safeguards','local-browser-contract',()=>command(['scripts/test-stock-view-ui.mjs']));
  await stage('Validated report-date controls and safe downloads','local-browser-contract',()=>command(['scripts/test-bar-report-period-ui.mjs']));
  await stage('Mobile dated movement history and failed-read safeguards','local-browser-contract',()=>command(['scripts/test-bar-movement-history-ui.mjs']));
- await stage('Mobile sales history and QR receipt identity safeguards','local-browser-contract',()=>command(['scripts/test-bar-sales-history-ui.mjs']));
+ await stage('Mobile Sales History and Closing receipt identity safeguards','local-browser-contract',()=>command(['scripts/test-bar-sales-history-ui.mjs']));
  await stage('Mobile historical prices and independent Admin reads','local-browser-contract',()=>command(['scripts/test-bar-price-history-ui.mjs']));
  await stage('Mobile Settings reload truth and interrupted save recovery','local-browser-contract',()=>command(['scripts/test-bar-settings-ui.mjs']));
  await stage('Mobile sale-action recovery across History and Closing','local-browser-contract',()=>command(['scripts/test-sale-actions-ui.mjs']));

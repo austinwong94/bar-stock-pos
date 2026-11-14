@@ -13,7 +13,6 @@ import { isSupabaseConfigured } from '../lib/supabase';
 import { loadLocalDailyReports, loadLocalProducts, loadLocalSaleItems, loadLocalSales, saveLocalDailyReport } from '../lib/localStore';
 import type { DailyReport, Sale, SaleItem, SettingsMap } from '../lib/types';
 import { useLanguage } from '../lib/language';
-import { assetPath } from '../lib/assets';
 import { actualItemSales, type ItemSalesBreakdown } from '../lib/reportItems';
 import { useSharedRefresh } from '../lib/useSharedRefresh';
 import { useAccess } from '../lib/access';
@@ -21,8 +20,11 @@ import { readClosingAttempt, readClosingSnapshot, storeClosingAttempt, submitClo
 import { definitiveInitialSaveFailure } from '../lib/saveAttempt';
 import { useSaleAction } from '../lib/useSaleAction';
 import { SaleActionRecovery } from '../components/SaleActionRecovery';
+import { QrReceiptPreview } from '../components/QrReceiptPreview';
+import { saleFingerprint } from '../lib/barSalesHistory';
 
 type SaleWithItems = Sale & { sale_items?: SaleItem[] };
+const receiptFingerprint = (sale: SaleWithItems) => saleFingerprint({ ...sale, sale_items: sale.sale_items ?? [] });
 
 function labelStatus(value: string | null | undefined) {
   return String(value ?? '-')
@@ -105,17 +107,17 @@ function DailyClosingWorkspace({ settings }: { settings: SettingsMap }) {
   const [confirming, setConfirming] = useState(false);
   const [detailsConfirmed, setDetailsConfirmed] = useState(false);
   const [correctionMode, setCorrectionMode] = useState(false);
-  const [receiptPreview, setReceiptPreview] = useState<{ sale: Sale; url: string } | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState<{ date: string; id: string; fingerprint: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const saleAction = useSaleAction(profile?.id ?? null, async () => { await refresh(); });
   const verifyingQrKey = saleAction.busy && saleAction.pending ? `${saleAction.pending.args.p_sale_id}:${saleAction.pending.args.p_action}` : null;
-  const [loadingReceiptId, setLoadingReceiptId] = useState<string | null>(null);
   const isClosed = Boolean(report && report.status === 'closed');
   const isLocked = isClosed && !correctionMode;
 
   function changeBusinessDate(date: string) {
     if (date === businessDate) return;
     setActualCash(''); setNotes(''); setDetailsConfirmed(false); setConfirming(false);
+    setReceiptPreview(null);
     setBusinessDate(date);
   }
 
@@ -227,6 +229,13 @@ function DailyClosingWorkspace({ settings }: { settings: SettingsMap }) {
     tables: ['sales', 'sale_items', 'daily_reports', 'cash_sessions', 'stock_movements'],
     intervalMs: 12000,
   });
+
+  const previewSale = !reading && !readError && receiptPreview?.date === businessDate
+    ? sales.find(sale => sale.id === receiptPreview.id && receiptFingerprint(sale) === receiptPreview.fingerprint)
+    : undefined;
+  useEffect(() => {
+    setReceiptPreview(selected => selected && !readError && selected.date === businessDate && sales.some(sale => sale.id === selected.id && receiptFingerprint(sale) === selected.fingerprint) ? selected : null);
+  }, [sales, businessDate, readError]);
 
   const totals = useMemo(() => {
     const completed = sales.filter((sale) => sale.status === 'completed');
@@ -387,29 +396,9 @@ function DailyClosingWorkspace({ settings }: { settings: SettingsMap }) {
     await saleAction.run(sale, status);
   }
 
-  async function viewQrReceipt(sale: Sale) {
-    if (loadingReceiptId) return;
-    const path = sale.qr_receipt_image_path;
-    if (!path) {
-      toast.error(text('No QR Payment receipt image attached to this sale.', 'Tiada gambar resit Bayaran QR dilampirkan pada jualan ini.'));
-      return;
-    }
-    if (path.startsWith('http') || path.startsWith('data:')) {
-      setReceiptPreview({ sale, url: path });
-      return;
-    }
-    if (path.startsWith('demo/')) {
-      setReceiptPreview({ sale, url: assetPath('assets/qr-receipt-demo.svg') });
-      return;
-    }
-    setLoadingReceiptId(sale.id);
-    const { data, error } = await supabase.storage.from('payment-receipts').createSignedUrl(path, 60 * 5);
-    setLoadingReceiptId(null);
-    if (error || !data?.signedUrl) {
-      toast.error(error?.message ?? text('Could not open QR Payment receipt image.', 'Tidak dapat buka gambar resit Bayaran QR.'));
-      return;
-    }
-    setReceiptPreview({ sale, url: data.signedUrl });
+  function viewQrReceipt(sale: SaleWithItems) {
+    if (reading || readError || !sale.qr_receipt_image_path || !sales.some(current => current.id === sale.id && receiptFingerprint(current) === receiptFingerprint(sale))) return;
+    setReceiptPreview({ date: businessDate, id: sale.id, fingerprint: receiptFingerprint(sale) });
   }
 
   return (
@@ -571,7 +560,7 @@ function DailyClosingWorkspace({ settings }: { settings: SettingsMap }) {
           </table>
         </div>
       </section>
-      <section className="island-panel mt-4 rounded-lg p-3 sm:mt-5 sm:rounded-xl sm:p-5">
+      <section className="bar-qr-verification island-panel mt-4 rounded-lg p-3 sm:mt-5 sm:rounded-xl sm:p-5">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="flex items-center gap-2 text-lg font-semibold sm:text-xl"><Smartphone className="h-5 w-5 text-accent" /> {text('QR Payment verification', 'Pengesahan Bayaran QR')}</h2>
           <div className="grid grid-cols-3 gap-1.5 text-center text-[0.68rem] font-semibold sm:min-w-[22rem] sm:text-xs">
@@ -590,7 +579,6 @@ function DailyClosingWorkspace({ settings }: { settings: SettingsMap }) {
               {pendingQrSales.map((sale) => {
                 const hasReceipt = Boolean(sale.qr_receipt_image_path);
                 const isQrUpdating = saleAction.blocked || !!pendingClosing || saving || reading || !!readError || isClosed;
-                const isReceiptLoading = loadingReceiptId === sale.id;
                 return (
                   <div key={`pending-qr-${sale.id}`} className="grid gap-2 rounded-lg border border-line bg-white/95 p-3 shadow-none lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
                     <div className="min-w-0">
@@ -604,7 +592,7 @@ function DailyClosingWorkspace({ settings }: { settings: SettingsMap }) {
                       </p>
                     </div>
                     <div className="grid grid-cols-3 gap-1.5 sm:flex sm:justify-end">
-                      <button className={`${secondaryButtonClass} dense-action justify-center`} disabled={!hasReceipt || isReceiptLoading} onClick={() => viewQrReceipt(sale)}><Eye className="h-3.5 w-3.5" />{isReceiptLoading ? text('Loading', 'Memuat') : text('Image', 'Gambar')}</button>
+                      <button type="button" className={`${secondaryButtonClass} bar-qr-receipt-action dense-action justify-center`} disabled={!hasReceipt || reading || !!readError} onClick={() => viewQrReceipt(sale)}><Eye className="h-3.5 w-3.5" />{text('Receipt', 'Resit')}</button>
                       <button className={`${buttonClass} dense-action justify-center`} disabled={isQrUpdating} onClick={() => verifyQrPayment(sale, 'verified')}><CheckCircle2 className="h-3.5 w-3.5" />{verifyingQrKey === `${sale.id}:verified` ? text('Updating', 'Mengemas kini') : text('Verify', 'Sahkan')}</button>
                       <button className={`${secondaryButtonClass} dense-action justify-center`} disabled={isQrUpdating} onClick={() => verifyQrPayment(sale, 'mismatch')}>{verifyingQrKey === `${sale.id}:mismatch` ? text('Updating', 'Mengemas kini') : text('Mismatch', 'Tidak sepadan')}</button>
                     </div>
@@ -631,7 +619,6 @@ function DailyClosingWorkspace({ settings }: { settings: SettingsMap }) {
                 {completedQrSales.map((sale) => {
                   const hasReceipt = Boolean(sale.qr_receipt_image_path);
                   const isQrUpdating = saleAction.blocked || !!pendingClosing || saving || reading || !!readError || isClosed;
-                  const isReceiptLoading = loadingReceiptId === sale.id;
                   return (
                     <Fragment key={`mobile-qr-${sale.id}`}>
                       <tr className="border-t border-line align-top">
@@ -649,7 +636,7 @@ function DailyClosingWorkspace({ settings }: { settings: SettingsMap }) {
                       <tr className="border-t border-line bg-white/70">
                         <td colSpan={3} className="px-2 pb-2 pt-1">
                           <div className="grid grid-cols-3 gap-1">
-                            <button type="button" className="inline-flex min-h-9 items-center justify-center gap-1 rounded-xl border border-line bg-white px-2 text-[10px] font-semibold text-ink shadow-none disabled:opacity-40" disabled={!hasReceipt || isReceiptLoading} onClick={() => viewQrReceipt(sale)} aria-label={text('View QR Payment receipt image', 'Lihat gambar resit Bayaran QR')}><Eye className="h-3.5 w-3.5" />{text('Image', 'Gambar')}</button>
+                            <button type="button" className={`${secondaryButtonClass} bar-qr-receipt-action dense-action justify-center`} disabled={!hasReceipt || reading || !!readError} onClick={() => viewQrReceipt(sale)}><Eye className="h-3.5 w-3.5" />{text('Receipt', 'Resit')}</button>
                             <button type="button" className="inline-flex min-h-9 items-center justify-center gap-1 rounded-xl border border-line bg-white px-2 text-[10px] font-semibold text-accent shadow-none disabled:opacity-40" disabled={sale.qr_status === 'verified' || isQrUpdating} onClick={() => verifyQrPayment(sale, 'verified')} aria-label={text('Verify QR Payment', 'Sahkan Bayaran QR')}><CheckCircle2 className="h-3.5 w-3.5" />{text('Verify', 'Sahkan')}</button>
                             <button type="button" className="inline-flex min-h-9 items-center justify-center gap-1 rounded-xl border border-line bg-white px-2 text-[10px] font-semibold text-warning shadow-none disabled:opacity-40" disabled={sale.qr_status === 'mismatch' || isQrUpdating} onClick={() => verifyQrPayment(sale, 'mismatch')} aria-label={text('Mark QR Payment mismatch', 'Tanda Bayaran QR tidak sepadan')}><AlertTriangle className="h-3.5 w-3.5" />{text('Mismatch', 'Tidak padan')}</button>
                           </div>
@@ -683,7 +670,6 @@ function DailyClosingWorkspace({ settings }: { settings: SettingsMap }) {
               {completedQrSales.map((sale) => {
                 const hasReceipt = Boolean(sale.qr_receipt_image_path);
                 const isQrUpdating = saleAction.blocked || !!pendingClosing || saving || reading || !!readError || isClosed;
-                const isReceiptLoading = loadingReceiptId === sale.id;
                 return (
                 <tr key={sale.id} className="border-t border-line">
                   <td className="whitespace-nowrap font-semibold">{sale.sale_number}</td>
@@ -693,7 +679,7 @@ function DailyClosingWorkspace({ settings }: { settings: SettingsMap }) {
                   <td className="whitespace-nowrap">{sale.qr_reference ?? '-'}</td>
                   <td className="whitespace-nowrap">
                     <div className="grid gap-1">
-                      <button className={`${secondaryButtonClass} dense-action justify-center`} disabled={!hasReceipt || isReceiptLoading} onClick={() => viewQrReceipt(sale)}><Eye className="h-3.5 w-3.5" />{isReceiptLoading ? text('Loading', 'Memuat') : text('View image', 'Lihat gambar')}</button>
+                      <button type="button" className={`${secondaryButtonClass} bar-qr-receipt-action dense-action justify-center`} disabled={!hasReceipt || reading || !!readError} onClick={() => viewQrReceipt(sale)}><Eye className="h-3.5 w-3.5" />{text('Receipt', 'Resit')}</button>
                       <span className={`text-[0.68rem] font-semibold ${hasReceipt ? 'text-accent' : 'text-coral'}`}>
                         {hasReceipt ? text('Photo attached', 'Gambar ada') : text('No photo attached', 'Tiada gambar')}
                       </span>
@@ -745,20 +731,7 @@ function DailyClosingWorkspace({ settings }: { settings: SettingsMap }) {
           </div>
         </Modal>
       ) : null}
-      {receiptPreview ? (
-        <Modal
-          title={`${text('QR Payment Receipt', 'Resit Bayaran QR')} - ${receiptPreview.sale.sale_number}`}
-          onClose={() => setReceiptPreview(null)}
-          footer={<button className={`${buttonClass} w-full sm:w-auto`} onClick={() => setReceiptPreview(null)}>{text('Done', 'Selesai')}</button>}
-        >
-          <div className="grid gap-3">
-            <div className="rounded-lg border border-line bg-shell p-3 text-sm font-bold">
-              {money(receiptPreview.sale.paid_amount, String(settings.currency_symbol))} · {text('Type', 'Jenis')}: {receiptPreview.sale.qr_payment_type ?? '-'} · {text('Ref', 'Rujukan')}: {receiptPreview.sale.qr_reference ?? '-'} · {text('Staff', 'Staf')}: {receiptPreview.sale.order_taken_by ?? '-'}
-            </div>
-            <img className="max-h-[70vh] w-full rounded-lg border border-line object-contain" src={receiptPreview.url} alt={`QR Payment receipt for ${receiptPreview.sale.sale_number}`} />
-          </div>
-        </Modal>
-      ) : null}
+      {previewSale ? <QrReceiptPreview key={receiptPreview!.date + receiptPreview!.id + receiptPreview!.fingerprint} sale={previewSale} currency={String(settings.currency_symbol)} onClose={() => setReceiptPreview(null)} /> : null}
       </div>
     </>
   );

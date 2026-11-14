@@ -4,11 +4,12 @@ import { Modal } from './Modal';
 import { secondaryButtonClass } from './Form';
 import { useLanguage } from '../lib/language';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
-import { receiptSource, signedReceiptUrl, type HistorySale } from '../lib/barSalesHistory';
+import { receiptSource, signedReceiptUrl } from '../lib/barSalesHistory';
+import type { Sale } from '../lib/types';
 import { assetPath } from '../lib/assets';
 import { money } from '../lib/format';
 
-export function QrReceiptPreview({ sale, currency, onClose }: { sale: HistorySale; currency: string; onClose: () => void }) {
+export function QrReceiptPreview({ sale, currency, onClose }: { sale: Sale; currency: string; onClose: () => void }) {
   const { text } = useLanguage();
   const [retry, setRetry] = useState(0);
   const generation = useRef(0);
