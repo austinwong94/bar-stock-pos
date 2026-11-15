@@ -103,6 +103,13 @@
 .bar-period { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 12px; margin-bottom: 16px; border-bottom: 1px solid #e8dde2; }
 .bar-period .view-choices { flex-wrap: nowrap; gap: 0; }
 .bar-period .view-choices button { padding-inline: 10px; }
+@media (max-width: 639px) {
+  .bar-workspace .bar-period { flex-wrap: wrap; }
+  .bar-workspace .bar-period > .view-choices { flex: 1 1 100%; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0,1fr); }
+  .bar-workspace .bar-period > .view-choices button { white-space: nowrap; overflow-wrap: normal; min-height: 44px; }
+  .bar-workspace .bar-period > .bar-date-stepper { flex: 1 1 100%; width: 100%; min-width: 0; grid-template-columns: 44px minmax(0,1fr) 44px; }
+  .bar-workspace .bar-period > .bar-date-range { flex: 1 1 100%; width: 100%; }
+}
 .bar-date-stepper { display: grid; grid-template-columns: 36px minmax(0,1fr) 36px; align-items: center; width: 240px; gap: 4px; }
 .bar-date-stepper button { display: grid; place-items: center; min-height: 40px; border-radius: 6px; color: #786572; }
 .bar-date-stepper button:hover { background: #f1e9ee; }
