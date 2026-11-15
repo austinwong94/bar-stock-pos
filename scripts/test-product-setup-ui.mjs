@@ -19,7 +19,7 @@ const bundle=await build({bundle:true,write:false,format:'iife',platform:'browse
       const existing={id:'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',name:'Existing Test Product',category_id:category.id,price_per_unit:12.5,cost_per_unit:null,carton_size:12,low_stock_threshold:5,active:true,updated_at:'2026-11-10T10:00:00Z',categories:category,inventory_balances:{quantity_on_hand:17}};
       window.fixture={calls:JSON.parse(sessionStorage.getItem('fixture-calls')??'[]'),hold:false,fail:false,mode:null};
       export const isSupabaseConfigured=true,hasSupabaseCredentials=true,shouldUseLocalData=false,isDemoMode=false;
-      export const supabase={from(table){const q={select(){return q},order(){return q},in(){return q},range(from,to){q.start=from;q.end=to;return q},then(resolve){const rows=table==='products'?[existing]:table==='categories'?[category,{...category,id:'cccccccc-cccc-cccc-cccc-cccccccccccc',name:'Soft Drink'}]:[];return Promise.resolve({data:rows.slice(q.start??0,(q.end??999)+1),error:null}).then(resolve)}};return q;},async rpc(name,args){
+      export const supabase={from(table){const q={select(){return q},order(){return q},in(){return q},range(from,to){q.start=from;q.end=to;return q},then(resolve){const rows=table==='products'?[existing]:table==='categories'?(new URLSearchParams(location.search).has('noCategories')?[]:[category,{...category,id:'cccccccc-cccc-cccc-cccc-cccccccccccc',name:'Soft Drink'}]):[];return Promise.resolve({data:rows.slice(q.start??0,(q.end??999)+1),error:null}).then(resolve)}};return q;},async rpc(name,args){
         const f=window.fixture;f.calls.push({name,args:structuredClone(args)});sessionStorage.setItem('fixture-calls',JSON.stringify(f.calls));
         if(f.hold)await new Promise(resolve=>f.release=resolve);
         if(args.p_expected_actor_id!==(window.fixtureActor??'11111111-1111-1111-1111-111111111111'))return {data:null,error:{code:'42501',message:'Account changed'}};
@@ -66,9 +66,29 @@ try{
       await dialog().locator('form').evaluate(el=>el.parentElement.scrollTop=el.parentElement.scrollHeight);
       const after=await save.boundingBox();assert.equal(after.y,box.y,'Scrolling cannot hide the save action');
     }
+    const field=key=>dialog().locator('input[data-product-field="'+key+'"]');
+    assert(await dialog().locator('form').evaluate(form=>form.noValidate),'Field errors use the selected session language, not browser-language validation');
+    await save.click();await dialog().getByRole('alert').waitFor();assert(await field('name').evaluate(el=>el===document.activeElement));assert.equal(await page.evaluate(()=>window.fixture.calls.length),0);
+    await field('name').fill('Validation Test');await price.fill('12.345');await carton.fill('1.5');await field('cost_per_unit').fill('-4');await field('low_stock_threshold').fill('1e2');await save.click();
+    const beer=dialog().getByRole('button',{name:language==='en'?'Beer':'Bir',exact:true});assert(await beer.evaluate(el=>el===document.activeElement),'Missing category is focused directly');await beer.click();await price.press('Enter');assert(await price.evaluate(el=>el===document.activeElement));
+    assert.equal(await price.inputValue(),'12.345');assert.equal(await carton.inputValue(),'1.5');assert.equal(await field('cost_per_unit').inputValue(),'-4');assert.equal(await field('low_stock_threshold').inputValue(),'1e2');assert.equal(await dialog().locator('input[aria-invalid="true"]').count(),4);assert.equal(await page.evaluate(()=>window.fixture.calls.length),0);
+    for(const key of ['price_per_unit','carton_size','cost_per_unit','low_stock_threshold'])assert(await field(key).evaluate(el=>!!document.getElementById(el.getAttribute('aria-describedby'))?.textContent));
+    const message=await price.evaluate(el=>document.getElementById(el.getAttribute('aria-describedby')).textContent);assert.match(message,language==='en'?/selling price in RM/:/harga jualan dalam RM/);if(language==='ms')assert.equal(await dialog().getByRole('button',{name:'Beer',exact:true}).count(),0,'Known category labels follow Malay without changing their stored IDs');
+    for(const width of [320,390,768,1440]){
+      await page.setViewportSize({width,height:844});await save.click();assert(await price.evaluate(el=>el===document.activeElement));assert(await price.evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight}));assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));assert(await dialog().evaluate(el=>el.scrollWidth<=el.clientWidth+1));assert((await save.boundingBox()).height>=44);await page.screenshot({path:out+'/field-errors-'+language+'-'+width+'.png'});
+    }
+    await price.fill('12.50');await save.click();assert(await carton.evaluate(el=>el===document.activeElement));await carton.fill('24');await save.click();assert(await field('cost_per_unit').evaluate(el=>el===document.activeElement));await field('cost_per_unit').fill('4.12');await save.click();assert(await field('low_stock_threshold').evaluate(el=>el===document.activeElement));await field('low_stock_threshold').fill('0');assert.equal(await dialog().locator('[aria-invalid="true"]').count(),0);assert.equal(await dialog().getByRole('alert').count(),0);assert.equal(await page.evaluate(()=>window.fixture.calls.length),0,'Validation and error navigation never save products or stock');
     await dialog().getByRole('button',{name:'Close',exact:true}).click();
+    await page.getByRole('button',{name:language==='en'?'Add Product':'Tambah Produk',exact:true}).click();assert.equal(await price.inputValue(),'');assert.equal(await carton.inputValue(),'');assert.equal(await dialog().locator('[aria-invalid="true"]').count(),0,'New forms do not inherit values or prior validation errors');await dialog().getByRole('button',{name:'Close',exact:true}).click();
+    await page.goto(base+'?noCategories=1');
+    await page.getByRole('button',{name:language==='en'?'Add Product':'Tambah Produk',exact:true}).click();
+    await field('name').fill('Missing Category Test');await price.fill('12.50');await carton.fill('24');await save.click();
+    const create=dialog().getByRole('button',{name:language==='en'?'Create categories':'Cipta kategori',exact:true});
+    assert(await create.evaluate(el=>el===document.activeElement),'An empty catalogue focuses the explicit category setup, without creating anything');
+    assert(await create.evaluate(el=>!!document.getElementById(el.getAttribute('aria-describedby'))?.textContent));
+    assert.equal(await page.evaluate(()=>window.fixture.calls.length),0);await page.screenshot({path:out+'/missing-categories-'+language+'.png'});await dialog().getByRole('button',{name:'Close',exact:true}).click();
   }
-  await page.evaluate(()=>localStorage.setItem('language','en'));await page.reload();await page.setViewportSize({width:390,height:844});
+  await page.evaluate(()=>localStorage.setItem('language','en'));await page.goto(base);await page.setViewportSize({width:390,height:844});
   const add=()=>page.getByRole('button',{name:'Add Product',exact:true}).click();
   await add();
   const name=()=>dialog().getByLabel('Product Name',{exact:true});

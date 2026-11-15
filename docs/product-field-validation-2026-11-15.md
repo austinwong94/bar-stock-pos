@@ -1,0 +1,9 @@
+# Product setup feedback
+
+The existing Add/Edit Product flow keeps the same checked save authority, price-history auditing, stale-version protection and exact pending-request recovery. It does not enter opening stock or create sample products/prices.
+
+All six validated fields report their existing numeric/name/category rules inline in the current session language. Saving an invalid form synchronously renders the errors, focuses and selects the first offending control in form order, and scrolls it into view. Missing categories focus a category choice or the existing Create Categories action. No extra confirmation step is added. Browser-language validation bubbles are replaced by the same English/Malay rules used by the form parser.
+
+Raw inputs are not stripped, rounded, defaulted or copied into another product. Error descriptions are associated with their controls, the Save footer stays visible, and product-dialog controls keep 44px minimum targets across phone/tablet/desktop sizes. Known category names are translated for display only; saved category IDs/names and custom category names remain unchanged. Closing/opening a new form clears the prior validation state and uses the existing blank defaults.
+
+Unit checks cover issue ordering, field identity, translations, unchanged raw values and the original payload rules. The actual Admin browser fixture covers empty, malformed, fractional, negative and scientific-notation values, keyboard submission, exact error focus, corrected-field clearing, fresh forms, English/Malay responsive screenshots and the existing cross-tab/account/lost-response save recovery. Live verification deliberately uses an empty invalid form only and closes it without saving, adding categories or uploading a photo. Actual bar prices and counted opening balances still require owner input.

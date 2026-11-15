@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { format } from 'date-fns';
 import { PackagePlus, Pencil, Plus, RotateCcw, Save } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -10,6 +11,7 @@ import { PageHeader } from '../components/Page';
 import { ViewChoices } from '../components/ViewChoices';
 import { PriceHistory } from '../components/PriceHistory';
 import { CloudHealthPanel } from '../components/CloudHealthPanel';
+import { barCategoryLabel } from '../lib/barStockView';
 import { useToast } from '../components/Toast';
 import { categoryRank, groupByCategory, normalizeCategoryName } from '../lib/data';
 import { isSupabaseConfigured, shouldUseLocalData, supabase } from '../lib/supabase';
@@ -21,7 +23,7 @@ import { useLanguage } from '../lib/language';
 import { hasAdminAccess, unlockAdminAccess } from '../lib/adminAccess';
 import { useSharedRefresh } from '../lib/useSharedRefresh';
 import { readAllRows } from '../lib/readAllRows';
-import { blankProductForm, parseProductForm, type ProductForm } from '../lib/productSetup';
+import { blankProductForm, parseProductForm, productFormIssues, productIssueLabel, type ProductField, type ProductForm } from '../lib/productSetup';
 import { useAccess } from '../lib/access';
 import { definitiveInitialSaveFailure } from '../lib/saveAttempt';
 import { productRecoveryKey, readProductRecovery, writeProductRecovery, productSaveConfirmed, withProductSaveLock, productSaveDeadline, type ProductSaveRecovery } from '../lib/productSaveRecovery';
@@ -295,6 +297,8 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
   const [demoAdminUnlocked, setDemoAdminUnlocked] = useState(hasAdminAccess);
   const [adminSection, setAdminSection] = useState<'products' | 'recipes' | 'priceHistory' | 'reports' | 'activity' | 'health'>('products');
   const productFormId = useId();
+  const productFormRef = useRef<HTMLFormElement>(null);
+  const [showProductIssues, setShowProductIssues] = useState(false);
   const [readError, setReadError] = useState('');
   const readGeneration = useRef(0);
   const pendingKey = isSupabaseConfigured && actorId ? productRecoveryKey(import.meta.env.VITE_SUPABASE_URL ?? 'cloud', actorId) : null;
@@ -424,6 +428,15 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
   );
   const sortedProducts = useMemo(() => Object.values(groupByCategory(products)).flat(), [products]);
   const effectiveForm = form;
+  const productIssues = showProductIssues && effectiveForm ? productFormIssues(effectiveForm) : [];
+  function productFieldProps(field: ProductField) {
+    const invalid = productIssues.some(issue => issue.field === field);
+    return {'data-product-field': field, 'aria-invalid': invalid, 'aria-describedby': invalid ? `${productFormId}-${field}-error` : undefined};
+  }
+  function productFieldError(field: ProductField) {
+    const issue = productIssues.find(issue => issue.field === field);
+    return issue ? <p id={`${productFormId}-${field}-error`} className="mt-1 break-words text-sm font-medium text-danger">{productIssueLabel(issue, text)}</p> : null;
+  }
 
   async function repairDefaultCategories() {
     if (!isSupabaseConfigured) {
@@ -467,6 +480,7 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
       return;
     }
     setImageFile(null);
+    setShowProductIssues(false);
     setForm(next);
   }
 
@@ -493,8 +507,14 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
   async function save(event: FormEvent) {
     event.preventDefault();
     if (!effectiveForm || productSavingRef.current || pending || recovery.error) return;
-    if (!effectiveForm.category_id) {
-      toast.error(text('Choose a category before saving.', 'Pilih kategori sebelum simpan.'));
+    const issues = productFormIssues(effectiveForm);
+    if (issues.length) {
+      flushSync(() => setShowProductIssues(true));
+      const field = productFormRef.current?.querySelector<HTMLElement>(`[data-product-field="${issues[0].field}"]`);
+      const control = field?.matches('input') ? field : field?.querySelector<HTMLElement>('button:not(:disabled)');
+      control?.focus();
+      if (control instanceof HTMLInputElement) control.select();
+      control?.scrollIntoView({block: 'center'});
       return;
     }
     const parsed = parseProductForm(effectiveForm);
@@ -503,16 +523,7 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
       return;
     }
     if ('error' in parsed) {
-      const errorMalay: Record<string, string> = {
-        'Enter a product name.': 'Masukkan nama produk.',
-        'Choose a category before saving.': 'Pilih kategori sebelum simpan.',
-        'Enter the selling price in RM, with no more than 2 decimal places.': 'Isi harga jualan dalam RM, maksimum 2 tempat perpuluhan.',
-        'Enter a valid cost in RM, with no more than 2 decimal places.': 'Isi kos yang sah dalam RM, maksimum 2 tempat perpuluhan.',
-        'Enter a whole number of units per carton, or choose No Carton.': 'Isi unit setiap karton dalam nombor bulat, atau pilih Tiada Karton.',
-        'Enter a whole-number stock alert. Use 0 for no alert.': 'Isi amaran stok dalam nombor bulat. Gunakan 0 untuk tiada amaran.',
-      };
-      const errorText = parsed.error || 'Check the product fields.';
-      toast.error(text(errorText, errorMalay[errorText] ?? errorText));
+      toast.error(text('Check the product details before saving.', 'Semak butiran produk sebelum menyimpan.'));
       return;
     }
     productSavingRef.current = true;
@@ -714,7 +725,7 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
         <div className="mt-3 flex flex-wrap gap-2 sm:mt-4">
           {sortedCategories.map((category) => (
             <span key={category.id} className="border-r border-line pr-3 text-sm text-muted last:border-r-0">
-              {normalizeCategoryName(category.name)}
+              {barCategoryLabel(normalizeCategoryName(category.name), text)}
             </span>
           ))}
         </div>
@@ -811,7 +822,7 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
                   <div className="min-w-0">
                     <div className="min-w-0">
                       <p className="break-words text-sm font-semibold">{product.name}</p>
-                      <p className="text-xs text-muted">{normalizeCategoryName(product.categories?.name)}</p>
+                      <p className="text-xs text-muted">{barCategoryLabel(normalizeCategoryName(product.categories?.name), text)}</p>
                       <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[9px] font-semibold ${product.active ? 'bg-shell text-accent' : 'bg-neutral-100 text-neutral-600'}`}>
                         {product.active ? text('Active', 'Aktif') : text('Inactive', 'Tidak aktif')}
                       </span>
@@ -885,7 +896,7 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
                     }}
                   />
                 </td>
-                <td className="p-3">{normalizeCategoryName(product.categories?.name)}</td>
+                <td className="p-3">{barCategoryLabel(normalizeCategoryName(product.categories?.name), text)}</td>
                 <td className="p-3 whitespace-nowrap font-bold">{money(product.price_per_unit, String(settings.currency_symbol))}</td>
                 <td className="p-3 whitespace-nowrap">{product.cost_per_unit == null ? '-' : money(product.cost_per_unit, String(settings.currency_symbol))}</td>
                 <td className="p-3">{product.carton_size}</td>
@@ -934,19 +945,20 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
       </>
       )}
       {effectiveForm ? (
-        <Modal title={effectiveForm.id ? text('Edit Product', 'Edit Produk') : text('Add Product', 'Tambah Produk')} onClose={() => openProductForm(null)} footer={
+        <Modal panelClassName="product-setup-dialog" title={effectiveForm.id ? text('Edit Product', 'Edit Produk') : text('Add Product', 'Tambah Produk')} onClose={() => openProductForm(null)} footer={
           <button type={pending ? 'button' : 'submit'} form={productFormId} onClick={pending ? () => void checkProduct() : undefined} className={`${buttonClass} w-full`} disabled={productSaving || !!recovery.error}>
             {productSaving ? text('Saving...', 'Menyimpan...') : pending ? text('Check Saved Product', 'Semak Produk Disimpan') : text('Save Product', 'Simpan Produk')}
           </button>
         }>
-          <form id={productFormId} onSubmit={save}>
+          <form ref={productFormRef} id={productFormId} onSubmit={save} noValidate className="product-setup-form">
           <fieldset disabled={productSaving || !!pending || !!recovery.error} className="grid min-w-0 gap-4">
-            <Field label={text('Product Name', 'Nama Produk')}>
-              <input className={inputClass} value={effectiveForm.name} onChange={(e) => setForm({ ...effectiveForm, name: e.target.value })} required />
-            </Field>
-            <div className="grid min-w-0 gap-1.5">
+            {productIssues.length ? <p role="alert" className="border-y border-line py-2 text-sm font-semibold text-danger">{text(`${productIssues.length} ${productIssues.length === 1 ? 'field needs' : 'fields need'} attention.`, `${productIssues.length} medan perlu disemak.`)}</p> : null}
+            <div className="min-w-0"><Field label={text('Product Name', 'Nama Produk')}>
+              <input {...productFieldProps('name')} className={inputClass} value={effectiveForm.name} onChange={(e) => setForm({ ...effectiveForm, name: e.target.value })} required />
+            </Field>{productFieldError('name')}</div>
+            <div className="grid min-w-0 gap-1.5" data-product-field="category_id">
               <p className="text-[0.8125rem] font-semibold text-muted">{text('Category', 'Kategori')}</p>
-              <div role="group" aria-label={text('Category', 'Kategori')} className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <div {...productFieldProps('category_id')} role="group" aria-label={text('Category', 'Kategori')} className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {sortedCategories.map((category) => (
                   <button
                     key={category.id}
@@ -959,29 +971,30 @@ function ProductWorkspace({ settings, onSettingsSaved, actorId }: { settings: Se
                         : 'border-line bg-white text-ink'
                     }`}
                   >
-                    {normalizeCategoryName(category.name)}
+                    {barCategoryLabel(normalizeCategoryName(category.name), text)}
                   </button>
                 ))}
               </div>
+              {sortedCategories.length > 0 ? productFieldError('category_id') : null}
               {sortedCategories.length === 0 ? (
                 <div className="rounded-xl border border-warning bg-amber-50 p-3 text-sm font-semibold text-warning">
-                  <p>{text('Categories are missing. Create them before saving a product.', 'Kategori tiada. Cipta kategori sebelum simpan produk.')}</p>
-                  <button type="button" className={secondaryButtonClass + ' mt-2 bg-white'} onClick={() => void repairDefaultCategories()}>
+                  <p id={`${productFormId}-category_id-error`}>{text('Categories are missing. Create them before saving a product.', 'Kategori tiada. Cipta kategori sebelum simpan produk.')}</p>
+                  <button type="button" aria-describedby={`${productFormId}-category_id-error`} className={secondaryButtonClass + ' mt-2 bg-white'} onClick={() => void repairDefaultCategories()}>
                     {text('Create categories', 'Cipta kategori')}
                   </button>
                 </div>
               ) : null}
             </div>
             <div className="grid min-w-0 items-start gap-4 sm:grid-cols-2">
-              <Field label={text('Selling Price (RM / Unit)', 'Harga Jualan (RM / Unit)')}><input className={inputClass} type="text" inputMode="decimal" value={effectiveForm.price_per_unit} onChange={(e) => setForm({ ...effectiveForm, price_per_unit: e.target.value })} required /></Field>
-              <Field label={text('Units per Carton', 'Unit Setiap Karton')}>
+              <div className="min-w-0"><Field label={text('Selling Price (RM / Unit)', 'Harga Jualan (RM / Unit)')}><input {...productFieldProps('price_per_unit')} className={inputClass} type="text" inputMode="decimal" value={effectiveForm.price_per_unit} onChange={(e) => setForm({ ...effectiveForm, price_per_unit: e.target.value })} required /></Field>{productFieldError('price_per_unit')}</div>
+              <div className="min-w-0"><Field label={text('Units per Carton', 'Unit Setiap Karton')}>
                 <div className="flex min-w-0 gap-2">
-                  <input aria-label={text('Units per Carton', 'Unit Setiap Karton')} className={`${inputClass} min-w-0 flex-1`} type="text" inputMode="numeric" value={effectiveForm.carton_size} onChange={(e) => setForm({ ...effectiveForm, carton_size: e.target.value })} required />
+                  <input {...productFieldProps('carton_size')} aria-label={text('Units per Carton', 'Unit Setiap Karton')} className={`${inputClass} min-w-0 flex-1`} type="text" inputMode="numeric" value={effectiveForm.carton_size} onChange={(e) => setForm({ ...effectiveForm, carton_size: e.target.value })} required />
                   <button type="button" aria-pressed={effectiveForm.carton_size === '1'} className={`${secondaryButtonClass} shrink-0 px-3 text-xs`} onClick={() => setForm({ ...effectiveForm, carton_size: '1' })}>{text('No Carton', 'Tiada Karton')}</button>
                 </div>
-              </Field>
-              <Field label={text('Cost per Unit (RM, Optional)', 'Kos Seunit (RM, Pilihan)')}><input className={inputClass} type="text" inputMode="decimal" value={effectiveForm.cost_per_unit} onChange={(e) => setForm({ ...effectiveForm, cost_per_unit: e.target.value })} /></Field>
-              <Field label={text('Low Stock Alert (Units)', 'Amaran Stok Rendah (Unit)')}><input className={inputClass} type="text" inputMode="numeric" value={effectiveForm.low_stock_threshold} onChange={(e) => setForm({ ...effectiveForm, low_stock_threshold: e.target.value })} /><p className="mt-1 text-xs text-neutral-600">{text('Individual units, not cartons. 0 = off.', 'Unit individu, bukan karton. 0 = tutup.')}</p></Field>
+              </Field>{productFieldError('carton_size')}</div>
+              <div className="min-w-0"><Field label={text('Cost per Unit (RM, Optional)', 'Kos Seunit (RM, Pilihan)')}><input {...productFieldProps('cost_per_unit')} className={inputClass} type="text" inputMode="decimal" value={effectiveForm.cost_per_unit} onChange={(e) => setForm({ ...effectiveForm, cost_per_unit: e.target.value })} /></Field>{productFieldError('cost_per_unit')}</div>
+              <div className="min-w-0"><Field label={text('Low Stock Alert (Units)', 'Amaran Stok Rendah (Unit)')}><input {...productFieldProps('low_stock_threshold')} aria-label={text('Low Stock Alert (Units)', 'Amaran Stok Rendah (Unit)')} className={inputClass} type="text" inputMode="numeric" value={effectiveForm.low_stock_threshold} onChange={(e) => setForm({ ...effectiveForm, low_stock_threshold: e.target.value })} /><p className="mt-1 text-xs text-neutral-600">{text('Individual units, not cartons. 0 = off.', 'Unit individu, bukan karton. 0 = tutup.')}</p></Field>{productFieldError('low_stock_threshold')}</div>
             </div>
             <Field label={text('Image URL (Optional)', 'URL Gambar (Pilihan)')}>
               <input className={inputClass} value={effectiveForm.image_url} onChange={(e) => { setImageFile(null); setForm({ ...effectiveForm, image_url: e.target.value }); }} placeholder="https://..." />
