@@ -110,5 +110,6 @@
   "20261114122251_restrict_price_history_readers.sql": "2e629eff9c9efd4fdc7c309f0e6eeece1b96c0639b62604bbbcaf239adabcebd",
   "20261114203706_recover_reviewed_bar_sale_actions.sql": "c3ce2e9fee56bdf37e9a6d613808147ec60f5f8c136a1aad40405f28096f7bd4",
   "20261114221919_recover_reviewed_report_reopening.sql": "6392fa9437cb6050a15fdbcfc9f0359ecde176387d06f4b9c506d11f94b38705",
-  "20261114230215_recheck_report_reopen_permission_after_wait.sql": "79def837084b04ece0c87b2eaacd80757b2c9feb223288e880e1bebdbcfb5aea"
+  "20261114230215_recheck_report_reopen_permission_after_wait.sql": "79def837084b04ece0c87b2eaacd80757b2c9feb223288e880e1bebdbcfb5aea",
+  "20261115001635_protect_reviewed_stock_in_cartons.sql": "a0aaeaaab64b97bffe2f37b92d274328ebcecd733e299429a637c1d8d603bfdf"
 }

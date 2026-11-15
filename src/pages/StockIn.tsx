@@ -16,6 +16,7 @@ import { useAccess } from '../lib/access';
 import { definitiveInitialSaveFailure } from '../lib/saveAttempt';
 import { readAllRows } from '../lib/readAllRows';
 import { barStockEntryIssue, barStockQuantity, changeBarStockUnit, type BarStockEntry } from '../lib/barStockEntry';
+import { readStockConfirmation, stockConfirmationDeadline, stockConfirmationKey, stockConfirmationMatches, withStockConfirmationLock, writeStockConfirmation, type StockConfirmationAttempt } from '../lib/barStockConfirmation';
 
 type DraftAttempt={version:1;attempted:boolean;payload:{p_entries:StockInDraftEntry[];p_entered_by:string;p_supplier:string|null;p_reference:string|null;p_notes:string|null;p_request_id:string}};
 
@@ -123,16 +124,23 @@ function hasCartonChoice(cartonSize: number) {
 
 export default function StockIn({ settings, embedded = false, onSaved }: { settings: SettingsMap; embedded?: boolean; onSaved?: () => void | Promise<void> }) {
   const {profile}=useAccess();
+  const { text } = useLanguage();
   const attemptKey='lovely_paradise_bar_stock_draft:'+profile?.id;
   const [restored]=useState(()=>{try{const raw=localStorage.getItem(attemptKey);if(!raw)return {attempt:null,error:''};const a=JSON.parse(raw) as DraftAttempt;if(a.version!==1||!a.payload?.p_request_id||!Array.isArray(a.payload.p_entries))throw Error('Pending stock-in could not be read. Ask a manager to check this device.');return {attempt:a,error:''};}catch(e){return {attempt:null,error:(e as Error).message};}});
   const [pendingAttempt,setPendingAttempt]=useState<DraftAttempt|null>(restored.attempt);
+  const confirmationKey = stockConfirmationKey(import.meta.env.VITE_SUPABASE_URL ?? 'cloud', profile?.id ?? '');
+  function loadConfirmation() {
+    if (!isSupabaseConfigured) return {operation: null, raw: null, error: ''};
+    try { const raw = localStorage.getItem(confirmationKey); return {operation: readStockConfirmation(raw, profile?.id ?? ''), raw, error: ''}; }
+    catch { return {operation: null, raw: null, error: text('Pending stock confirmation cannot be read. Keep this device and ask the owner to check it.', 'Pengesahan stok tertunda tidak dapat dibaca. Simpan peranti ini dan minta pemilik menyemaknya.')}; }
+  }
+  const [confirmationRecovery, setConfirmationRecovery] = useState(loadConfirmation);
   const draftBusy=useRef(false);
   const toast = useToast();
-  const { text } = useLanguage();
   const workers = useMemo(() => staffNames(settings), [settings]);
   const [products, setProducts] = useState<ProductWithStock[]>([]);
   const [stockInDrafts, setStockInDrafts] = useState<StockInDraftRecord[]>([]);
-  const [activeDraft, setActiveDraft] = useState<StockInDraftRecord | null>(null);
+  const [activeDraft, setActiveDraft] = useState<StockInDraftRecord | null>(confirmationRecovery.operation?.draft ?? null);
   const [draftRows, setDraftRows] = useState<Record<string, StockInDraft>>({});
   const [supplier, setSupplier] = useState('');
   const [reference, setReference] = useState('');
@@ -140,14 +148,26 @@ export default function StockIn({ settings, embedded = false, onSaved }: { setti
   const [enteredBy, setEnteredBy] = useState(workers[0] ?? 'Chloe');
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState(!!confirmationRecovery.operation);
   const [cancelDraft, setCancelDraft] = useState<StockInDraftRecord | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [savingDraft, setSavingDraft] = useState(false);
   const [saving, setSaving] = useState(false);
+  const confirmationBusy = useRef(false);
+  const [confirmationError, setConfirmationError] = useState('');
+  const alive = useRef(true);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const readGeneration = useRef(0);
+  const entryLocked = savingDraft || saving || !!pendingAttempt || !!confirmationRecovery.operation || !!confirmationRecovery.error;
+
+  useEffect(() => { alive.current = true; return () => { alive.current = false; readGeneration.current += 1; }; }, []);
+  useEffect(() => { setConfirmationError(''); }, [activeDraft?.id]);
+  useEffect(() => {
+    const changed = (event: StorageEvent) => { if (event.key === confirmationKey || event.key === null) setConfirmationRecovery(loadConfirmation()); };
+    window.addEventListener('storage', changed);
+    return () => window.removeEventListener('storage', changed);
+  }, [confirmationKey]);
 
   async function refresh() {
     const generation = ++readGeneration.current;
@@ -266,7 +286,7 @@ export default function StockIn({ settings, embedded = false, onSaved }: { setti
   }
 
   function updateDraft(productId: string, patch: Partial<StockInDraft>) {
-    if (draftBusy.current || pendingAttempt || saving) return;
+    if (draftBusy.current || entryLocked) return;
     setDraftRows((current) => {
       const previous = current[productId] ?? defaultDraft;
       const next = { ...previous, ...patch };
@@ -287,7 +307,7 @@ export default function StockIn({ settings, embedded = false, onSaved }: { setti
   }
 
   function clearRow(productId: string) {
-    if (draftBusy.current || pendingAttempt || saving) return;
+    if (draftBusy.current || entryLocked) return;
     setDraftRows((current) => {
       const { [productId]: _unused, ...rest } = current;
       return rest;
@@ -295,7 +315,7 @@ export default function StockIn({ settings, embedded = false, onSaved }: { setti
   }
 
   async function openStockInConfirmation() {
-    if(draftBusy.current||pendingAttempt||restored.error||loading||loadError)return;
+    if(draftBusy.current||entryLocked||restored.error||loading||loadError)return;
     if (unavailableIds.length) {
       document.querySelector<HTMLButtonElement>('[data-unavailable-bar-entry]')?.focus();
       document.querySelector('[data-unavailable-bar-entry]')?.scrollIntoView({ block: 'center' });
@@ -331,7 +351,6 @@ export default function StockIn({ settings, embedded = false, onSaved }: { setti
       setNotes('');
       setSavingDraft(false);
       setConfirming(true);
-      toast.success(text('Draft saved. Final confirmation is still required.', 'Draf disimpan. Pengesahan akhir masih diperlukan.'));
       return;
     }
     await resolveDraft({version:1,attempted:false,payload:{p_entries:entries,p_entered_by:enteredBy,p_supplier:supplier.trim()||null,p_reference:reference.trim()||null,p_notes:notes.trim()||null,p_request_id:crypto.randomUUID()}});
@@ -356,7 +375,6 @@ export default function StockIn({ settings, embedded = false, onSaved }: { setti
     setNotes('');
     await refresh();
     setConfirming(true);
-    toast.success(text('Draft saved. Final confirmation is still required.', 'Draf disimpan. Pengesahan akhir masih diperlukan.'));
     }catch(e){
       if(submitted&&definitiveInitialSaveFailure(attempt.attempted,e)){localStorage.removeItem(attemptKey);setPendingAttempt(null);}
       toast.error((e as Error).message||text('Check the pending stock-in.','Semak stok masuk tertunda.'));
@@ -365,7 +383,8 @@ export default function StockIn({ settings, embedded = false, onSaved }: { setti
 
   async function confirm() {
     if (!activeDraft && lines.length === 0) return;
-    if (saving) return;
+    if (saving || confirmationBusy.current || confirmationRecovery.error) return;
+    if (activeDraft && confirmationRecovery.operation && confirmationRecovery.operation.draft.id !== activeDraft.id) return;
     setSaving(true);
     if (!isSupabaseConfigured) {
       const draftToConfirm = activeDraft;
@@ -413,32 +432,53 @@ export default function StockIn({ settings, embedded = false, onSaved }: { setti
       toast.error(text('Save a draft before confirming.', 'Simpan draf sebelum mengesahkan.'));
       return;
     }
-    const { data, error } = await supabase.rpc('confirm_stock_in_draft', { p_draft_id: activeDraft.id });
-    setSaving(false);
-    if (error) {
-      if (error.message.toLowerCase().includes('confirm_stock_in_draft')) {
-        toast.error(text('Cloud Stock In confirmation needs the latest Supabase migration.', 'Pengesahan Stok Masuk cloud perlukan migrasi Supabase terkini.'));
-        return;
-      }
-      toast.error(error.message);
-      return;
-    } else if (!data) {
-      toast.error(text('Stock In did not return updated balances.', 'Stok Masuk tidak mengembalikan baki terkini.'));
-      return;
+    const reviewed = activeDraft;
+    confirmationBusy.current = true;
+    setConfirmationError('');
+    let verified = false;
+    const operation: StockConfirmationAttempt = confirmationRecovery.operation ?? {version: 1, actor: profile!.id, attempted: false, draft: reviewed};
+    try {
+      await withStockConfirmationLock(navigator.locks, confirmationKey, async () => {
+        let raw = confirmationRecovery.raw, sent = false;
+        try {
+          const retained = {...operation, attempted: true};
+          raw = writeStockConfirmation(localStorage, confirmationKey, retained, raw);
+          setConfirmationRecovery({operation: retained, raw, error: ''});
+          sent = true;
+          const { data, error } = await stockConfirmationDeadline<{data: unknown; error: {code?: string; message: string} | null}>(supabase.rpc('confirm_stock_in_draft', { p_draft_id: operation.draft.id }));
+          if (!alive.current) return;
+          if (error) throw error;
+          if (!stockConfirmationMatches(data, operation.draft)) throw Error('Unverified stock confirmation.');
+          writeStockConfirmation(localStorage, confirmationKey, null, raw);
+          setConfirmationRecovery({operation: null, raw: null, error: ''});
+          verified = true;
+        } catch (failure) {
+          if (alive.current) {
+            if (sent && definitiveInitialSaveFailure(operation.attempted, failure)) writeStockConfirmation(localStorage, confirmationKey, null, raw);
+            setConfirmationRecovery(loadConfirmation());
+          }
+          throw failure;
+        }
+      });
+    } catch (failure) {
+      if (!alive.current) return;
+      const changed = (failure as {message?: string})?.message?.startsWith('Product setup changed.');
+      setConfirmationError(changed
+        ? text('Product setup changed. No stock was added. Close this review, cancel this draft and re-enter the actual quantity using the latest product setup.', 'Tetapan produk berubah. Stok tidak ditambah. Tutup semakan, batalkan draf ini dan isi semula kuantiti sebenar menggunakan tetapan produk terkini.')
+        : text('Confirmation could not be verified. Keep this draft and check the same confirmation again. Do not enter a replacement batch.', 'Pengesahan tidak dapat disahkan. Simpan draf ini dan semak pengesahan yang sama sekali lagi. Jangan masukkan kelompok pengganti.'));
+    } finally {
+      confirmationBusy.current = false;
+      if (alive.current) setSaving(false);
     }
-    setConfirming(false);
-    setActiveDraft(null);
-    setDraftRows({});
-    setSupplier('');
-    setReference('');
-    setNotes('');
+    if (!verified || !alive.current) return;
+    setConfirming(false); setActiveDraft(null);
+    toast.success(`${text('Stock Updated By', 'Stok Dikemas Kini Oleh')} ${reviewed.entered_by}: ${reviewed.total_units} ${text('Units Added.', 'Unit Ditambah.')}`);
     await refresh();
-    await onSaved?.();
-    toast.success(`${text('Stock Updated By', 'Stok Dikemas Kini Oleh')} ${confirmationEnteredBy}: ${confirmationTotalUnits} ${text('Units Added.', 'Unit Ditambah.')}`);
+    if (alive.current) await onSaved?.();
   }
 
   async function cancelDraftRecord() {
-    if (!cancelDraft || saving) return;
+    if (!cancelDraft || saving || confirmationRecovery.operation || confirmationRecovery.error) return;
     const reason = cancelReason.trim();
     if (!reason) {
       toast.error(text('Enter a reason before cancelling the draft.', 'Masukkan sebab sebelum membatalkan draf.'));
@@ -492,6 +532,7 @@ export default function StockIn({ settings, embedded = false, onSaved }: { setti
     <>
       {embedded ? null : <PageHeader title={text('Stock In', 'Stok Masuk')} />}
       {restored.error?<p role="alert" className="mb-3 text-sm text-danger">{restored.error}</p>:null}
+      {confirmationRecovery.error ? <p role="alert" className="mb-3 text-sm text-danger">{confirmationRecovery.error}</p> : null}
       {loadError ? <div role="alert" className="mb-3 grid gap-2 text-sm text-danger">{loadError}<button className={secondaryButtonClass} onClick={() => void refresh()}>{text('Retry', 'Cuba Lagi')}</button></div> : null}
       {loading ? <p role="status" className="mb-3 text-sm text-muted">{text('Loading Stock...', 'Memuatkan Stok...')}</p> : null}
       {pendingAttempt?<div role="status" className="mb-3 border-y border-line py-3"><p className="mb-2 text-sm font-semibold">{text('Stock-in Confirmation Pending','Pengesahan Stok Masuk Belum Diterima')}</p><button className={secondaryButtonClass} disabled={savingDraft} onClick={()=>void resolveDraft(pendingAttempt)}>{text('Check Saved Draft','Semak Draf Disimpan')}</button></div>:null}
@@ -504,6 +545,7 @@ export default function StockIn({ settings, embedded = false, onSaved }: { setti
               <button
                 key={worker}
                 type="button"
+                disabled={entryLocked}
                 onClick={() => setEnteredBy(worker)}
                 aria-pressed={enteredBy === worker}
               >
@@ -520,14 +562,14 @@ export default function StockIn({ settings, embedded = false, onSaved }: { setti
                 {activeDraft.draft_number}
               </p>
               <span className={`mt-1 inline-flex rounded-lg px-2 py-1 text-xs font-semibold sm:text-xs ${stockInDraftStatusClass(activeDraft.status)}`}>
-                {stockInDraftStatusLabel(activeDraft.status, text)}
+                {confirmationRecovery.operation ? text('Confirmation Pending', 'Pengesahan Belum Disahkan') : stockInDraftStatusLabel(activeDraft.status, text)}
               </span>
               <p className="mt-0.5 hidden text-xs font-bold text-amber-700 sm:block">
-                {text('Stock is still unchanged until final confirmation.', 'Stok belum berubah sehingga pengesahan akhir.')}
+                {confirmationRecovery.operation ? text('Check the original confirmation before entering another batch.', 'Semak pengesahan asal sebelum masukkan kelompok lain.') : text('Stock is still unchanged until final confirmation.', 'Stok belum berubah sehingga pengesahan akhir.')}
               </p>
             </div>
-            <button type="button" className={`${buttonClass} min-h-9 justify-center px-3 py-2 text-xs`} onClick={() => setConfirming(true)}>
-              {text('Confirm Draft', 'Sahkan Draf')}
+            <button type="button" className={`${buttonClass} min-h-11 justify-center px-3 py-2 text-xs`} disabled={saving || !!confirmationRecovery.error} onClick={() => { if (confirmationRecovery.operation) setActiveDraft(confirmationRecovery.operation.draft); setConfirming(true); }}>
+              {confirmationRecovery.operation ? text('Check Same Confirmation', 'Semak Pengesahan Sama') : text('Confirm Draft', 'Sahkan Draf')}
             </button>
           </div>
         ) : null}
@@ -557,6 +599,7 @@ export default function StockIn({ settings, embedded = false, onSaved }: { setti
           </div>
         ) : null}
 
+        <fieldset disabled={entryLocked} className="contents">
         <div className="grid gap-3 bar-stock-entry-head">
           <div className="bar-stock-entry-summary">
             <h2>{text('Receive Stock', 'Terima Stok')}</h2>
@@ -797,6 +840,7 @@ export default function StockIn({ settings, embedded = false, onSaved }: { setti
             </div>
           </div>
         ) : null}
+        </fieldset>
       </section>
 
       {stockInDrafts.length > 0 ? (
@@ -837,6 +881,7 @@ export default function StockIn({ settings, embedded = false, onSaved }: { setti
                         <div className="grid gap-1 sm:flex sm:justify-end">
                           <button
                             type="button"
+                            disabled={saving || !!confirmationRecovery.operation || !!confirmationRecovery.error}
                             className="rounded-lg border border-line bg-white px-2 py-1 text-xs font-semibold text-ink sm:rounded-xl sm:px-3 sm:py-1.5 sm:text-xs"
                             onClick={() => {
                               setActiveDraft(draft);
@@ -847,6 +892,7 @@ export default function StockIn({ settings, embedded = false, onSaved }: { setti
                           </button>
                           <button
                             type="button"
+                            disabled={saving || !!confirmationRecovery.operation || !!confirmationRecovery.error}
                             className="rounded-lg border border-red-100 bg-red-50 px-2 py-1 text-xs font-semibold text-danger sm:rounded-xl sm:px-3 sm:py-1.5 sm:text-xs"
                             onClick={() => {
                               setCancelDraft(draft);
@@ -870,23 +916,25 @@ export default function StockIn({ settings, embedded = false, onSaved }: { setti
 
       {confirming ? (
         <Modal
+          panelClassName="bar-stock-confirmation"
           title={text('Final Confirmation', 'Pengesahan Akhir')}
           onClose={() => { if (!saving) setConfirming(false); }}
           footer={
-            <div className="flex flex-wrap justify-end gap-2">
+            <div className="grid gap-2 sm:flex sm:flex-wrap sm:justify-end">
               <button className={secondaryButtonClass} disabled={saving} onClick={() => setConfirming(false)}>{text('Close - Keep Draft', 'Tutup - Simpan Draf')}</button>
-              <button className={buttonClass} disabled={saving} onClick={confirm}>
-                {saving ? text('Saving...', 'Menyimpan...') : text('Final Confirm - Add Stock', 'Sahkan Akhir - Tambah Stok')}
+              <button className={buttonClass} disabled={saving || !!confirmationRecovery.error} onClick={confirm}>
+                {saving ? text('Saving...', 'Menyimpan...') : confirmationError || confirmationRecovery.operation ? text('Check Same Confirmation', 'Semak Pengesahan Sama') : text('Final Confirm - Add Stock', 'Sahkan Akhir - Tambah Stok')}
               </button>
             </div>
           }
         >
+          {confirmationError || confirmationRecovery.operation ? <p role="alert" className="mb-3 break-words border-l-2 border-danger pl-3 text-sm font-semibold text-danger">{confirmationError || text('Check the original confirmation. Do not enter a replacement batch.', 'Semak pengesahan asal. Jangan masukkan kelompok pengganti.')}</p> : null}
           <div className="rounded-lg border border-accent bg-shell p-3">
             <p className="text-xl font-semibold leading-tight text-accent sm:text-2xl">{text('Confirm Stock In', 'Sahkan Stok Masuk')}: {confirmationTotalUnits} {text('Units', 'Unit')}</p>
             <p className="mt-1 text-sm font-bold text-neutral-700">{itemCountLabel(confirmationLines.length, text)} · {text('Staff', 'Staff')} {confirmationEnteredBy}</p>
             {activeDraft ? (
               <p className="mt-2 rounded-xl bg-white/75 px-3 py-2 text-xs font-semibold text-amber-700">
-                {activeDraft.draft_number} · {text('Draft saved. Stock is not updated yet.', 'Draf disimpan. Stok belum dikemas kini.')}
+                {activeDraft.draft_number} · {confirmationRecovery.operation ? text('Draft saved. Stock confirmation not yet verified.', 'Draf disimpan. Pengesahan stok belum disahkan.') : text('Draft saved. Stock is not updated yet.', 'Draf disimpan. Stok belum dikemas kini.')}
               </p>
             ) : null}
           </div>
@@ -903,12 +951,12 @@ export default function StockIn({ settings, embedded = false, onSaved }: { setti
                 {confirmationLines.map((line, index) => (
                   <tr key={`mobile-confirm-${line.id}`} className={`border-t border-line align-top ${index % 2 ? 'bg-white/75' : 'bg-shell/45'}`}>
                     <td className="p-2 font-semibold leading-tight">
-                      <span className="block truncate">{line.productName}</span>
-                      <span className="mt-0.5 block truncate text-xs font-bold text-neutral-500">
-                        {line.costPerUnit == null ? text('No cost entered', 'Tiada kos') : `${String(settings.currency_symbol)} ${line.costPerUnit.toFixed(2)}`}
+                      <span className="block break-words">{line.productName}</span>
+                      <span className="mt-0.5 block break-words text-xs font-bold text-neutral-500">
+                        {line.costPerUnit == null ? text('No cost entered', 'Tiada kos') : `${String(settings.currency_symbol)} ${line.costPerUnit.toFixed(2)} / ${text('unit', 'unit')}`}
                       </span>
                     </td>
-                    <td className="whitespace-nowrap p-2 text-xs font-bold leading-tight">{compactLineInputLabel(line, text)}</td>
+                    <td className="break-words p-2 text-xs font-bold leading-tight">{compactLineInputLabel(line, text)}</td>
                     <td className="p-2 text-right font-semibold text-accent">+{line.cans}</td>
                   </tr>
                 ))}
@@ -922,7 +970,7 @@ export default function StockIn({ settings, embedded = false, onSaved }: { setti
                   <th className="p-3">{text('Product', 'Produk')}</th>
                   <th className="p-3">{text('Input', 'Input')}</th>
                   <th className="p-3">{text('Units Added', 'Unit Ditambah')}</th>
-                  <th className="p-3">{text('Cost', 'Kos')}</th>
+                  <th className="p-3">{text('Cost / Unit', 'Kos / Unit')}</th>
                 </tr>
               </thead>
               <tbody>

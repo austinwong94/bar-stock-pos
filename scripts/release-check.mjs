@@ -19,6 +19,7 @@ import {runPriceHistoryTests} from '../supabase/tests/price-history.mjs';
 import {runBarSettingsTests} from '../supabase/tests/bar-settings.mjs';
 import {runSaleActionTests} from '../supabase/tests/sale-actions.mjs';
 import {runReportReopenTests} from '../supabase/tests/report-reopen.mjs';
+import {runStockConfirmationTests} from '../supabase/tests/stock-confirmation.mjs';
 import {walk} from './release/admission.mjs';
 import {createServer} from 'node:http';
 import path from 'node:path';
@@ -62,6 +63,7 @@ try{
  await stage('Reviewed sale-action identity and recovery protocol','unit',()=>command(['scripts/test-sale-actions.mjs']));
  await stage('Reviewed report reopening identity and original proof','unit',()=>command(['scripts/test-report-reopen.mjs']));
  await stage('Stock-out recovery','unit',()=>command(['scripts/test-stock-out.mjs']));
+ await stage('Verified stock confirmation replies and timeout','unit',()=>command(['scripts/test-stock-confirmation.mjs']));
  await stage('Receiving units and measured pieces','unit',()=>command(['scripts/test-delivery-entry.mjs']));
  await stage('Durable delivery identity and recovery','unit',()=>command(['scripts/test-delivery-recovery.mjs']));
  await stage('Supplier-payment identity and recovery','unit',()=>command(['scripts/test-purchase-payment-recovery.mjs']));
@@ -93,6 +95,7 @@ try{
  await stage('Concurrent general Bar Settings recovery and actor isolation','native-postgres',()=>runBarSettingsTests());
  await stage('Concurrent QR decisions and single void stock return','native-postgres',()=>runSaleActionTests());
  await stage('Concurrent report reopening and original financial preservation','native-postgres',()=>runReportReopenTests());
+ await stage('Reviewed stock-in units and concurrent product edits','native-postgres',()=>runStockConfirmationTests());
  await stage('Build','static',()=>command(['node_modules/vite/bin/vite.js','build'],{VITE_DEMO_MODE:mode==='sample'?'true':'false'}));
  await stage('Page delivery and load budgets','built-browser-and-static',()=>command(['scripts/test-build-delivery.mjs',mode]));
  await stage('Account identity changes','local-browser-contract',()=>command(['scripts/test-access-session-ui.mjs']));

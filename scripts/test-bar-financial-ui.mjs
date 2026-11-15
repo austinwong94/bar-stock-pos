@@ -14,8 +14,8 @@ const bundled=await build({loader:{'.svg':'dataurl'},define:{'import.meta.env.BA
  b.onResolve({filter:/(^|\/)access$/},()=>({path:'access',namespace:'financial-fixture'}));
  b.onResolve({filter:/(^|\/)useSharedRefresh$/},()=>({path:'refresh',namespace:'financial-fixture'}));
  b.onLoad({filter:/.*/,namespace:'financial-fixture'},({path})=>({loader:'js',contents:path==='access'?`export const useAccess=()=>({profile:{id:'${owner}',full_name:'Audit Manager'},can:()=>true,canAny:()=>true});`:path==='refresh'?'export function useSharedRefresh(){}':`
- const product={id:'22222222-2222-4222-8222-222222222222',name:'Audit Lager',category_id:'beer',active:true,price_per_unit:12,carton_size:24,low_stock_threshold:2,categories:{id:'beer',name:'Beer'},inventory_balances:{quantity_on_hand:20}};
- window.fixture={failRead:new URLSearchParams(location.search).get('fail')==='read',failAdminRead:new URLSearchParams(location.search).get('fail')==='admin',lostClose:new URLSearchParams(location.search).get('fail')==='close',lostDraft:true,priceChange:true,calls:[],close:null};
+ const product={id:'22222222-2222-4222-8222-222222222222',name:new URLSearchParams(location.search).has('long')?'Review Test Lager With A Very Long Product Name And Bottle Size 330 ml':'Audit Lager',category_id:'beer',active:true,price_per_unit:12,carton_size:24,low_stock_threshold:2,categories:{id:'beer',name:'Beer'},inventory_balances:{quantity_on_hand:20}};
+ window.fixture={failRead:new URLSearchParams(location.search).get('fail')==='read',failAdminRead:new URLSearchParams(location.search).get('fail')==='admin',lostClose:new URLSearchParams(location.search).get('fail')==='close',lostDraft:true,priceChange:true,calls:[],close:null,stockDraft:JSON.parse(sessionStorage.getItem('fixture-stock-draft')??'null'),confirmed:JSON.parse(sessionStorage.getItem('fixture-stock-proof')??'null'),additions:Number(sessionStorage.getItem('fixture-stock-additions')??0)};
  export const isSupabaseConfigured=true,isDemoMode=false,hasSupabaseCredentials=true,shouldUseLocalData=false;
  export const supabase={from(table){const query={select(){return query},eq(){return query},in(){return query},order(){return query},limit(){return query},upsert(){window.fixture.calls.push({name:'upsert:'+table});return query},range(from,to){query.from=from;query.to=to;return query},then(resolve){if(table==='categories'&&window.fixture.failAdminRead)return Promise.resolve({data:null,error:{message:'Category records could not be loaded.',code:'57014'}}).then(resolve);const rows=table==='products'?[product]:table==='categories'?[{id:'beer',name:'Beer',sort_order:1}]:[];return Promise.resolve({data:rows.slice(query.from??0,(query.to??999)+1),error:null}).then(resolve)}};return query;},async rpc(name,args={}){
    const f=window.fixture;f.calls.push({name,args:structuredClone(args)});
@@ -31,9 +31,20 @@ const bundled=await build({loader:{'.svg':'dataurl'},define:{'import.meta.env.BA
    }
    if(name==='read_bar_reporting_source')return {data:null,error:{message:'Report source is unavailable. Retry before exporting.',code:'57014'}};
    if(name==='create_stock_in_draft_checked'){
-     const draft={id:args.p_request_id,draft_number:'AUDIT-DRAFT',status:'draft',entries:args.p_entries,entered_by:args.p_entered_by,total_units:args.p_entries.reduce((sum,row)=>sum+row.cans,0),created_at:new Date().toISOString()};
+     const draft={id:args.p_request_id,draft_number:'AUDIT-DRAFT',status:'draft',entries:args.p_entries,entered_by:args.p_entered_by,supplier:args.p_supplier,reference:args.p_reference,notes:args.p_notes,created_by:'${owner}',confirmed_by:null,confirmed_at:null,total_units:args.p_entries.reduce((sum,row)=>sum+row.cans,0),created_at:new Date().toISOString()};
+     f.stockDraft=draft;sessionStorage.setItem('fixture-stock-draft',JSON.stringify(draft));
      if(f.lostDraft){f.lostDraft=false;return {data:null,error:{message:'Draft reply lost after save',code:'57014'}};}
      return {data:draft,error:null};
+   }
+   if(name==='confirm_stock_in_draft'){
+     const mode=f.confirmMode;f.confirmMode=null;
+     if(mode==='hold')await new Promise(resolve=>f.releaseConfirm=resolve);
+     if(mode==='throw')throw Error('Offline test');
+     if(mode==='stale')return {data:null,error:{code:'40001',message:'Product setup changed. No stock was added.'}};
+     if(mode==='bad')return {data:{draft:{...f.stockDraft,status:'draft'}},error:null};
+     if(!f.confirmed){f.confirmed={draft:{...f.stockDraft,status:'confirmed'},results:[]};f.additions=(f.additions??0)+1;sessionStorage.setItem('fixture-stock-proof',JSON.stringify(f.confirmed));sessionStorage.setItem('fixture-stock-additions',String(f.additions));}
+     if(mode==='after')throw Error('Reply lost after commit');
+     return {data:f.confirmed,error:null};
    }
    if(name==='complete_sale_with_qr_type'){
      if(f.priceChange){f.priceChange=false;product.price_per_unit=18;return {data:null,error:{code:'40001',message:'A product price changed. Refresh and review the order again.'}};}
@@ -48,7 +59,7 @@ await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.
 const browser=await chromium.launch({headless:true});
 let page;
 try{
- page=await browser.newPage({viewport:{width:390,height:844},timezoneId:'Asia/Kuala_Lumpur'});const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ const context=await browser.newContext({viewport:{width:390,height:844},timezoneId:'Asia/Kuala_Lumpur'});page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto(base+'/?fail=read');await page.getByRole('alert').filter({hasText:'Closing figures could not be verified'}).waitFor();
  assert.equal(await page.getByRole('button',{name:'Close Daily Report',exact:true}).isVisible(),false);
  for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await page.screenshot({path:out+'/closing-error-'+width+'.png'});}
@@ -96,6 +107,30 @@ try{
  assert.deepEqual(await page.evaluate(()=>window.fixture.calls.find(c=>c.name==='create_stock_in_draft_checked').args),originalDraft,'Stock-in uses the original request after reload');
  assert.equal(await page.evaluate(()=>window.fixture.calls.filter(c=>c.name==='confirm_stock_in_draft').length),0,'Draft recovery does not confirm stock');
  await page.screenshot({path:out+'/stock-draft-review-390.png'});
+ for(const language of ['en','ms']){
+  await page.evaluate(lang=>{localStorage.setItem('language',lang);for(const key of ['fixture-stock-draft','fixture-stock-proof','fixture-stock-additions'])sessionStorage.removeItem(key)},language);await page.goto(base+'/?screen=stock&long=1');
+  const qty=()=>page.locator('input[data-bar-stock-field=quantity]').filter({visible:true}),cost=()=>page.locator('input[data-bar-stock-field=cost]').filter({visible:true});
+  await qty().fill('2');await page.getByRole('button',{name:/^(Cartons \(24\)|Karton \(24\))$/,exact:true}).filter({visible:true}).click();assert.equal(await qty().inputValue(),'');await qty().fill('2');await cost().fill('1.25');await page.evaluate(()=>window.fixture.lostDraft=false);
+  await page.getByRole('button',{name:language==='en'?'Save & Review':'Simpan & Semak',exact:true}).click();
+  const review=()=>page.getByRole('dialog'),action=()=>review().getByRole('button',{name:language==='en'?'Check Same Confirmation':'Semak Pengesahan Sama',exact:true});
+  const initial=review().getByRole('button',{name:language==='en'?'Final Confirm - Add Stock':'Sahkan Akhir - Tambah Stok',exact:true});
+  const long='Review Test Lager With A Very Long Product Name And Bottle Size 330 ml';
+  for(const width of [320,390,768,1440]){
+   await page.setViewportSize({width,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));assert(await review().evaluate(el=>el.scrollWidth<=el.clientWidth+1));
+   const name=review().getByText(long,{exact:true}).filter({visible:true});assert(await name.evaluate(el=>getComputedStyle(el).textOverflow!=='ellipsis'&&el.scrollWidth<=el.clientWidth+1),'Full product name is readable, not truncated');
+   assert((await initial.boundingBox()).height>=44);await page.screenshot({path:out+'/stock-confirm-review-'+language+'-'+width+'.png'});
+  }
+  await page.setViewportSize({width:390,height:844});await page.evaluate(()=>window.fixture.confirmMode='stale');await initial.click();await review().getByRole('alert').waitFor();assert.match(await review().getByRole('alert').innerText(),language==='en'?/No stock was added/:/Stok tidak ditambah/);assert(await action().isEnabled());assert.equal(await page.evaluate(()=>window.fixture.additions??0),0);
+  for(const mode of ['throw','bad']){await page.evaluate(value=>window.fixture.confirmMode=value,mode);await action().click();await review().getByRole('alert').waitFor();assert(await action().isEnabled());assert.equal(await page.evaluate(()=>window.fixture.additions??0),0);}
+  if(language==='en')await page.clock.install();await page.evaluate(()=>window.fixture.confirmMode='hold');await action().evaluate(button=>{button.click();button.click()});await page.waitForFunction(()=>!!window.fixture.releaseConfirm);const calls=await page.evaluate(()=>window.fixture.calls.filter(c=>c.name==='confirm_stock_in_draft'));assert.equal(calls.length,4,'A synchronous double tap sends one confirmation');assert(calls.every(c=>c.args.p_draft_id===calls[0].args.p_draft_id));
+  const competing=await page.context().newPage();await competing.goto(base+'/?screen=stock&long=1');await competing.getByRole('dialog').getByRole('button',{name:language==='en'?'Check Same Confirmation':'Semak Pengesahan Sama',exact:true}).click();await competing.getByRole('dialog').getByRole('alert').waitFor();assert.equal(await competing.evaluate(()=>window.fixture.calls.filter(c=>c.name==='confirm_stock_in_draft').length),0,'A competing tab cannot send a confirmation while the first owns the lock');await competing.close();
+  await page.clock.fastForward(20001);await action().waitFor();assert(await action().isEnabled());await page.evaluate(()=>window.fixture.releaseConfirm());assert.equal(await review().count(),1,'A late response cannot close an already timed-out review');assert.equal(await page.evaluate(()=>window.fixture.additions),1);
+  assert(!await review().getByText(language==='en'?'Draft saved. Stock is not updated yet.':'Draf disimpan. Stok belum dikemas kini.',{exact:false}).count(),'An uncertain confirmation must not claim that stock was not updated');
+  for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));assert(await review().evaluate(el=>el.scrollWidth<=el.clientWidth+1));assert((await action().boundingBox()).height>=44);await page.screenshot({path:out+'/stock-confirm-recovery-'+language+'-'+width+'.png'});}
+  await page.setViewportSize({width:390,height:844});await review().getByRole('button',{name:language==='en'?'Close - Keep Draft':'Tutup - Simpan Draf',exact:true}).click();assert(await qty().isDisabled(),'An unresolved confirmation blocks replacement quantities');await page.reload();await review().waitFor();await action().waitFor();assert.equal(await page.evaluate(()=>window.fixture.calls.filter(c=>c.name==='confirm_stock_in_draft').length),0,'Reload does not automatically confirm stock');
+  await page.evaluate(()=>window.fixture.confirmMode='after');await action().click();await action().waitFor();assert.equal(await page.evaluate(()=>window.fixture.additions),1);await action().click();await review().waitFor({state:'hidden'});assert.equal(await page.evaluate(()=>window.fixture.additions),1,'Exact retry must not add a second batch');assert.equal(await qty().inputValue(),'');assert.equal(await cost().inputValue(),'');assert((await page.evaluate(()=>window.fixture.calls.filter(c=>c.name==='confirm_stock_in_draft').map(c=>c.args.p_draft_id))).every(id=>id===calls[0].args.p_draft_id));
+ }
+ await page.evaluate(()=>localStorage.setItem('language','en'));
  await page.evaluate(()=>sessionStorage.setItem('lovely_paradise_admin_access',JSON.stringify({expiresAt:new Date(Date.now()+60000).toISOString()})));
  await page.goto(base+'/?screen=admin&fail=admin');await page.getByRole('alert').filter({hasText:'Category records'}).waitFor();
  assert.equal(await page.getByRole('button',{name:'Add Product',exact:true}).count(),0,'Admin does not edit failed reads');
