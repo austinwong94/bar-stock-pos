@@ -42,7 +42,7 @@ try{
         };
         assert(await labelsFit(),'English report labels stay on one line at '+width);
         await language('BM');
-        await page.locator('.bar-report-periods').getByText('Mingguan',{exact:true}).waitFor();
+        await page.locator('.bar-report-periods').getByText('Minggu',{exact:true}).waitFor();
         assert(await labelsFit(),'Malay report labels stay on one line at '+width);
         await page.screenshot({path:out+'/'+name+'-malay-'+width+'.png'});
         await language('EN');

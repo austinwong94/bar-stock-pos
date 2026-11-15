@@ -1240,10 +1240,10 @@ export default function DailyReportPage({ settings }: { settings: SettingsMap })
         <p className="mt-1 text-xs text-muted" data-report-scope="bar">{text(...barReportScope)}</p>
         <div className="mt-2 flex min-w-0 flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           <ViewChoices className="bar-report-periods" label={text('Report Period', 'Tempoh Laporan')} value={reportPeriod} onChange={value => setReportPeriod(value as ReportPeriod)} items={[
-            {value: 'daily', label: text('Daily', 'Harian')},
-            {value: 'weekly', label: text('Weekly', 'Mingguan')},
-            {value: 'monthly', label: text('Monthly', 'Bulanan')},
-            {value: 'custom', label: text('Selected', 'Pilihan')},
+            {value: 'daily', label: text('Day', 'Hari')},
+            {value: 'weekly', label: text('Week', 'Minggu')},
+            {value: 'monthly', label: text('Month', 'Bulan')},
+            {value: 'custom', label: text('Range', 'Julat')},
           ]} />
           <div className="grid w-full min-w-0 gap-2 lg:max-w-[560px] lg:justify-end">
             {reportPeriod === 'daily' ? (
