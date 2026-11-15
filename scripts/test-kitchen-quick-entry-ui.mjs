@@ -54,6 +54,27 @@ try{
   // Assert their settled result, not an arbitrary two-frame intermediate layout.
   await page.waitForFunction(()=>{const el=document.querySelector('input[aria-label="Rice (Sample) Guest (kg)"]'),scope=el?.closest('.supply-workspace');if(!el||!scope)return false;const r=el.getBoundingClientRect(),labels=scope.querySelector('.usage-column-labels').getBoundingClientRect(),footer=scope.querySelector('.kitchen-entry-footer').getBoundingClientRect();return r.top>=labels.bottom&&r.bottom<=footer.top;},{},{timeout:5000});
   assert(await box('Rice (Sample) Guest (kg)').evaluate(el=>{const scope=el.closest('.supply-workspace'),r=el.getBoundingClientRect(),labels=scope.querySelector('.usage-column-labels').getBoundingClientRect(),footer=scope.querySelector('.kitchen-entry-footer').getBoundingClientRect();return r.top>=labels.bottom&&r.bottom<=footer.top;}),'A smaller keyboard-height viewport keeps the active field between the labels and footer');
+  for(const width of [320,390,768]){
+   if(process.env.QA_FOCUS_TRACE==='true')await page.evaluate(()=>{
+    window.kitchenFocusTrace=[];window.kitchenStopTrace?.();
+    const input=document.querySelector('input[aria-label="Rice (Sample) Guest (kg)"]'),scope=input.closest('.supply-workspace'),labels=scope.querySelector('.usage-column-labels'),footer=scope.querySelector('.kitchen-entry-footer');
+    const record=event=>{const r=input.getBoundingClientRect();window.kitchenFocusTrace.push({event,time:performance.now(),width:innerWidth,y:scrollY,input:[r.top,r.bottom],labels:labels.getBoundingClientRect().bottom,footer:footer.getBoundingClientRect().top,margin:[getComputedStyle(input).scrollMarginTop,getComputedStyle(input).scrollMarginBottom],vars:scope.getAttribute('style')});if(window.kitchenFocusTrace.length>80)window.kitchenFocusTrace.shift();};
+    const resized=()=>record('resize'),scrolled=()=>record('scroll'),observer=new MutationObserver(()=>record('style'));observer.observe(scope,{attributes:true,attributeFilter:['style']});window.addEventListener('resize',resized);window.addEventListener('scroll',scrolled);window.kitchenStopTrace=()=>{observer.disconnect();window.removeEventListener('resize',resized);window.removeEventListener('scroll',scrolled);};record('start');
+   });
+   await page.setViewportSize({width,height:380});
+   const input=box('Rice (Sample) Guest (kg)');await input.focus();await input.evaluate(el=>el.scrollIntoView({block:'center'}));
+   try{await page.waitForFunction(()=>{const el=document.querySelector('input[aria-label="Rice (Sample) Guest (kg)"]'),scope=el?.closest('.supply-workspace');if(!el||!scope)return false;const r=el.getBoundingClientRect(),labels=scope.querySelector('.usage-column-labels').getBoundingClientRect(),footer=scope.querySelector('.kitchen-entry-footer').getBoundingClientRect();return r.top>=labels.bottom&&r.bottom<=footer.top;},{},{timeout:5000});}
+   catch(e){console.error('Keyboard geometry',locale,width,await input.evaluate(el=>{const scope=el.closest('.supply-workspace'),rect=n=>{const r=n.getBoundingClientRect();return{top:r.top,bottom:r.bottom,height:r.height};};return{input:rect(el),labels:rect(scope.querySelector('.usage-column-labels')),footer:rect(scope.querySelector('.kitchen-entry-footer')),viewport:innerHeight,active:document.activeElement===el,margin:[getComputedStyle(el).scrollMarginTop,getComputedStyle(el).scrollMarginBottom],trace:window.kitchenFocusTrace};}));throw e;}
+   await page.screenshot({path:out+'/keyboard-entry-'+locale+'-'+width+'.png'});
+  }
+  await page.setViewportSize({width:390,height:844});await box('Rice (Sample) Guest (kg)').focus();
+  await page.evaluate(()=>{
+   const viewport=window.visualViewport;window.kitchenViewportDescriptors={height:Object.getOwnPropertyDescriptor(viewport,'height'),offsetTop:Object.getOwnPropertyDescriptor(viewport,'offsetTop')};
+   Object.defineProperty(viewport,'height',{configurable:true,value:300});Object.defineProperty(viewport,'offsetTop',{configurable:true,value:60});viewport.dispatchEvent(new Event('resize'));
+  });
+  await page.waitForFunction(()=>{const el=document.querySelector('input[aria-label="Rice (Sample) Guest (kg)"]'),r=el.getBoundingClientRect(),labels=el.closest('.supply-workspace').querySelector('.usage-column-labels').getBoundingClientRect();return r.top>=Math.max(60,labels.bottom)&&r.bottom<=360;},{},{timeout:5000});
+  assert(await box('Rice (Sample) Guest (kg)').evaluate(el=>el===document.activeElement),'Visual-viewport changes retain the same focused field');
+  await page.evaluate(()=>{const viewport=window.visualViewport;for(const key of ['height','offsetTop']){const descriptor=window.kitchenViewportDescriptors[key];if(descriptor)Object.defineProperty(viewport,key,descriptor);else delete viewport[key];}viewport.dispatchEvent(new Event('resize'));window.kitchenStopTrace?.();});
   await page.locator('input[data-usage-field="staff"]').last().focus();
   assert.equal(await page.locator('.usage-column-labels>span').nth(2).evaluate(el=>getComputedStyle(el).color),'rgb(159, 23, 75)');
   assert.deepEqual(await page.evaluate(()=>Object.fromEntries(Object.keys(localStorage).filter(k=>k.startsWith('daily-kitchen-pending:')).map(k=>[k,localStorage.getItem(k)]))),before,'Scrolling, resizing and focusing never write or submit usage');

@@ -93,6 +93,41 @@ export default function DailyKitchenUsage({items,onSaved,loadError,active:visibl
     update();const observer=new ResizeObserver(update);observer.observe(header);
     return()=>observer.disconnect();
   },[visible]);
+  useLayoutEffect(()=>{
+    const node=section.current;
+    if(!node||!visible||loading||readonly||pending)return;
+    let frame=0,settle=0;
+    const viewport=window.visualViewport;
+    function reveal(){
+      const labels=node!.querySelector('.usage-column-labels'),footer=node!.querySelector('.kitchen-entry-footer');
+      if(!labels||!footer)return;
+      const viewportTop=viewport?.offsetTop??0,viewportBottom=viewportTop+(viewport?.height??window.innerHeight);
+      const input=document.activeElement;
+      const active=input instanceof HTMLInputElement&&input.matches('input[data-usage-item]')&&node!.contains(input)&&!input.disabled&&!!input.getClientRects().length?input:null;
+      const pinnedTop=Math.max(viewportTop,parseFloat(getComputedStyle(labels).top)||0)+labels.getBoundingClientRect().height;
+      const pinnedBottom=Math.min(viewportBottom,window.innerHeight-(parseFloat(getComputedStyle(footer).bottom)||0)-footer.getBoundingClientRect().height);
+      const padding=Math.min(8,Math.max(0,Math.floor((pinnedBottom-pinnedTop-(active?.getBoundingClientRect().height??44))/2)));
+      node!.style.setProperty('--usage-entry-scroll-start',`${pinnedTop+padding}px`);
+      node!.style.setProperty('--usage-entry-scroll-end',`${window.innerHeight-pinnedBottom+padding}px`);
+      if(!active)return;
+      const top=Math.max(viewportTop,labels.getBoundingClientRect().bottom)+padding;
+      const bottom=Math.min(viewportBottom,footer.getBoundingClientRect().top)-padding;
+      const rect=active.getBoundingClientRect();
+      if(bottom-top<rect.height)return;
+      const delta=rect.top<top?rect.top-top:rect.bottom>bottom?rect.bottom-bottom:0;
+      if(Math.abs(delta)>1)window.scrollBy({top:delta,behavior:'instant'});
+    }
+    // Browser focus scrolling and sticky-header measurements settle on separate frames.
+    function schedule(){cancelAnimationFrame(frame);cancelAnimationFrame(settle);frame=requestAnimationFrame(()=>{settle=requestAnimationFrame(reveal);});}
+    const observer=new ResizeObserver(schedule),main=node.closest('main');
+    for(const element of [node,main?.querySelector('.kitchen-header'),main?.parentElement?.querySelector(':scope > header'),node.querySelector('.usage-column-labels'),node.querySelector('.kitchen-entry-footer')])if(element)observer.observe(element);
+    node.addEventListener('focusin',schedule);
+    window.addEventListener('resize',schedule);
+    viewport?.addEventListener('resize',schedule);
+    viewport?.addEventListener('scroll',schedule);
+    schedule();
+    return()=>{observer.disconnect();cancelAnimationFrame(frame);cancelAnimationFrame(settle);node.removeEventListener('focusin',schedule);window.removeEventListener('resize',schedule);viewport?.removeEventListener('resize',schedule);viewport?.removeEventListener('scroll',schedule);node.style.removeProperty('--usage-entry-scroll-start');node.style.removeProperty('--usage-entry-scroll-end');};
+  },[visible,loading,readonly,pending]);
   async function loadTemplates(){const r=await supabase.rpc('read_kitchen_templates');if(r.error)throw r.error;setTemplates(r.data??[]);}
   useEffect(()=>{void loadTemplates().catch(e=>setError(readErrorMessage(e,'Could not load templates.')));},[]);
   useEffect(()=>{const ticket=++recentSequence.current;setRecentLoading(true);setRecentData(undefined);setRecentError('');void(async()=>{try{const range=recentUsageRange(date);const r=await supabase.rpc('read_daily_kitchen_usage',{p_from:range.from,p_to:range.to});if(r.error)throw r.error;if(ticket===recentSequence.current)setRecentData(r.data);}catch(e){if(ticket===recentSequence.current)setRecentError(readErrorMessage(e,'Recent ingredient list unavailable.'));}finally{if(ticket===recentSequence.current)setRecentLoading(false);}})();return()=>{recentSequence.current++;};},[date,recentRetry,storageKey]);

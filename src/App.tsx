@@ -171,7 +171,7 @@ function PlatformRoutes({
         {/* Bar POS department - the original app, now one department */}
         <Route path="/bar" element={<Guard need={['bar.pos.use', 'bar.stock.view']}><Dashboard settings={settings} /></Guard>} />
         <Route path="/pos" element={<Guard need={['bar.pos.use']}><POS settings={settings} /></Guard>} />
-        <Route path="/stock-in" element={<Guard need={['bar.stock.view', 'bar.stock.manage']}><StockOutReport settings={settings} /></Guard>} />
+        <Route path="/stock-in" element={<Guard need={['bar.stock.view', 'bar.stock.manage']}><Navigate to="/stock-out-report" replace /></Guard>} />
         <Route path="/stock-out-report" element={<Guard need={['bar.stock.view', 'bar.stock.manage']}><StockOutReport settings={settings} /></Guard>} />
         <Route path="/inventory" element={<Guard need={['bar.stock.view']}><Inventory settings={settings} /></Guard>} />
         <Route path="/products" element={<Guard need={['bar.products.manage']}><Products settings={settings} onSettingsSaved={onSettingsSaved} /></Guard>} />
