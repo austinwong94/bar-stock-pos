@@ -6,6 +6,8 @@ Daily kitchen usage now measures the pinned labels, footer and visual viewport a
 
 The first correction still failed in Malay because the 57px space could not fit the field plus 16px of fixed clearance. The event-order trace showed the later centre-scroll and updated margins; this evidence was retained rather than rerunning equivalent attempts. Adaptive clearance resolves that measured case. The controlled browser test also simulates a visual viewport that shrinks independently from the layout viewport and has a nonzero top offset. These are browser fixtures, not proof from a physical iPhone or Android keyboard.
 
+Deliberate pointer, touch or wheel interaction suspends automatic correction until the next field focus or viewport resize. Pinch zoom is not recentered. The browser regression verifies that manually scrolling away is not snapped back and that a subsequent keyboard resize still reveals the active field.
+
 Existing tests continue to verify fifty-item lists, active guest/staff labels, quantity-column alignment, sidebar resizing, guest-then-staff Next navigation, no submission from Enter, account-isolated units, blank new-day quantities, retained same-day drafts and one stock deduction after a lost reply. The stock-in bookmark now redirects to the canonical Stock Activity route, preserving the existing permission guard and highlighting Stock rather than Overview. It creates no new entry.
 
 No schema, account, live product, price, stock, usage, receipt or sales records are changed by this work. Hosted verification is read-only. Physical keyboard/device acceptance and actual opening-stock setup remain separate launch requirements.

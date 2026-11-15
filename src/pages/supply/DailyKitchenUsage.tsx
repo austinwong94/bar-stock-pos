@@ -96,7 +96,7 @@ export default function DailyKitchenUsage({items,onSaved,loadError,active:visibl
   useLayoutEffect(()=>{
     const node=section.current;
     if(!node||!visible||loading||readonly||pending)return;
-    let frame=0,settle=0;
+    let frame=0,settle=0,revealAllowed=true;
     const viewport=window.visualViewport;
     function reveal(){
       const labels=node!.querySelector('.usage-column-labels'),footer=node!.querySelector('.kitchen-entry-footer');
@@ -109,7 +109,7 @@ export default function DailyKitchenUsage({items,onSaved,loadError,active:visibl
       const padding=Math.min(8,Math.max(0,Math.floor((pinnedBottom-pinnedTop-(active?.getBoundingClientRect().height??44))/2)));
       node!.style.setProperty('--usage-entry-scroll-start',`${pinnedTop+padding}px`);
       node!.style.setProperty('--usage-entry-scroll-end',`${window.innerHeight-pinnedBottom+padding}px`);
-      if(!active)return;
+      if(!active||!revealAllowed||(viewport?.scale??1)!==1)return;
       const top=Math.max(viewportTop,labels.getBoundingClientRect().bottom)+padding;
       const bottom=Math.min(viewportBottom,footer.getBoundingClientRect().top)-padding;
       const rect=active.getBoundingClientRect();
@@ -119,14 +119,19 @@ export default function DailyKitchenUsage({items,onSaved,loadError,active:visibl
     }
     // Browser focus scrolling and sticky-header measurements settle on separate frames.
     function schedule(){cancelAnimationFrame(frame);cancelAnimationFrame(settle);frame=requestAnimationFrame(()=>{settle=requestAnimationFrame(reveal);});}
+    function changed(){revealAllowed=true;schedule();}
+    function manualScroll(){revealAllowed=false;}
     const observer=new ResizeObserver(schedule),main=node.closest('main');
     for(const element of [node,main?.querySelector('.kitchen-header'),main?.parentElement?.querySelector(':scope > header'),node.querySelector('.usage-column-labels'),node.querySelector('.kitchen-entry-footer')])if(element)observer.observe(element);
-    node.addEventListener('focusin',schedule);
-    window.addEventListener('resize',schedule);
-    viewport?.addEventListener('resize',schedule);
+    node.addEventListener('focusin',changed);
+    window.addEventListener('resize',changed);
+    viewport?.addEventListener('resize',changed);
     viewport?.addEventListener('scroll',schedule);
+    window.addEventListener('pointerdown',manualScroll,{passive:true});
+    window.addEventListener('touchmove',manualScroll,{passive:true});
+    window.addEventListener('wheel',manualScroll,{passive:true});
     schedule();
-    return()=>{observer.disconnect();cancelAnimationFrame(frame);cancelAnimationFrame(settle);node.removeEventListener('focusin',schedule);window.removeEventListener('resize',schedule);viewport?.removeEventListener('resize',schedule);viewport?.removeEventListener('scroll',schedule);node.style.removeProperty('--usage-entry-scroll-start');node.style.removeProperty('--usage-entry-scroll-end');};
+    return()=>{observer.disconnect();cancelAnimationFrame(frame);cancelAnimationFrame(settle);node.removeEventListener('focusin',changed);window.removeEventListener('resize',changed);viewport?.removeEventListener('resize',changed);viewport?.removeEventListener('scroll',schedule);window.removeEventListener('pointerdown',manualScroll);window.removeEventListener('touchmove',manualScroll);window.removeEventListener('wheel',manualScroll);node.style.removeProperty('--usage-entry-scroll-start');node.style.removeProperty('--usage-entry-scroll-end');};
   },[visible,loading,readonly,pending]);
   async function loadTemplates(){const r=await supabase.rpc('read_kitchen_templates');if(r.error)throw r.error;setTemplates(r.data??[]);}
   useEffect(()=>{void loadTemplates().catch(e=>setError(readErrorMessage(e,'Could not load templates.')));},[]);
